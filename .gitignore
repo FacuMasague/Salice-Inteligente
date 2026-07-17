@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+data/snapshot.json
+data/raw/
+data/staging/
+data/backups/
+data/operations.sqlite*
+tmp/
+.DS_Store
+*.log
+coverage/

@@ -1,0 +1,87 @@
+import L from 'leaflet';
+import { useEffect, useMemo, useState } from 'react';
+import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import type { Client } from '../../shared/models';
+import { money } from '../lib/format';
+
+const markerIcon = (client: Client, selected: boolean) => L.divIcon({
+  className: 'client-marker-shell',
+  html: `<div class="client-marker ${client.active ? client.health : 'inactive'} ${selected ? 'selected' : ''}"><span></span></div>`,
+  iconSize: [32, 38],
+  iconAnchor: [16, 33],
+});
+
+const clusterIcon = (count: number) => L.divIcon({
+  className: 'client-cluster-shell',
+  html: `<div class="client-cluster"><strong>${count}</strong><span>clientes</span></div>`,
+  iconSize: [54, 54],
+  iconAnchor: [27, 27],
+});
+
+type GeocodedClient = Client & { coordinates: [number, number] };
+
+function FitClients({ clients }: { clients: GeocodedClient[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!clients.length) return;
+    const bounds = L.latLngBounds(clients.map((client) => client.coordinates));
+    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 12 });
+  }, [clients, map]);
+  return null;
+}
+
+interface ClientMapProps {
+  clients: Client[];
+  selectedId: number | null;
+  onSelect: (client: Client) => void;
+}
+
+function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: GeocodedClient[]; selectedId: number | null; onSelect: (client: Client) => void }) {
+  const [zoom, setZoom] = useState(10);
+  const map = useMap();
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  const groups = useMemo(() => {
+    if (zoom >= 14) return clients.map((client) => ({ key: `client-${client.id}`, clients: [client], coordinates: client.coordinates }));
+    const longitudeCell = 52 * 360 / (256 * 2 ** zoom);
+    const latitudeCell = longitudeCell * .78;
+    const buckets = new Map<string, GeocodedClient[]>();
+    clients.forEach((client) => {
+      const key = `${Math.floor(client.coordinates[0] / latitudeCell)}:${Math.floor(client.coordinates[1] / longitudeCell)}`;
+      buckets.set(key, [...(buckets.get(key) ?? []), client]);
+    });
+    return [...buckets.entries()].map(([key, members]) => ({
+      key,
+      clients: members,
+      coordinates: [
+        members.reduce((sum, client) => sum + client.coordinates[0], 0) / members.length,
+        members.reduce((sum, client) => sum + client.coordinates[1], 0) / members.length,
+      ] as [number, number],
+    }));
+  }, [clients, zoom]);
+
+  return <>{groups.map((group) => {
+    if (group.clients.length === 1) {
+      const client = group.clients[0];
+      return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} eventHandlers={{ click: () => onSelect(client) }}>
+        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{client.tradeName}</strong><span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo GESI'}</span><span>Ventas 90d: {money(client.sales90d, true)} · Cobranza C{client.collectionRisk}</span></div></Tooltip>
+      </Marker>;
+    }
+    return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>
+      <Tooltip direction="top" offset={[0, -20]} opacity={1}><div className="map-tooltip"><strong>{group.clients.length} clientes agrupados</strong><span>{group.clients.slice(0, 3).map((client) => client.tradeName).join(' · ')}{group.clients.length > 3 ? '…' : ''}</span><span>Hacé clic para acercar</span></div></Tooltip>
+    </Marker>;
+  })}</>;
+}
+
+export function ClientMap({ clients, selectedId, onSelect }: ClientMapProps) {
+  const geocoded = clients.filter((client): client is GeocodedClient => client.coordinates !== null);
+  return (
+    <MapContainer className="leaflet-map" center={[-38.0055, -57.5426]} zoom={10} zoomControl={false} scrollWheelZoom>
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <FitClients clients={geocoded} />
+      <ClusteredMarkers clients={geocoded} selectedId={selectedId} onSelect={onSelect} />
+    </MapContainer>
+  );
+}
