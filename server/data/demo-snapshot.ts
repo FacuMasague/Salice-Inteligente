@@ -1,4 +1,4 @@
-import { SNAPSHOT_REVISION, type Client, type DashboardData, type Invoice, type Product, type VectorKey } from '../../shared/models.js';
+import { APP_VERSION, SNAPSHOT_REVISION, type Client, type DashboardData, type Invoice, type Product, type VectorKey } from '../../shared/models.js';
 
 const v = (values: Partial<Record<VectorKey, number>>): Record<VectorKey, number> => ({
   perros: 0, gatos: 0, otras_especies: 0, cachorros: 0, adultos: 0, senior: 0,
@@ -168,7 +168,7 @@ const clients: Client[] = seeds.map((seed, index) => {
 export function createDemoSnapshot(): DashboardData {
   return {
     meta: {
-      version: '0.0.3',
+      version: APP_VERSION,
       revision: SNAPSHOT_REVISION,
       generatedAt: '2026-07-15T11:30:00-03:00',
       source: 'demo',

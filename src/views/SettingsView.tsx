@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, BookOpen, CheckCircle2, Database, HardDrive, Map, PlayCircle, Route, ShieldCheck, Users, WalletCards } from 'lucide-react';
+import { BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Database, HardDrive, Map, PlayCircle, Route, ShieldCheck, Users, WalletCards } from 'lucide-react';
 import type { DashboardData } from '../../shared/models';
 import { longDate, number } from '../lib/format';
 
 const lessons = [
   { icon: Map, title: 'Mapa operativo', text: 'Indicadores, cartera Salice, agrupación de puntos y fichas.' },
+  { icon: ClipboardCheck, title: 'Agenda operativa', text: 'Prioridades, gestiones, resultados y promesas de pago.' },
   { icon: Users, title: 'Clientes', text: 'GESI, pertenencia, riesgo, oportunidad y filtros.' },
   { icon: WalletCards, title: 'Cobranzas', text: 'Antigüedad, saldo pendiente y pago contra vencimiento.' },
   { icon: BarChart3, title: 'Productos', text: 'Disponibilidad, comparación y ranking de 20 vectores.' },
@@ -14,6 +15,9 @@ const lessons = [
 interface SystemStatus {
   storage: string;
   notes: number;
+  activities: number;
+  pendingPromises: number;
+  pendingAgendaItems: number;
   backups: number;
   lastSync: { completedAt: string; snapshotAt: string; status: string } | null;
 }
@@ -33,7 +37,7 @@ export function SettingsView({ data, tutorialCompleted, onStartTutorial }: { dat
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado · 11 pasos</span><h2>Aprendé a usar Salice Inteligente v0.0.3</h2><p>El tutorial recorre las nuevas definiciones de cartera, cobranza, oportunidad y rutas. No modifica datos.</p></div>
+          <div><span className="section-kicker">Recorrido guiado · 12 pasos</span><h2>Aprendé a usar Salice Inteligente v0.0.4</h2><p>El tutorial recorre la agenda diaria, las nuevas definiciones de cartera, cobranza, oportunidad y rutas. Sólo el formulario de gestión modifica datos locales.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
@@ -66,13 +70,13 @@ export function SettingsView({ data, tutorialCompleted, onStartTutorial }: { dat
 
         <section className="data-card settings-card" data-tour="storage-rules">
           <div className="data-card-header"><div><span className="section-kicker"><HardDrive size={14} /> Persistencia local</span><h2>Datos humanos separados de GESI</h2></div><span className="algorithm-pill">SQLite</span></div>
-          <p className="settings-card-copy">Las notas ya no se escriben dentro del snapshot importado. Se guardan en una base local y sobreviven a futuras actualizaciones.</p>
-          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Respaldos del snapshot</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Foto actual migrada'}</strong></p></div>
+          <p className="settings-card-copy">Notas, gestiones, tareas y promesas se guardan fuera del snapshot importado. Así sobreviven a futuras actualizaciones de GESI.</p>
+          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Gestiones registradas</span><strong>{system ? number(system.activities) : 'Cargando…'}</strong></p><p><span>Promesas pendientes</span><strong>{system ? number(system.pendingPromises) : 'Cargando…'}</strong></p><p><span>Tareas manuales pendientes</span><strong>{system ? number(system.pendingAgendaItems) : 'Cargando…'}</strong></p><p><span>Respaldos del snapshot</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Foto actual migrada'}</strong></p></div>
         </section>
 
         <section className="data-card settings-card settings-wide-card">
           <div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Reglas explicables</span><h2>Dos puntajes y clasificación de producto</h2></div><span className="algorithm-pill">Sin IA operativa</span></div>
-          <div className="score-definition-grid"><article><strong>C · Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas de GESI.</p></article><article><strong>O · Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix.</p></article><article><strong>P · Prioridad de visita</strong><p>58% riesgo de cobranza + 42% oportunidad. No se presenta como una predicción.</p></article><article><strong>Vector v1.1</strong><p>20 dimensiones determinísticas; recomendaciones con nivel de confianza y muestra comparable.</p></article></div>
+          <div className="score-definition-grid"><article><strong>C · Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas de GESI.</p></article><article><strong>O · Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix.</p></article><article><strong>P · Prioridad de visita</strong><p>58% riesgo de cobranza + 42% oportunidad. No se presenta como una predicción.</p></article><article><strong>Agenda y gestiones</strong><p>Una acción se considera realizada sólo al guardarla; no se infieren visitas por ubicación ni por fecha sugerida.</p></article><article><strong>Promesas exigibles</strong><p>Suma de compromisos locales pendientes con fecha igual o anterior al día elegido; no equivale a cobranza cobrada.</p></article><article><strong>Saldo accionable</strong><p>Un residual menor a $1.000 permanece visible, pero no genera por sí solo una tarea o alerta de cobranza.</p></article><article><strong>Vector v1.1</strong><p>20 dimensiones determinísticas; recomendaciones con nivel de confianza y muestra comparable.</p></article></div>
         </section>
       </div>
     </div>

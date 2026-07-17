@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.0.3
+# Salice Inteligente · v0.0.4
 
-Prototipo web operativo y personalizado para Salice Distribuciones S.A. Permite explorar la cartera sobre un mapa, revisar ventas y cuenta corriente, comparar productos, generar recomendaciones explicables y planificar visitas por vendedor.
+Prototipo web operativo y personalizado para Salice Distribuciones S.A. Permite explorar la cartera sobre un mapa, trabajar una agenda diaria por vendedor, registrar gestiones y promesas de pago, revisar cuenta corriente, generar recomendaciones explicables y planificar visitas.
 
 ## Abrir el programa
 
@@ -31,21 +31,24 @@ Cobertura del snapshot actual:
 
 GESI devuelve error para el maestro de zonas y omitió el detalle de tres facturas. El sistema conserva las localidades disponibles y señala esta limitación en pantalla. El monto sin detalle representa una fracción mínima de la facturación y queda separado como venta no asignada.
 
-El uso del estado activo/inactivo fue validado contra dos capturas consecutivas y la actividad comercial reciente. GESI incorporó un cliente activo nuevo y actualizó marcas del maestro entre ambas fotos; no se detectaron inactivos facturados después de su última actualización. La v0.0.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.360 activos tienen definición explícita para empresa 3 / sucursal 3 y 556 quedan marcados como “revisar pertenencia”. Estos últimos no se excluyen automáticamente hasta validar la regla con Salice.
+El uso del estado activo/inactivo fue validado contra dos capturas consecutivas y la actividad comercial reciente. GESI incorporó un cliente activo nuevo y actualizó marcas del maestro entre ambas fotos; no se detectaron inactivos facturados después de su última actualización. La v0.0.4 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.360 activos tienen definición explícita para empresa 3 / sucursal 3 y 556 quedan marcados como “revisar pertenencia”. Estos últimos no se excluyen automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
 
-- Tutorial interactivo de 11 pasos desde Configuración, con navegación automática, foco visual y progreso persistente en el equipo.
-- Mapa Leaflet + OpenStreetMap con agrupación de marcadores y filtros por alcance, estado GESI, pertenencia Salice, zona y riesgo de cobranza.
-- Ficha contextual del cliente sin perder la pantalla de origen: ventas, señales administrativas, C/O/P, compras, comprobantes, comportamiento contra vencimiento y notas persistentes.
+- Tutorial interactivo de 12 pasos desde Configuración, con navegación automática, foco visual y progreso persistente en el equipo.
+- Agenda operativa por fecha y vendedor: combina prioridades algorítmicas, tareas manuales y promesas exigibles, explicando el motivo de cada acción.
+- Registro persistente de visitas, llamadas, cobranzas y ofertas, con resultado, importe, productos ofrecidos y próxima acción opcional.
+- Promesas de pago con fecha, importe y estado pendiente/cumplida/incumplida; alimentan la agenda y las alertas sin confundirse con dinero cobrado.
+- Mapa Leaflet + OpenStreetMap con agrupación de marcadores, filtros y marcador del centro de distribución en Eduardo Bradley 1450.
+- Ficha contextual del cliente sin perder la pantalla de origen: ventas, señales administrativas, C/O/P, compras, comprobantes, comportamiento contra vencimiento, gestiones y notas persistentes.
 - Agenda de cobranzas con filtros, bandas de antigüedad, saldo pendiente real, fechas con año y condición de pago; conserva deuda aunque el cliente esté inactivo.
 - Catálogo vectorizado en 20 dimensiones, filtros por familia/disponibilidad, orden comercial, comparador, stock y precio de referencia GESI.
 - Explorador explicable de los 20 vectores: descripción de cada regla y ranking completo del catálogo de afinidad 100 a 0.
 - Recomendador explicable: ponderación por gasto, compatibilidad de especie, pares confirmados de Salice y confianza confiable/exploratoria/insuficiente.
 - Puntajes separados: C para riesgo de cobranza, O para oportunidad comercial y P para prioridad combinada de visita.
 - Planificador por vendedor y corredor, con duración por visita, jornada máxima, factor vial visible, alertas de factibilidad y enlaces de navegación.
-- Búsqueda global de clientes/productos y bandeja de alertas de cobranza alta.
-- Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas y ejecuciones de sincronización.
+- Búsqueda global de clientes/productos y bandeja dinámica de promesas exigibles y riesgos de cobranza altos.
+- Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas, tareas, gestiones, promesas y ejecuciones de sincronización.
 
 La IA no interviene en la operación diaria de esta versión. La clasificación de productos se construye mediante reglas reproducibles sobre nombre, marca, familia y presentación. Una futura revisión periódica asistida por IA podrá ajustar esos vectores sin cambiar los algoritmos operativos.
 
@@ -82,7 +85,7 @@ data/staging/snapshot-gesi.json        normalización validada
 data/snapshot.json                     snapshot activo de la web
        │
        ├── data/backups/                últimos 3 snapshots recuperables
-       └── data/operations.sqlite       notas y datos humanos persistentes
+       └── data/operations.sqlite       notas, agenda, gestiones y promesas
 ```
 
 Los tres archivos de datos están ignorados por Git. La activación ocurre solamente después de validar referencias, totales, fechas, vectores y consistencia financiera.
@@ -96,7 +99,10 @@ Los tres archivos de datos están ignorados por Git. La activación ocurre solam
 - El saldo del cliente conserva créditos y anticipos; la agenda muestra únicamente documentos con saldo positivo.
 - Como los límites de crédito llegan en cero para toda la cartera activa, la interfaz no presenta porcentajes ficticios de utilización.
 - El precio de referencia prioriza el canal especializado de GESI, luego el canal general y finalmente cualquier precio positivo disponible.
-- Los recorridos parten del centro de distribución de Mar del Plata, estiman distancia vial con un factor explícito y controlan duración de visita/jornada. Todavía no incorporan tránsito ni ventanas horarias.
+- Los recorridos parten y regresan al centro de distribución de Eduardo Bradley 1450, Mar del Plata (`-37.9457069, -57.5823923`), estiman distancia vial con un factor explícito y controlan duración de visita/jornada. Todavía no incorporan tránsito ni ventanas horarias.
+- Una tarea sólo cuenta como realizada cuando una persona guarda la gestión. La ubicación y la fecha sugerida no se usan para inferir productividad.
+- Las promesas exigibles suman compromisos locales pendientes hasta la fecha elegida; no equivalen a cobranzas conciliadas en GESI.
+- Los saldos residuales menores a $1.000 siguen visibles en la cuenta, pero no generan por sí solos una tarea o alerta de cobranza.
 
 ## Alcance Salice y futura adaptación GBA
 
@@ -108,7 +114,13 @@ Esta solución está deliberadamente orientada a Salice. La configuración, los 
 React + Vite
     │
     ├── GET  /api/dashboard
+    ├── GET  /api/agenda
+    ├── POST /api/agenda
+    ├── POST /api/activities
+    ├── PATCH /api/promises/:id
+    ├── GET  /api/notifications
     ├── GET  /api/clients/:id/recommendations
+    ├── GET  /api/clients/:id/operations
     ├── PATCH /api/clients/:id/note
     └── POST /api/routes/optimize
              │
@@ -117,10 +129,11 @@ React + Vite
         │              │
  data/snapshot.json  operations.sqlite
         │              │
- Captura GESI       Notas y syncs
+ Captura GESI       Notas, tareas,
+                    gestiones y promesas
 ```
 
-El snapshot JSON sigue siendo adecuado para la foto analítica monousuario; SQLite evita mezclar datos humanos con cada importación. Antes de varios vendedores conectados al mismo tiempo conviene migrar la interfaz operativa a PostgreSQL y agregar autenticación y roles.
+El snapshot JSON sigue siendo adecuado para la foto analítica monousuario; SQLite evita mezclar datos humanos con cada importación. Esta versión todavía no tiene autenticación ni concurrencia multiusuario: antes de varios vendedores conectados al mismo tiempo conviene migrar la interfaz operativa a PostgreSQL y agregar usuarios y roles.
 
 ## Verificación
 
@@ -130,4 +143,4 @@ npm run build
 npm run audit:data
 ```
 
-Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, unicidad de recorridos y alertas de jornada. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, pertenencia Salice, puntajes, vectores, recomendaciones y supuestos de ruta.
+Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, promesas vencidas, registro explícito de gestiones y alertas sin duplicados. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, pertenencia Salice, puntajes, vectores, recomendaciones y supuestos de ruta.

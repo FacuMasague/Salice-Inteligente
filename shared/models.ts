@@ -2,6 +2,25 @@ export type Health = 'healthy' | 'attention' | 'critical';
 export type InvoiceStatus = 'paid' | 'open' | 'due_soon' | 'overdue';
 export type PortfolioStatus = 'confirmed' | 'review';
 export type RecommendationConfidence = 'reliable' | 'exploratory' | 'insufficient';
+export type CommercialActivityType = 'visit' | 'call' | 'collection' | 'offer';
+export type CommercialActivityOutcome = 'completed' | 'sale' | 'promise' | 'no_contact' | 'rescheduled' | 'no_interest';
+export type PaymentPromiseStatus = 'pending' | 'kept' | 'broken' | 'cancelled';
+export type AgendaSource = 'algorithm' | 'manual' | 'promise';
+export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
+
+export const APP_VERSION = '0.0.4';
+
+export const SALICE_DEPOT: {
+  name: string;
+  address: string;
+  locality: string;
+  coordinates: [number, number];
+} = {
+  name: 'Centro de distribución Salice',
+  address: 'Eduardo Bradley 1450',
+  locality: 'Mar del Plata',
+  coordinates: [-37.9457069, -57.5823923],
+};
 
 export type VectorKey =
   | 'perros'
@@ -159,6 +178,85 @@ export interface Recommendation {
   reason: string;
 }
 
+export interface CommercialActivity {
+  id: string;
+  clientId: number;
+  seller: string;
+  type: CommercialActivityType;
+  outcome: CommercialActivityOutcome;
+  occurredAt: string;
+  note: string;
+  amount: number | null;
+  productIds: string[];
+  nextActionAt: string | null;
+  createdAt: string;
+}
+
+export interface PaymentPromise {
+  id: string;
+  clientId: number;
+  activityId: string | null;
+  seller: string;
+  dueAt: string;
+  amount: number;
+  status: PaymentPromiseStatus;
+  note: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface AgendaEntry {
+  id: string;
+  clientId: number;
+  clientName: string;
+  seller: string;
+  locality: string;
+  address: string;
+  coordinates: [number, number] | null;
+  scheduledFor: string;
+  actionType: CommercialActivityType;
+  reason: string;
+  source: AgendaSource;
+  status: AgendaStatus;
+  priority: number;
+  collectionRisk: number;
+  commercialOpportunity: number;
+  overdueOutstanding: number;
+  portfolioStatus: PortfolioStatus;
+  salesBlocked: boolean;
+}
+
+export interface AgendaPayload {
+  date: string;
+  seller: string;
+  entries: AgendaEntry[];
+  activities: CommercialActivity[];
+  promises: PaymentPromise[];
+  stats: {
+    planned: number;
+    pending: number;
+    completed: number;
+    overduePromises: number;
+    promiseAmountDue: number;
+  };
+  definitions: {
+    planned: string;
+    completed: string;
+    promiseAmountDue: string;
+  };
+}
+
+export interface NotificationItem {
+  id: string;
+  type: 'promise_overdue' | 'promise_due' | 'collection_risk';
+  severity: 'critical' | 'attention';
+  clientId: number;
+  title: string;
+  detail: string;
+  date: string;
+  amount: number | null;
+}
+
 export interface RouteStop {
   order: number;
   clientId: number;
@@ -170,6 +268,7 @@ export interface RouteStop {
 }
 
 export interface RoutePlan {
+  depot: typeof SALICE_DEPOT;
   stops: RouteStop[];
   totalKm: number;
   totalMinutes: number;

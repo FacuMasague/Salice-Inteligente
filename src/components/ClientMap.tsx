@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
-import type { Client } from '../../shared/models';
+import { SALICE_DEPOT, type Client } from '../../shared/models';
 import { money } from '../lib/format';
 
 const markerIcon = (client: Client, selected: boolean) => L.divIcon({
@@ -18,13 +18,20 @@ const clusterIcon = (count: number) => L.divIcon({
   iconAnchor: [27, 27],
 });
 
+const depotIcon = L.divIcon({
+  className: 'depot-marker-shell',
+  html: '<div class="depot-marker"><strong>S</strong></div>',
+  iconSize: [38, 42],
+  iconAnchor: [19, 38],
+});
+
 type GeocodedClient = Client & { coordinates: [number, number] };
 
 function FitClients({ clients }: { clients: GeocodedClient[] }) {
   const map = useMap();
   useEffect(() => {
     if (!clients.length) return;
-    const bounds = L.latLngBounds(clients.map((client) => client.coordinates));
+    const bounds = L.latLngBounds([...clients.map((client) => client.coordinates), SALICE_DEPOT.coordinates]);
     map.fitBounds(bounds, { padding: [48, 48], maxZoom: 12 });
   }, [clients, map]);
   return null;
@@ -75,12 +82,13 @@ function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: Geocoded
 export function ClientMap({ clients, selectedId, onSelect }: ClientMapProps) {
   const geocoded = clients.filter((client): client is GeocodedClient => client.coordinates !== null);
   return (
-    <MapContainer className="leaflet-map" center={[-38.0055, -57.5426]} zoom={10} zoomControl={false} scrollWheelZoom>
+    <MapContainer className="leaflet-map" center={SALICE_DEPOT.coordinates} zoom={10} zoomControl={false} scrollWheelZoom>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitClients clients={geocoded} />
+      <Marker position={SALICE_DEPOT.coordinates} icon={depotIcon} zIndexOffset={1000}><Tooltip direction="top" offset={[0, -31]} opacity={1}><div className="map-tooltip depot-tooltip"><strong>{SALICE_DEPOT.name}</strong><span>{SALICE_DEPOT.address}, {SALICE_DEPOT.locality}</span><span>Origen y regreso de los recorridos</span></div></Tooltip></Marker>
       <ClusteredMarkers clients={geocoded} selectedId={selectedId} onSelect={onSelect} />
     </MapContainer>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Boxes, ChevronRight, CircleDollarSign, Database, LayoutDashboard, Map, Menu, Package, RefreshCw, Route, Search, Settings2, Sparkles, Users, X } from 'lucide-react';
-import type { Client, DashboardData } from '../shared/models';
+import { AlertTriangle, Bell, Boxes, ChevronRight, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, RefreshCw, Route, Search, Settings2, Sparkles, Users, X } from 'lucide-react';
+import type { Client, DashboardData, NotificationItem } from '../shared/models';
+import { AgendaView } from './views/AgendaView';
 import { ClientsView } from './views/ClientsView';
 import { FinanceView } from './views/FinanceView';
 import { MapDashboard } from './views/MapDashboard';
@@ -15,6 +16,7 @@ type View = TutorialView;
 
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
+  agenda: { title: 'Agenda operativa', subtitle: 'Prioridades, gestiones y compromisos del equipo comercial' },
   clients: { title: 'Clientes', subtitle: 'Toda la cartera comercial en una sola vista' },
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
   products: { title: 'Inteligencia de producto', subtitle: 'Catálogo vectorizado para comparar y recomendar' },
@@ -24,6 +26,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
 
 const nav: { id: View; label: string; icon: typeof Map }[] = [
   { id: 'map', label: 'Mapa operativo', icon: Map },
+  { id: 'agenda', label: 'Agenda', icon: ClipboardCheck },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'finance', label: 'Cartera', icon: CircleDollarSign },
   { id: 'products', label: 'Productos', icon: Boxes },
@@ -40,11 +43,12 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
-  const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v003') === 'completed');
+  const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v004') === 'completed');
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [productFocusId, setProductFocusId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,6 +60,12 @@ export default function App() {
       .then(setData)
       .catch((cause: Error) => setError(cause.message));
   }, []);
+
+  const refreshNotifications = () => {
+    fetch('/api/notifications').then((response) => response.json()).then((payload) => setNotifications(payload.items || [])).catch(() => setNotifications([]));
+  };
+
+  useEffect(refreshNotifications, []);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -94,7 +104,7 @@ export default function App() {
   const noteSaved = (clientId: number, note: string) => setData((current) => current ? ({ ...current, clients: current.clients.map((client) => client.id === clientId ? { ...client, note } : client) }) : current);
   const startTutorial = () => setTutorialStep(0);
   const finishTutorial = () => {
-    localStorage.setItem('salice-tutorial-v003', 'completed');
+    localStorage.setItem('salice-tutorial-v004', 'completed');
     setTutorialCompleted(true);
     setTutorialStep(null);
     setSelectedId(null);
@@ -153,7 +163,7 @@ export default function App() {
               </div>}
             </div>
             <div className={`sync-chip ${data.meta.source}`}><Database size={14} /><div><strong>{data.meta.source === 'demo' ? 'Modo demo' : 'GESI conectado'}</strong><span>Foto · {snapshotLabel}</span></div></div>
-            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} /><i>{activeClients.filter((client) => client.collectionRisk >= 55).length}</i></button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Riesgo de cobranza alto</h3><p>Ordenado por riesgo; no reemplaza el criterio de administración.</p></div>{[...activeClients].filter((client) => client.collectionRisk >= 55).sort((a, b) => b.collectionRisk - a.collectionRisk).slice(0, 7).map((client) => <button key={client.id} onClick={() => openClient(client, true)}><span className={`score-badge ${client.health}`}>{client.collectionRisk}</span><div><strong>{client.tradeName}</strong><small>{client.oldestOverdueDays} días máx. · {client.seller}</small></div><ChevronRight size={15} /></button>)}<button className="notification-all" onClick={() => { setView('finance'); setNotificationsOpen(false); }}>Abrir agenda de cobranzas</button></div>}</div>
+            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{notifications.length}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('agenda'); setNotificationsOpen(false); } else if (client) openClient(client, true); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('agenda'); setNotificationsOpen(false); }}>Abrir agenda operativa</button></div>}</div>
             <div className="user-avatar">FM</div>
           </div>
         </header>
@@ -162,6 +172,7 @@ export default function App() {
 
         <div className="view-container">
           {view === 'map' && <MapDashboard clients={data.clients} products={data.products} selected={selected} onSelect={(client) => setSelectedId(client?.id ?? null)} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
+          {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={(client) => openClient(client)} onPlanRoute={planRoute} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={(client) => openClient(client)} />}
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={(client) => openClient(client)} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
           {view === 'products' && <ProductsView products={data.products} focusProductId={productFocusId} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} />}

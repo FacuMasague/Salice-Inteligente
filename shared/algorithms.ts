@@ -1,4 +1,4 @@
-import type { Client, Product, Recommendation, RoutePlan, VectorKey } from './models.js';
+import { SALICE_DEPOT, type Client, type Product, type Recommendation, type RoutePlan, type VectorKey } from './models.js';
 
 const keys: VectorKey[] = [
   'perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior',
@@ -109,7 +109,7 @@ export interface RouteOptions {
 }
 
 export function optimizeRoute(selectedIds: number[], clients: Client[], options: RouteOptions = {}): RoutePlan {
-  const depot: [number, number] = [-38.013, -57.55];
+  const depot = SALICE_DEPOT.coordinates;
   const visitMinutes = Math.max(10, Math.min(90, Math.round(options.visitMinutes ?? 25)));
   const maxWorkMinutes = Math.max(120, Math.min(720, Math.round(options.maxWorkMinutes ?? 480)));
   const roadFactor = Math.max(1, Math.min(1.8, options.roadFactor ?? 1.25));
@@ -164,6 +164,7 @@ export function optimizeRoute(selectedIds: number[], clients: Client[], options:
   if (stops.some((stop) => stop.distanceKm > 60)) warnings.push('Hay al menos un tramo estimado de más de 60 km; conviene separar la ruta por corredor.');
   if (new Set(stops.map((stop) => stop.locality)).size > 4) warnings.push('La ruta mezcla más de cuatro localidades y puede ser difícil de cumplir.');
   return {
+    depot: SALICE_DEPOT,
     stops,
     totalKm: Number(totalKm.toFixed(1)),
     totalMinutes,

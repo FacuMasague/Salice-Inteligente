@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { SNAPSHOT_REVISION, type DashboardData } from '../shared/models.js';
+import { APP_VERSION, SNAPSHOT_REVISION, type DashboardData } from '../shared/models.js';
 import { createDemoSnapshot } from './data/demo-snapshot.js';
 import { importSnapshotNotes, mergeOperationalData } from './operational-store.js';
 
@@ -54,7 +54,8 @@ export async function loadSnapshot(): Promise<DashboardData> {
     cachedSnapshot = JSON.parse(await readFile(snapshotPath, 'utf8')) as DashboardData;
     cachedMtime = info.mtimeMs;
   }
-  return mergeOperationalData(cachedSnapshot);
+  const merged = mergeOperationalData(cachedSnapshot);
+  return { ...merged, meta: { ...merged.meta, version: APP_VERSION } };
 }
 
 export async function saveSnapshot(snapshot: DashboardData) {

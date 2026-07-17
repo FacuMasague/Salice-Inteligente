@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 
-export type TutorialView = 'map' | 'clients' | 'finance' | 'products' | 'routes' | 'settings';
+export type TutorialView = 'map' | 'agenda' | 'clients' | 'finance' | 'products' | 'routes' | 'settings';
 
 export interface TutorialStep {
   view: TutorialView;
@@ -17,13 +17,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { view: 'map', target: 'map-kpis', eyebrow: 'Mapa operativo', title: 'El pulso de la cartera activa', description: 'Los indicadores resumen activos GESI y muestran cuántos tienen pertenencia explícita a la sucursal Salice. Riesgo de cobranza ya no se mezcla con oportunidad comercial.', tip: 'Los inactivos nunca se suman a estos indicadores operativos.' },
   { view: 'map', target: 'map-filters', eyebrow: 'Mapa operativo', title: 'Elegí qué querés ver', description: 'Podés cambiar alcance, estado GESI, pertenencia a Salice, zona y riesgo de cobranza. Los puntos cercanos se agrupan para que el mapa siga siendo legible.', tip: 'Acercá el mapa para separar los grupos de clientes.' },
   { view: 'map', target: 'client-panel', eyebrow: 'Ficha de cliente', title: 'Toda la historia en un punto', description: 'Al seleccionar un marcador se abre la ficha con resumen, recomendaciones, compras, cuenta corriente y notas para la próxima visita.', tip: 'Los inactivos conservan su historia, pero no reciben recomendaciones ni se agregan a rutas.' },
+  { view: 'agenda', target: 'agenda-workstation', eyebrow: 'Agenda operativa', title: 'Del dato a la acción comercial', description: 'La agenda combina prioridades algorítmicas, tareas programadas y promesas de pago. Cada fila explica por qué conviene visitar, llamar, cobrar u ofrecer.', tip: 'Una gestión sólo cuenta como realizada cuando alguien la registra.' },
   { view: 'clients', target: 'clients-directory', eyebrow: 'Clientes', title: 'Compará señales sin confundirlas', description: 'La lista separa estado GESI, pertenencia Salice, riesgo de cobranza C, oportunidad comercial O y prioridad de visita P.', tip: 'Filtrá por vendedor, riesgo, cartera y ordená según la tarea del momento.' },
   { view: 'finance', target: 'finance-summary', eyebrow: 'Cartera', title: 'Priorizá la cobranza', description: 'Los resúmenes responden a los filtros y usan saldo pendiente. El comportamiento se calcula contra la fecha de vencimiento, no sólo desde la emisión.', tip: 'La sección de antigüedad concentra rápidamente la deuda accionable.' },
   { view: 'products', target: 'product-catalog', eyebrow: 'Productos', title: 'Catálogo, stock y similitud', description: 'Seleccioná un producto para ver precio de referencia, stock, rotación, sus rasgos principales y compararlo con cualquier otro artículo.', tip: 'La comparación usa distancia coseno sobre 20 dimensiones.' },
   { view: 'products', target: 'vector-explorer', eyebrow: 'Productos', title: 'Explorá los 20 vectores', description: 'Cada dimensión explica una regla de clasificación. Al elegirla, todo el catálogo se ordena de afinidad 100 a 0, con un ranking completo y auditable.', tip: 'Podés volver a la ficha de cualquier producto desde la flecha de su fila.' },
   { view: 'routes', target: 'route-picker', eyebrow: 'Rutas', title: 'Armá una jornada posible', description: 'Elegí vendedor, duración de visita y jornada máxima. La estimación agrupa primero por corredor y avisa si el recorrido no parece cumplible.', tip: 'La distancia sigue siendo estimada: validá tránsito y horarios antes de salir.' },
   { view: 'settings', target: 'portfolio-rules', eyebrow: 'Reglas de cartera', title: 'Entendé el universo de clientes', description: 'Activo GESI y pertenencia a Salice son dos campos distintos. Los casos ambiguos quedan marcados para revisión, sin perderse ni excluirse solos.', tip: 'Esta decisión debe validarse con el jefe de Salice antes de endurecer el filtro.' },
-  { view: 'settings', target: 'settings-tutorial', eyebrow: 'Final', title: 'Ya conocés la v0.0.3', description: 'El tutorial queda disponible para repetirlo. Configuración también documenta métricas, calidad, cobertura y persistencia local.', tip: 'La operación diaria sigue siendo algorítmica y explicable.' },
+  { view: 'settings', target: 'settings-tutorial', eyebrow: 'Final', title: 'Ya conocés la v0.0.4', description: 'El tutorial queda disponible para repetirlo. Configuración también documenta métricas, calidad, cobertura y persistencia local.', tip: 'La operación diaria sigue siendo algorítmica y explicable.' },
 ];
 
 interface FocusRect { top: number; left: number; width: number; height: number }

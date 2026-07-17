@@ -1,4 +1,5 @@
 import {
+  APP_VERSION,
   SNAPSHOT_REVISION,
   type Client,
   type DashboardData,
@@ -482,7 +483,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
 
   return {
     meta: {
-      version: '0.0.3',
+      version: APP_VERSION,
       revision: SNAPSHOT_REVISION,
       generatedAt: capture.captureMeta.capturedAt,
       source: 'gesi',

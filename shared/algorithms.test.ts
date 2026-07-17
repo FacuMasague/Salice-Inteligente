@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cosineSimilarity, optimizeRoute, recommendProducts } from './algorithms';
+import { SALICE_DEPOT } from './models';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
 
 describe('motor algorítmico', () => {
@@ -27,6 +28,8 @@ describe('motor algorítmico', () => {
     expect(new Set(plan.stops.map((stop) => stop.clientId)).size).toBe(selected.length);
     expect(plan.totalKm).toBeGreaterThan(0);
     expect(plan.totalMinutes).toBeGreaterThan(100);
+    expect(plan.depot).toEqual(SALICE_DEPOT);
+    expect(plan.depot.address).toBe('Eduardo Bradley 1450');
     expect(plan.assumptions.visitMinutes).toBe(25);
     expect(plan.feasible).toBe(plan.warnings.length === 0);
   });

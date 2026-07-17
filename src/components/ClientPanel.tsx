@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock3, Mail, MapPin, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
-import type { Client, Product, Recommendation } from '../../shared/models';
+import { AlertTriangle, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
+import type { Client, CommercialActivity, PaymentPromise, Product, Recommendation } from '../../shared/models';
 import { compactDate, longDate, money, paymentDelay, shortDate } from '../lib/format';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
@@ -15,7 +15,7 @@ interface ClientPanelProps {
 }
 
 export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved }: ClientPanelProps) {
-  const [tab, setTab] = useState<'summary' | 'purchases' | 'account'>('summary');
+  const [tab, setTab] = useState<'summary' | 'purchases' | 'account' | 'operations'>('summary');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState('');
@@ -23,6 +23,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [activities, setActivities] = useState<CommercialActivity[]>([]);
+  const [promises, setPromises] = useState<PaymentPromise[]>([]);
 
   useEffect(() => {
     setTab('summary');
@@ -30,11 +32,17 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
     setSaved(false);
     setRecommendations([]);
     setRecommendationError('');
+    setActivities([]);
+    setPromises([]);
+    const controller = new AbortController();
+    fetch(`/api/clients/${client.id}/operations`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((payload) => { setActivities(payload.activities || []); setPromises(payload.promises || []); })
+      .catch((error: Error) => { if (error.name !== 'AbortError') { setActivities([]); setPromises([]); } });
     if (!client.active) {
       setRecommendationLoading(false);
-      return;
+      return () => controller.abort();
     }
-    const controller = new AbortController();
     setRecommendationLoading(true);
     fetch(`/api/clients/${client.id}/recommendations`, { signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error('No se pudieron calcular'); return response.json(); })
@@ -104,6 +112,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
         <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>Resumen</button>
         <button className={tab === 'purchases' ? 'active' : ''} onClick={() => setTab('purchases')}>Compras</button>
         <button className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')}>Cuenta corriente</button>
+        <button className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}>Gestiones</button>
       </div>
 
       <div className="client-panel-body">
@@ -229,6 +238,22 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
               <div><strong>Comportamiento contra vencimiento</strong><span>{client.paymentSampleSize ? `Paga en promedio ${paymentDelay(client.avgPaymentDelayDays)} · ${client.onTimePaymentRate}% en término sobre ${client.paymentSampleSize} facturas conciliadas. Tiempo total desde emisión: ${client.avgPaymentDays} días.` : 'Aún no hay facturas con vencimiento y cobranza conciliados en los últimos 365 días.'}</span></div>
               <ChevronRight size={17} />
             </div>
+          </>
+        )}
+
+        {tab === 'operations' && (
+          <>
+            <section className="panel-section first">
+              <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Actividad local</span><h3>Gestiones registradas</h3></div><span className="count-badge">{activities.length}</span></div>
+              {!activities.length && <p className="section-description">Todavía no hay visitas, llamadas, cobranzas u ofertas guardadas para este cliente.</p>}
+              <div className="panel-operation-list">{activities.map((activity) => <article key={activity.id}><span>{activity.type === 'visit' ? 'Visita' : activity.type === 'call' ? 'Llamada' : activity.type === 'collection' ? 'Cobranza' : 'Oferta'}</span><div><strong>{activity.outcome === 'sale' ? 'Venta concretada' : activity.outcome === 'promise' ? 'Promesa de pago' : activity.outcome === 'no_contact' ? 'Sin contacto' : activity.outcome === 'rescheduled' ? 'Reprogramada' : activity.outcome === 'no_interest' ? 'Sin interés por ahora' : 'Completada'}</strong><small>{longDate(activity.occurredAt)}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}</div>
+            </section>
+            <section className="panel-section">
+              <div className="section-title-row"><div><span className="section-kicker"><CircleDollarSign size={14} /> Compromisos</span><h3>Promesas de pago</h3></div><span className="count-badge">{promises.filter((promise) => promise.status === 'pending').length} pendientes</span></div>
+              {!promises.length && <p className="section-description">No hay promesas de pago registradas localmente.</p>}
+              <div className="panel-promise-list">{promises.map((promise) => <article className={promise.status} key={promise.id}><span><CircleDollarSign size={14} /></span><div><strong>{money(promise.amount)} · {promise.status === 'pending' ? 'Pendiente' : promise.status === 'kept' ? 'Cumplida' : promise.status === 'broken' ? 'Incumplida' : 'Cancelada'}</strong><small>Fecha prometida {longDate(promise.dueAt)}{promise.note ? ` · ${promise.note}` : ''}</small></div></article>)}</div>
+            </section>
+            <p className="operations-disclaimer">Fuente: registros humanos de Salice Inteligente. No se escriben ni concilian automáticamente contra GESI en esta versión.</p>
           </>
         )}
       </div>

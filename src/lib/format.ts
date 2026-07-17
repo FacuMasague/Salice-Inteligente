@@ -25,7 +25,8 @@ export const paymentDelay = (days: number) => days === 0
 
 export const longDate = (value: string) => {
   if (!value) return 'Sin dato';
-  return new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value));
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+  return new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed);
 };
 
 export const minutesAsTime = (minutes: number) => {

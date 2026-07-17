@@ -19,7 +19,7 @@ const empresaID = Number(process.env.GESI_EMPRESA_ID);
 const sucursalID = Number(process.env.GESI_SUCURSAL_ID);
 const almacenPrincipalID = 2;
 if (empresaID !== 3 || sucursalID !== 3) {
-  throw new Error('Esta v0.0.3 es exclusiva de Salice: requiere empresaID=3 y sucursalID=3.');
+  throw new Error('Esta v0.0.4 es exclusiva de Salice: requiere empresaID=3 y sucursalID=3.');
 }
 
 const client = new GesiClient({

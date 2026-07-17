@@ -66,7 +66,7 @@ export function MapDashboard({ clients, products, selected, onSelect, onPlanRout
             </div>
           </div>
           <ClientMap clients={filtered} selectedId={selected?.id ?? null} onSelect={onSelect} />
-          <div className="map-legend"><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span>{clientVisibility !== 'active' && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
+          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span>{clientVisibility !== 'active' && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
         </section>
         {selected && <ClientPanel client={selected} products={products} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} />}
       </div>

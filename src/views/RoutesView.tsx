@@ -97,14 +97,14 @@ export function RoutesView({ clients, initialClientId }: { clients: Client[]; in
       <section className="route-result">
         {!plan ? <div className="route-empty"><div className="empty-route-icon"><Route size={38} /></div><h2>Armá la jornada del vendedor</h2><p>Elegí clientes del mismo corredor y generá una estimación. Se aplica un factor vial sobre la distancia geográfica, duración por visita y límite de jornada.</p><div className="algorithm-explainer"><Sparkles size={16} /><span><strong>Estimación explicable</strong> · validar caminos y horarios antes de salir</span></div></div> : <>
           <article className="route-overview data-card">
-            <div><span className="section-kicker"><Navigation size={14} /> Ruta estimada</span><h2>Jornada de {plan.stops.length} visitas</h2><p>Salida desde Mar del Plata · 09:00 · {plan.feasible ? 'dentro del límite configurado' : 'requiere ajustes'}</p></div>
+            <div><span className="section-kicker"><Navigation size={14} /> Ruta estimada</span><h2>Jornada de {plan.stops.length} visitas</h2><p>Salida desde {plan.depot.address} · 09:00 · {plan.feasible ? 'dentro del límite configurado' : 'requiere ajustes'}</p></div>
             <div className="route-totals"><span><Truck size={17} /><strong>{plan.totalKm} km</strong><small>recorrido</small></span><span><Clock3 size={17} /><strong>{Math.floor(plan.totalMinutes / 60)} h {plan.totalMinutes % 60} min</strong><small>con visitas</small></span></div>
           </article>
           {!!plan.warnings.length && <div className="route-warnings">{plan.warnings.map((warning) => <p key={warning}><Clock3 size={15} /> {warning}</p>)}</div>}
           <div className="route-timeline">
-            <div className="depot-stop"><span><Truck size={16} /></span><div><strong>Centro de distribución Salice</strong><small>Salida · 09:00</small></div></div>
+            <div className="depot-stop"><span><Truck size={16} /></span><div><strong>{plan.depot.name}</strong><small>{plan.depot.address}, {plan.depot.locality} · salida 09:00</small></div></div>
             {plan.stops.map((stop) => { const client = clients.find((item) => item.id === stop.clientId); const destination = client?.coordinates?.join(','); return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km estimados desde la parada anterior</span><h3>{stop.clientName}</h3><p>{stop.locality} · prioridad P{stop.priority}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${stop.clientName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>; })}
-            <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso al centro</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
+            <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso a {plan.depot.address}</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
           </div>
           <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.visitMinutes} min por visita y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito ni ventanas del cliente.</p>
         </>}
