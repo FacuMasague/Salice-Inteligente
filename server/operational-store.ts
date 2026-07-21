@@ -39,6 +39,23 @@ function db() {
       clients INTEGER NOT NULL,
       products INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS refresh_runs (
+      id TEXT PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      trigger_kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      snapshot_at TEXT,
+      quality_status TEXT,
+      clients INTEGER,
+      products INTEGER,
+      warnings INTEGER NOT NULL DEFAULT 0,
+      duration_ms INTEGER,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_runs_started ON refresh_runs(started_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_runs_single_running ON refresh_runs(status) WHERE status = 'running';
     CREATE TABLE IF NOT EXISTS commercial_activities (
       id TEXT PRIMARY KEY,
       client_id INTEGER NOT NULL,
@@ -375,6 +392,113 @@ export function recordSuccessfulSync(snapshot: DashboardData) {
   `).run(new Date().toISOString(), snapshot.meta.generatedAt, snapshot.clients.length, snapshot.products.length);
 }
 
+export type RefreshRunStatus = 'running' | 'success' | 'failed';
+
+export interface RefreshRun {
+  id: string;
+  startedAt: string;
+  completedAt: string | null;
+  trigger: string;
+  status: RefreshRunStatus;
+  stage: string;
+  snapshotAt: string | null;
+  qualityStatus: string | null;
+  clients: number | null;
+  products: number | null;
+  warnings: number;
+  durationMs: number | null;
+  error: string | null;
+}
+
+function refreshRunFromRow(row: Record<string, unknown>): RefreshRun {
+  return {
+    id: textValue(row.id),
+    startedAt: textValue(row.started_at),
+    completedAt: nullableText(row.completed_at),
+    trigger: textValue(row.trigger_kind),
+    status: textValue(row.status) as RefreshRunStatus,
+    stage: textValue(row.stage),
+    snapshotAt: nullableText(row.snapshot_at),
+    qualityStatus: nullableText(row.quality_status),
+    clients: row.clients == null ? null : Number(row.clients),
+    products: row.products == null ? null : Number(row.products),
+    warnings: Number(row.warnings ?? 0),
+    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+    error: nullableText(row.error),
+  };
+}
+
+export function beginRefreshRun(trigger = 'manual') {
+  const store = db();
+  const existing = store.prepare("SELECT id, started_at, stage FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1").get();
+  if (existing) {
+    const ageMs = Date.now() - new Date(String(existing.started_at)).getTime();
+    if (Number.isFinite(ageMs) && ageMs < 12 * 60 * 60 * 1000) {
+      throw new Error(`Ya existe una actualización en curso desde ${existing.started_at} (etapa ${existing.stage}).`);
+    }
+    store.prepare("UPDATE refresh_runs SET status = 'failed', completed_at = ?, quality_status = 'failed', error = ? WHERE id = ?")
+      .run(new Date().toISOString(), 'Ejecución interrumpida sin cierre; se liberó al iniciar un nuevo proceso.', existing.id);
+  }
+  const run: RefreshRun = {
+    id: randomUUID(),
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    trigger,
+    status: 'running',
+    stage: 'preflight',
+    snapshotAt: null,
+    qualityStatus: null,
+    clients: null,
+    products: null,
+    warnings: 0,
+    durationMs: null,
+    error: null,
+  };
+  store.prepare(`INSERT INTO refresh_runs (
+    id, started_at, completed_at, trigger_kind, status, stage, snapshot_at,
+    quality_status, clients, products, warnings, duration_ms, error
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    run.id, run.startedAt, run.completedAt, run.trigger, run.status, run.stage,
+    run.snapshotAt, run.qualityStatus, run.clients, run.products, run.warnings,
+    run.durationMs, run.error,
+  );
+  return run;
+}
+
+export function updateRefreshRunStage(id: string, stage: string) {
+  db().prepare("UPDATE refresh_runs SET stage = ? WHERE id = ? AND status = 'running'").run(stage.slice(0, 120), id);
+}
+
+export function completeRefreshRun(id: string, snapshot: DashboardData, warnings = 0, qualityStatus = warnings ? 'passed_with_warnings' : 'passed') {
+  const completedAt = new Date().toISOString();
+  const current = db().prepare('SELECT started_at FROM refresh_runs WHERE id = ?').get(id);
+  const startedAt = current ? String(current.started_at) : completedAt;
+  const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(startedAt).getTime());
+  db().prepare(`UPDATE refresh_runs SET
+    completed_at = ?, status = 'success', stage = 'complete', snapshot_at = ?,
+    quality_status = ?, clients = ?, products = ?, warnings = ?, duration_ms = ?, error = NULL
+    WHERE id = ?`).run(
+    completedAt, snapshot.meta.generatedAt, qualityStatus, snapshot.clients.length, snapshot.products.length,
+    warnings, durationMs, id,
+  );
+}
+
+export function failRefreshRun(id: string, stage: string, error: unknown) {
+  const completedAt = new Date().toISOString();
+  const current = db().prepare('SELECT started_at FROM refresh_runs WHERE id = ?').get(id);
+  const startedAt = current ? String(current.started_at) : completedAt;
+  const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(startedAt).getTime());
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
+  db().prepare(`UPDATE refresh_runs SET
+    completed_at = ?, status = 'failed', stage = ?, quality_status = 'failed', duration_ms = ?, error = ?
+    WHERE id = ?`).run(completedAt, stage.slice(0, 120), durationMs, message, id);
+}
+
+export function listRefreshRuns(limit = 10): RefreshRun[] {
+  return db().prepare('SELECT * FROM refresh_runs ORDER BY started_at DESC LIMIT ?').all(Math.max(1, Math.min(100, limit)))
+    .map((row) => refreshRunFromRow(row));
+}
+
 export function operationalStatus() {
   const store = db();
   const noteCount = Number((store.prepare('SELECT COUNT(*) AS total FROM client_notes').get()?.total) ?? 0);
@@ -382,6 +506,9 @@ export function operationalStatus() {
   const promiseCount = Number((store.prepare("SELECT COUNT(*) AS total FROM payment_promises WHERE status = 'pending'").get()?.total) ?? 0);
   const agendaCount = Number((store.prepare("SELECT COUNT(*) AS total FROM agenda_items WHERE status = 'pending'").get()?.total) ?? 0);
   const lastSync = store.prepare('SELECT completed_at, snapshot_at, status FROM sync_runs ORDER BY id DESC LIMIT 1').get();
+  const refreshRuns = listRefreshRuns(6);
+  const lastSuccessRow = store.prepare("SELECT * FROM refresh_runs WHERE status = 'success' ORDER BY started_at DESC LIMIT 1").get();
+  const currentRow = store.prepare("SELECT * FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1").get();
   return {
     storage: 'SQLite local',
     notes: noteCount,
@@ -393,6 +520,12 @@ export function operationalStatus() {
       snapshotAt: String(lastSync.snapshot_at),
       status: String(lastSync.status),
     } : null,
+    refresh: {
+      current: currentRow ? refreshRunFromRow(currentRow) : null,
+      lastAttempt: refreshRuns[0] ?? null,
+      lastSuccess: lastSuccessRow ? refreshRunFromRow(lastSuccessRow) : null,
+      recent: refreshRuns,
+    },
   };
 }
 

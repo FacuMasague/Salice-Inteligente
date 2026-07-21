@@ -8,23 +8,16 @@ import {
   type InvoiceStatus,
   type Product,
   type Purchase,
-  type VectorKey,
 } from '../../shared/models.js';
+import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
+import { applyCatalogPricePositioning, estimateContentKg, inferProductVectorV2, VECTOR_KEYS } from '../../shared/product-vectors.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
-
-const VECTOR_KEYS: VectorKey[] = [
-  'perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior',
-  'premium', 'economico', 'alimento_seco', 'alimento_humedo', 'snacks',
-  'farmacia', 'antiparasitario', 'natural', 'funcional', 'higiene',
-  'accesorios', 'granel', 'consumo_humano', 'promocional',
-];
 
 const number = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const text = (value: unknown, fallback = '') => value == null ? fallback : String(value).trim();
 const date = (value: unknown) => text(value).slice(0, 10);
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
-const normalizeText = (value: unknown) => text(value).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 const addDays = (value: string, days: number) => {
   const result = new Date(`${value}T12:00:00Z`);
@@ -71,55 +64,6 @@ const parseCoordinates = (value: unknown): [number, number] | null => {
   const inArgentina = point[0] >= -55 && point[0] <= -21 && point[1] >= -75 && point[1] <= -53;
   return point.every(Number.isFinite) && inArgentina ? point : null;
 };
-
-const emptyVector = (): Record<VectorKey, number> => Object.fromEntries(
-  VECTOR_KEYS.map((key) => [key, 0]),
-) as Record<VectorKey, number>;
-
-export function inferProductVector(row: GesiRow): Record<VectorKey, number> {
-  const source = normalizeText([
-    row.descripcion,
-    row.descripcionExtendida,
-    row.rubro,
-    row.subrubro,
-    row.embalaje,
-  ].filter(Boolean).join(' '));
-  const has = (...terms: string[]) => terms.some((term) => source.includes(normalizeText(term)));
-  const vector = emptyVector();
-
-  const dry = has('alimentos balanceados', 'large bags', 'small bags', 'balanceado', 'croqueta');
-  const wet = has('alimento humedo', 'sobrecito', 'pouch', 'lata');
-  const snack = has('snack', 'golosina', 'premio', 'treat');
-  const pharmacy = has('farmaco', 'biologico', 'antibiot', 'antiinflam', 'anestes', 'vacuna', 'oftalm', 'otico', 'hormonal', 'quirurg');
-  const antiparasitic = has('antiparasitario', 'pulguicida', 'garrapaticida', 'mosquicida', 'pipeta', 'pulga', 'garrapata');
-  const hygiene = has('higiene', 'sanitario', 'shampoo', 'enjuague', 'arena', 'piedra', 'locion', 'desinfectante');
-  const accessories = has('accesorio', 'instrumental', 'correa', 'collar', 'juguete', 'cama', 'comedero', 'transportadora');
-  const human = has('almacen', 'especias', 'condimentos', 'salsas', 'refrigerados', 'congelados', 'infusiones', 'cafe', 'bebidas');
-  const promotional = has('pop', 'promocion', 'bonificado', 'merchandising');
-  const petRelated = dry || wet || snack || pharmacy || antiparasitic || hygiene || accessories;
-
-  vector.perros = has('perro', 'canino', 'dog', 'puppy') ? 100 : petRelated && !has('gato', 'felino', 'cat') ? 35 : 0;
-  vector.gatos = has('gato', 'felino', 'cat', 'kitten') ? 100 : petRelated && !has('perro', 'canino', 'dog') ? 35 : 0;
-  vector.otras_especies = has('equino', 'bovino', 'ave', 'roedor', 'conejo', 'pez', 'porcino', 'ovino') ? 100 : 0;
-  vector.cachorros = has('cachorro', 'puppy', 'kitten', 'gatito', 'junior', 'baby') ? 100 : 0;
-  vector.senior = has('senior', 'geriat', '7+', 'edad avanzada') ? 100 : 0;
-  vector.adultos = has('adulto', 'adult') ? 100 : petRelated && !vector.cachorros && !vector.senior ? 45 : 0;
-  vector.premium = has('premium', 'super premium', 'select', 'holistic') ? 95 : dry || wet || snack ? 35 : 0;
-  vector.economico = has('econom', 'rinde', 'mantenimiento', 'granel') ? 95 : dry ? 30 : 0;
-  vector.alimento_seco = dry ? 100 : 0;
-  vector.alimento_humedo = wet ? 100 : 0;
-  vector.snacks = snack ? 100 : 0;
-  vector.farmacia = pharmacy ? 100 : antiparasitic ? 75 : 0;
-  vector.antiparasitario = antiparasitic ? 100 : 0;
-  vector.natural = has('natural', 'holistic', 'organico', 'sin conservantes') ? 100 : snack ? 35 : 0;
-  vector.funcional = has('renal', 'urinario', 'gastro', 'hepato', 'diet', 'control', 'terapeut', 'cardio', 'artrosi') ? 100 : pharmacy ? 70 : 0;
-  vector.higiene = hygiene ? 100 : 0;
-  vector.accesorios = accessories ? 100 : 0;
-  vector.granel = has('granel') ? 100 : has('large bags') ? 35 : 0;
-  vector.consumo_humano = human ? 100 : 0;
-  vector.promocional = promotional ? 100 : 0;
-  return vector;
-}
 
 const makeLabelMap = (rows: GesiRow[], idField: string, fields: string[]) => new Map(
   rows.map((row) => [number(row[idField]), fields.map((field) => text(row[field])).find(Boolean) ?? '']),
@@ -197,6 +141,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     `${number(row.rubroID)}:${number(row.subRubroID)}`,
     text(row.descripcion),
   ]));
+  const productBrandLabels = makeLabelMap(capture.masters.productBrands, 'filtroArticulos1ID', ['descripcion']);
+  const productLineLabels = makeLabelMap(capture.masters.productLines, 'filtroArticulos2ID', ['descripcion']);
+  const productFamilyLabels = makeLabelMap(capture.masters.productFamilies, 'filtroArticulos3ID', ['descripcion']);
+  const productGroupLabels = makeLabelMap(capture.masters.productGroups, 'grupoArtID', ['descripcion']);
 
   const balances = new Map(capture.balances.map((row) => [number(row.clienteID), number(row.saldoCliente)]));
   const branchDefinitions = new Map<number, GesiRow>();
@@ -255,6 +203,18 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
 
   const purchaseGroups = new Map<string, Purchase & { clientID: number }>();
   const productUnits90d = new Map<string, number>();
+  const productSales90d = new Map<string, number>();
+  const productClients90d = new Map<string, Set<number>>();
+  const productLastSaleAt = new Map<string, string>();
+  for (const invoice of invoices) {
+    const purchaseDate = date(invoice.fechaDeEmision);
+    const items = Array.isArray(invoice.detalleItems) ? invoice.detalleItems as GesiRow[] : [];
+    for (const item of items) {
+      if (text(item.tipoDeItem) !== 'P' || !text(item.codigoDeItem) || number(item.importeTotalNeto) <= 0) continue;
+      const productId = text(item.codigoDeItem);
+      if (purchaseDate > (productLastSaleAt.get(productId) ?? '')) productLastSaleAt.set(productId, purchaseDate);
+    }
+  }
   for (const invoice of current90Invoices) {
     const items = Array.isArray(invoice.detalleItems) ? invoice.detalleItems as GesiRow[] : [];
     const productItems = items.filter((item) => text(item.tipoDeItem) === 'P' && text(item.codigoDeItem) && number(item.importeTotalNeto) > 0);
@@ -277,6 +237,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       current.total = roundMoney(current.total + itemTotal);
       purchaseGroups.set(key, current);
       productUnits90d.set(productId, (productUnits90d.get(productId) ?? 0) + quantity);
+      productSales90d.set(productId, roundMoney((productSales90d.get(productId) ?? 0) + itemTotal));
+      const purchasingClients = productClients90d.get(productId) ?? new Set<number>();
+      purchasingClients.add(clientID);
+      productClients90d.set(productId, purchasingClients);
     });
   }
 
@@ -298,27 +262,73 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   );
   const catalogProductIDs = [...new Set([...stockByProduct.keys(), ...soldProductIDs])].sort();
 
-  const products: Product[] = catalogProductIDs.map((id) => {
+  const baseProducts: Product[] = catalogProductIDs.map((id) => {
     const row = rawProductsByID.get(id) ?? { productoID: id, descripcion: `Producto ${id} · sin maestro GESI` };
     const stockRow = stockByProduct.get(id);
     const family = text(row.rubro) || rubroLabels.get(number(row.rubroID)) || 'Sin clasificar';
     const subfamily = text(row.subrubro)
       || subRubroLabels.get(`${number(row.rubroID)}:${number(row.subRubroID)}`)
-      || 'Sin subrubro';
+      || 'Sin subrubro informado';
+    const brand = productBrandLabels.get(number(row.filtroArticulos1ID)) || 'Sin marca informada';
+    const line = productLineLabels.get(number(row.filtroArticulos2ID)) || 'Sin línea informada';
+    const commercialFamily = productFamilyLabels.get(number(row.filtroArticulos3ID)) || 'Sin familia comercial informada';
+    const group = productGroupLabels.get(number(row.grupoArtID)) || 'Sin grupo informado';
+    const rawPack = text(row.embalaje);
+    const unit = text(row.unidad1) || 'Unidad';
+    const pack = rawPack && rawPack !== '1000' && rawPack !== '1' ? rawPack : unit;
+    const units90d = Math.max(0, productUnits90d.get(id) ?? 0);
+    const monthlyUnitsExact = units90d / 3;
+    const productName = text(row.descripcion, `Producto ${id} · sin descripción`);
+    const productDescription = text(row.descripcionExtendida);
+    const price = selectPrice(pricesByProduct.get(id) ?? []);
+    const vectorProfile = inferProductVectorV2({
+      name: productName,
+      description: productDescription,
+      category: family,
+      subcategory: subfamily,
+      brand,
+      line,
+      commercialFamily,
+      group,
+      pack,
+    });
     return {
       id,
       sku: id,
-      name: text(row.descripcion, `Producto ${id} · sin descripción`),
+      name: productName,
+      description: productDescription,
       family,
-      brand: subfamily,
-      pack: text(row.embalaje) || text(row.unidad1) || 'Unidad',
-      price: selectPrice(pricesByProduct.get(id) ?? []),
+      subcategory: subfamily,
+      brand,
+      line,
+      commercialFamily,
+      group,
+      pack,
+      unit,
+      unitsPerCase: number(row.unidadesPorCaja) > 0 ? number(row.unidadesPorCaja) : null,
+      masterStatus: text(row.estado) === 'A' ? 'active' : text(row.estado) === 'I' ? 'inactive' : 'unknown',
+      price,
+      contentKg: vectorProfile.vector.alimento_seco >= 75 ? estimateContentKg(productName, productDescription) : null,
+      referencePricePerKg: null,
+      pricePosition: 'unknown',
       stock: Math.max(0, Math.round(number(stockRow?.unidad1Disponible))),
-      monthlyUnits: Math.round((productUnits90d.get(id) ?? 0) / 3),
+      units90d: Math.round(units90d * 100) / 100,
+      monthlyUnits: Math.round(monthlyUnitsExact),
+      sales90d: productSales90d.get(id) ?? 0,
+      clients90d: productClients90d.get(id)?.size ?? 0,
+      lastSaleAt: productLastSaleAt.get(id) ?? '',
+      stockCoverageMonths: monthlyUnitsExact > 0 ? Math.round(Math.max(0, number(stockRow?.unidad1Disponible)) / monthlyUnitsExact * 10) / 10 : null,
       margin: null,
-      vector: inferProductVector({ ...row, rubro: family, subrubro: subfamily }),
+      vector: vectorProfile.vector,
+      vectorMeta: vectorProfile.meta,
     };
   });
+  const products = applyCatalogPricePositioning(baseProducts.map((product) => ({
+    ...product,
+    referencePricePerKg: product.price > 0 && product.contentKg
+      ? Math.round(product.price / product.contentKg * 100) / 100
+      : null,
+  })));
 
   const clients: Client[] = capture.clients
     .map((row) => {
@@ -335,6 +345,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const purchases = (purchasesByClient.get(id) ?? []).sort((a, b) => b.date.localeCompare(a.date));
       const mappedSales = roundMoney(purchases.reduce((sum, purchase) => sum + purchase.total, 0));
       const paymentSamples = (paymentSamplesByClient.get(id) ?? []).sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+      const creditTerm = summarizeCreditTerms(clientInvoices.map((invoice) => ({
+        issuedAt: date(invoice.fechaDeEmision),
+        dueAt: date(invoice.fechaDePrimerVencimiento),
+      })));
       const avgPaymentDays = paymentSamples.length
         ? Math.round(paymentSamples.reduce((sum, sample) => sum + sample.days, 0) / paymentSamples.length)
         : 0;
@@ -350,8 +364,6 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const paymentMethodID = number(branchDefinition?.formaDePagoID || row.enEstaSucursal_FormaDePagoID || row.formaDePagoID);
       const paymentMethod = paymentMethodLabels.get(paymentMethodID)
         || (paymentMethodID ? `Forma de pago ${paymentMethodID}` : 'Sin condición informada');
-      const creditDaysFromMethod = number(paymentMethod.match(/\d+/)?.[0]);
-      const creditDays = Math.max(0, Math.round(number(row.limiteDeCredito_Dias) || creditDaysFromMethod));
       const channelID = number(row.canalDeVentaID);
       const zoneID = number(row.zonaID);
       const typeID = number(row.tipoDeClienteID);
@@ -368,6 +380,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
             amount: roundMoney(number(document.importeTotal) || number(document.saldoPendiente)),
             outstanding: roundMoney(number(document.saldoPendiente)),
             status: invoiceStatus(dueAt, snapshotDate),
+            creditTermDays: invoiceCreditTermDays(date(document.fechaDeEmision), dueAt),
           };
         });
       const paidInvoices: Invoice[] = paymentSamples.slice(-5).reverse().map((sample) => ({
@@ -379,6 +392,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         amount: roundMoney(number(sample.invoice.importeTotal)),
         outstanding: 0,
         status: 'paid',
+        creditTermDays: invoiceCreditTermDays(sample.issuedAt, sample.dueAt),
       }));
       const overdue = openInvoices.filter((invoice) => invoice.status === 'overdue');
       const dueSoon = openInvoices.some((invoice) => invoice.status === 'due_soon');
@@ -425,7 +439,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         name: text(row.razonSocial, 'Cliente sin razón social'),
         tradeName: text(row.fantasia) || text(row.razonSocial, 'Cliente sin nombre'),
         address: text(row.domicilio, 'Sin domicilio'),
-        locality: text(row.localidad, 'Sin localidad'),
+        locality: text(row.localidad) || 'Sin localidad',
         coordinates: parseCoordinates(row.geoCoordenadas),
         zone: zoneLabels.get(zoneID) || (zoneID ? `Zona ${zoneID}` : 'Sin zona'),
         segment: typeLabels.get(typeID) || channel,
@@ -439,7 +453,13 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         salesBlocked: row.bloqueoVentas === true,
         deliveryBlocked: row.bloqueoRemitos === true,
         paymentMethod,
-        creditDays,
+        creditDays: creditTerm.creditDays,
+        creditTermStatus: creditTerm.status,
+        creditTermSampleSize: creditTerm.sampleSize,
+        creditTermDominantShare: creditTerm.dominantShare,
+        creditTermMinDays: creditTerm.minDays,
+        creditTermMaxDays: creditTerm.maxDays,
+        creditTermOptions: creditTerm.options,
         avgPaymentDays,
         avgPaymentDelayDays,
         onTimePaymentRate,
@@ -480,6 +500,18 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const portfolioConfirmedClients = clients.filter((client) => client.portfolioStatus === 'confirmed').length;
   const activePortfolioConfirmedClients = clients.filter((client) => client.active && client.portfolioStatus === 'confirmed').length;
   const activeSalesBlockedClients = clients.filter((client) => client.active && client.salesBlocked).length;
+  const creditTermInvoices = clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0);
+  const invalidCreditTermInvoices = invoices.length - creditTermInvoices;
+  const unavailableMasters = [
+    capture.masters.zones.length ? '' : 'zonas',
+    capture.masters.clientTypes.length ? '' : 'tipos de cliente',
+  ].filter(Boolean);
+  const omittedDetailsWarning = omittedInvoiceDetails
+    ? ` GESI omitió el detalle de ${omittedInvoiceDetails} ${omittedInvoiceDetails === 1 ? 'factura' : 'facturas'}.`
+    : '';
+  const unavailableMastersWarning = unavailableMasters.length
+    ? ` Los maestros de ${unavailableMasters.join(' y ')} no están disponibles.`
+    : '';
 
   return {
     meta: {
@@ -490,7 +522,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       sourceLabel: 'GESI · Salice',
       syncStatus: 'connected',
       apiBaseConfigured: true,
-      disclaimer: `Foto validada de GESI. La operación usa ${activeClients} clientes activos; ${activePortfolioConfirmedClients} tienen definición explícita para la sucursal Salice y ${activeClients - activePortfolioConfirmedClients} quedan marcados para revisión, sin excluirlos automáticamente. GESI omitió el detalle de ${omittedInvoiceDetails} facturas y el maestro de zonas no está disponible.`,
+      productVectorVersion: '2.1',
+      disclaimer: `Foto validada de GESI. La operación usa ${activeClients} clientes activos; ${activePortfolioConfirmedClients} tienen definición explícita para la sucursal Salice y ${activeClients - activePortfolioConfirmedClients} quedan marcados para revisión, sin excluirlos automáticamente.${omittedDetailsWarning}${unavailableMastersWarning}`,
       coverage: {
         rawClients: capture.clients.length,
         includedClients: clients.length,
@@ -515,6 +548,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         activePortfolioReviewClients: activeClients - activePortfolioConfirmedClients,
         activeSalesBlockedClients,
         clientsWithPaymentTerms: clients.filter((client) => client.paymentMethod !== 'Sin condición informada').length,
+        creditTermInvoices,
+        invalidCreditTermInvoices,
+        clientsWithObservedCreditTerms: clients.filter((client) => client.creditTermSampleSize > 0).length,
+        clientsWithMixedCreditTerms: clients.filter((client) => client.creditTermStatus === 'mixed').length,
       },
     },
     products,
@@ -530,6 +567,7 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   const check = (condition: boolean, message: string) => { if (!condition) issues.push(message); };
 
   check(data.meta.source === 'gesi', 'El snapshot normalizado no está marcado como GESI');
+  check(data.meta.productVectorVersion === '2.1', 'El snapshot no declara vectorización de producto v2.1');
   check(data.meta.revision === SNAPSHOT_REVISION, `Revisión ${data.meta.revision} != ${SNAPSHOT_REVISION}`);
   check(new Set(data.clients.map((client) => client.id)).size === data.clients.length, 'Hay IDs de cliente duplicados');
   check(productIDs.size === data.products.length, 'Hay IDs de producto duplicados');
@@ -539,12 +577,19 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.coverage?.catalogProducts === data.products.length, 'La cobertura de productos no coincide con el snapshot');
   check(data.meta.coverage?.portfolioConfirmedClients === data.clients.filter((client) => client.portfolioStatus === 'confirmed').length, 'La cobertura de cartera confirmada no coincide');
   check(data.meta.coverage?.activePortfolioReviewClients === data.clients.filter((client) => client.active && client.portfolioStatus === 'review').length, 'La cobertura de cartera activa a revisar no coincide');
+  check(data.meta.coverage?.creditTermInvoices === data.clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0), 'La cobertura de facturas con plazo observado no coincide');
+  check(data.meta.coverage?.clientsWithObservedCreditTerms === data.clients.filter((client) => client.creditTermSampleSize > 0).length, 'La cobertura de clientes con plazo observado no coincide');
+  check(data.meta.coverage?.clientsWithMixedCreditTerms === data.clients.filter((client) => client.creditTermStatus === 'mixed').length, 'La cobertura de clientes con plazo mixto no coincide');
 
   for (const product of data.products) {
     const values = Object.values(product.vector);
     check(values.length === VECTOR_KEYS.length, `${product.id}: vector con ${values.length} dimensiones`);
+    check(product.vectorMeta.version === '2.1', `${product.id}: metadata vectorial anterior a v2.1`);
+    check(product.contentKg == null || product.contentKg > 0, `${product.id}: contenido neto inválido`);
+    check(product.referencePricePerKg == null || product.referencePricePerKg > 0, `${product.id}: precio por kilo inválido`);
     check(values.every((value) => Number.isFinite(value) && value >= 0 && value <= 100), `${product.id}: vector fuera de 0–100`);
-    check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0, `${product.id}: precio, stock o rotación inválidos`);
+    check(product.vectorMeta.version === '2.1' && product.vectorMeta.confidence >= 0 && product.vectorMeta.confidence <= 100, `${product.id}: metadatos vectoriales inválidos`);
+    check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0 && product.sales90d >= 0 && product.clients90d >= 0, `${product.id}: precio, stock o rotación inválidos`);
   }
 
   for (const client of data.clients) {
@@ -561,12 +606,17 @@ export function validateNormalizedSnapshot(data: DashboardData) {
     check(client.paymentSampleSize >= client.paymentTrend.length, `${prefix}: muestra de pagos menor que la tendencia`);
     check(client.paymentSampleSize >= client.paymentDelayTrend.length, `${prefix}: muestra de pagos menor que la tendencia contra vencimiento`);
     check(client.paymentSampleSize > 0 || client.avgPaymentDays === 0, `${prefix}: promedio de pago sin muestra`);
+    check(client.creditTermSampleSize >= 0 && client.creditTermOptions.reduce((sum, option) => sum + option.invoiceCount, 0) === client.creditTermSampleSize, `${prefix}: resumen de plazos no reconcilia`);
+    check(client.creditTermStatus !== 'unavailable' || (client.creditDays == null && client.creditTermSampleSize === 0), `${prefix}: plazo no disponible incoherente`);
+    check(client.creditTermStatus === 'unavailable' || (client.creditDays != null && client.creditTermSampleSize > 0), `${prefix}: plazo observado incoherente`);
+    check(client.creditTermOptions.every((option) => option.days >= 0 && option.minDays <= option.days && option.days <= option.maxDays && option.invoiceCount > 0 && option.share > 0 && option.share <= 100), `${prefix}: opción de plazo inválida`);
     check(client.nextVisitAt >= snapshotDate, `${prefix}: próxima visita anterior al snapshot`);
     check(client.salesTrend.length === 6 && client.salesTrend.every((value) => value >= 0), `${prefix}: tendencia de ventas inválida`);
     if (client.coordinates) {
       check(client.coordinates[0] >= -55 && client.coordinates[0] <= -21 && client.coordinates[1] >= -75 && client.coordinates[1] <= -53, `${prefix}: coordenadas fuera de Argentina`);
     }
     for (const invoice of client.invoices) {
+      check(invoice.creditTermDays == null || invoice.creditTermDays === daysBetween(invoice.issuedAt, invoice.dueAt), `${prefix}/${invoice.id}: plazo observado incoherente`);
       if (invoice.status === 'paid') check(Boolean(invoice.paidAt) && invoice.outstanding === 0, `${prefix}/${invoice.id}: pagada incoherente`);
       if (invoice.status === 'overdue') check(invoice.dueAt < snapshotDate && invoice.outstanding > 0, `${prefix}/${invoice.id}: vencida incoherente`);
       if (invoice.status === 'due_soon') check(invoice.dueAt >= snapshotDate && invoice.dueAt <= addDays(snapshotDate, 7) && invoice.outstanding > 0, `${prefix}/${invoice.id}: próximo vencimiento incoherente`);

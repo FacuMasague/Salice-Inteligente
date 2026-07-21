@@ -7,7 +7,10 @@ export interface GesiRawCapture {
     sucursalID: number;
     almacenPrincipalID: number;
     historyFrom: string;
+    salesHistoryFrom: string;
+    sptFetchFrom: string;
     salesDetailFrom: string;
+    sptSalesDetailFrom: string;
     historyUntil: string;
     optionalEndpointWarnings: string[];
   };
@@ -17,6 +20,9 @@ export interface GesiRawCapture {
   stocks: GesiRow[];
   balances: GesiRow[];
   invoices: GesiRow[];
+  creditNotes: GesiRow[];
+  sptInvoices: GesiRow[];
+  sptCreditNotes: GesiRow[];
   collections: GesiRow[];
   pendingDocuments: GesiRow[];
   masters: {
@@ -25,6 +31,10 @@ export interface GesiRawCapture {
     sellers: GesiRow[];
     rubros: GesiRow[];
     subRubros: GesiRow[];
+    productBrands: GesiRow[];
+    productLines: GesiRow[];
+    productFamilies: GesiRow[];
+    productGroups: GesiRow[];
     clientTypes: GesiRow[];
     zones: GesiRow[];
   };

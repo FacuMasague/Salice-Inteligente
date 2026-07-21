@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Maximize2, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
 import type { Client, CommercialActivity, PaymentPromise, Product, Recommendation } from '../../shared/models';
-import { compactDate, longDate, money, paymentDelay, shortDate } from '../lib/format';
+import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
 const invoiceLabel = { paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', overdue: 'Vencida' } as const;
@@ -12,9 +12,35 @@ interface ClientPanelProps {
   onClose: () => void;
   onPlanRoute: (clientId: number) => void;
   onNoteSaved: (clientId: number, note: string) => void;
+  mode?: 'compact' | 'full';
+  snapshotDate?: string;
+  onExpand?: () => void;
+  onOpenSeller?: (seller: string) => void;
+  onOpenProduct?: (product: Product) => void;
 }
 
-export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved }: ClientPanelProps) {
+function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapshotDate: string }) {
+  const anchor = new Date(snapshotDate);
+  const monthLabels = Array.from({ length: 6 }, (_, index) => new Intl.DateTimeFormat('es-AR', { month: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() - 5 + index, 1))).replace('.', ''));
+  const maxSales = Math.max(1, ...client.salesTrend);
+  const delays = client.paymentDelayTrend;
+  const maxDelay = Math.max(1, ...delays.map((value) => Math.abs(value)));
+  return <section className="client-profile-analytics">
+    <div className="client-financial-kpis">
+      <article><span>Pago promedio desde emisión</span><strong>{client.paymentSampleSize ? `${client.avgPaymentDays} días` : 'Sin muestra'}</strong><small>{client.paymentSampleSize} facturas conciliadas</small></article>
+      <article><span>Pago contra vencimiento</span><strong>{client.paymentSampleSize ? paymentDelay(client.avgPaymentDelayDays) : 'Sin muestra'}</strong><small>{client.onTimePaymentRate}% de pagos en término</small></article>
+      <article><span>Plazo habitual de cuenta corriente</span><strong>{creditTermLabel(client)}</strong><small>{client.creditTermSampleSize ? `${client.creditTermSampleSize} facturas observadas` : client.paymentMethod}</small></article>
+      <article><span>Saldo vencido actual</span><strong>{money(client.overdueOutstanding, true)}</strong><small>{client.oldestOverdueDays ? `${client.oldestOverdueDays} días de antigüedad máxima` : 'Sin comprobantes vencidos'}</small></article>
+    </div>
+    <div className="client-profile-chart-grid">
+      <article className="client-profile-chart"><header><div><span className="section-kicker"><BarChart3 size={14} /> Evolución comercial</span><h3>Compras mensuales · 6 meses</h3></div><strong>{money(client.salesTrend.reduce((sum, value) => sum + value, 0), true)}</strong></header><div className="client-sales-bars">{client.salesTrend.map((value, index) => <div key={`${monthLabels[index]}-${index}`} title={`${monthLabels[index]}: ${money(value)}`}><span><i style={{ height: `${Math.max(2, value / maxSales * 100)}%` }} /></span><strong>{monthLabels[index]}</strong><small>{money(value, true)}</small></div>)}</div></article>
+      <article className="client-profile-chart"><header><div><span className="section-kicker"><Clock3 size={14} /> Conducta de pago</span><h3>Días contra vencimiento · últimas facturas</h3></div><strong>{client.paymentSampleSize ? paymentDelay(client.avgPaymentDelayDays) : 'Sin muestra'}</strong></header>{delays.length ? <div className="client-delay-chart">{delays.map((value, index) => <div key={`${value}-${index}`} title={`${value > 0 ? `${value} días tarde` : value < 0 ? `${Math.abs(value)} días antes` : 'En fecha'}`}><span className="delay-positive"><i style={{ height: value > 0 ? `${Math.max(3, value / maxDelay * 100)}%` : 0 }} /></span><b /><span className="delay-negative"><i style={{ height: value < 0 ? `${Math.max(3, Math.abs(value) / maxDelay * 100)}%` : 0 }} /></span><small>{index + 1}</small></div>)}</div> : <div className="client-chart-empty">No hay pagos conciliados suficientes para dibujar la evolución.</div>}<footer><span><i className="early" />Antes del vencimiento</span><span><i className="late" />Después del vencimiento</span></footer></article>
+    </div>
+  </section>;
+}
+
+export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct }: ClientPanelProps) {
   const [tab, setTab] = useState<'summary' | 'purchases' | 'account' | 'operations'>('summary');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
@@ -90,9 +116,9 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const openInvoices = client.invoices.filter((invoice) => invoice.outstanding > 0);
 
   return (
-    <aside className="client-panel" data-tour="client-panel">
+    <aside className={`client-panel ${mode === 'full' ? 'client-profile' : 'client-panel-compact'}`} data-tour="client-panel" aria-label={`Ficha de ${client.tradeName}`}>
       <div className="client-panel-header">
-        <button className="icon-button panel-close" onClick={onClose} aria-label="Cerrar ficha"><X size={18} /></button>
+        <div className="client-panel-actions">{mode === 'compact' && onExpand && <button className="icon-button" onClick={onExpand} aria-label="Expandir ficha completa" title="Abrir ficha completa"><Maximize2 size={17} /></button>}<button className="icon-button" onClick={onClose} aria-label="Cerrar ficha"><X size={18} /></button></div>
         <div className="client-avatar">{client.tradeName.split(' ').map((word) => word[0]).slice(0, 2).join('')}</div>
         <div className="client-title-block">
           <div className="eyebrow">{client.reference} · {client.segment}</div>
@@ -105,7 +131,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
       <div className="client-contact-row">
         {client.phone ? <a href={`tel:${client.phone}`}><Phone size={15} /> {client.phone}</a> : <span><Phone size={15} /> Sin teléfono</span>}
         {client.email ? <a href={`mailto:${client.email}`}><Mail size={15} /> Email</a> : <span><Mail size={15} /> Sin email</span>}
-        <span><span className="seller-dot" /> {client.seller}</span>
+        {onOpenSeller ? <button className="client-seller-link" onClick={() => onOpenSeller(client.seller)}><span className="seller-dot" /> {client.seller}<ChevronRight size={13} /></button> : <span><span className="seller-dot" /> {client.seller}</span>}
       </div>
 
       <div className="panel-tabs" role="tablist">
@@ -141,6 +167,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
               </article>
             </section>
 
+            {mode === 'full' && <ClientProfileCharts client={client} snapshotDate={snapshotDate} />}
+
             {client.active && client.health !== 'healthy' && (
               <div className={`attention-card ${client.health}`}>
                 <AlertTriangle size={19} />
@@ -164,7 +192,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                   <article className="recommendation-card" key={recommendation.product.id}>
                     <div className="product-icon"><Package size={18} /></div>
                     <div className="recommendation-copy">
-                      <strong>{recommendation.product.name}</strong>
+                      <button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(recommendation.product)}>{recommendation.product.name}<ChevronRight size={12} /></button>
                       <span>{recommendation.reason}</span>
                       <small>{recommendation.product.price > 0 ? money(recommendation.product.price) : 'Sin precio'} · Stock {recommendation.product.stock} · <span className={`confidence ${recommendation.confidence}`}>{recommendation.confidence === 'reliable' ? 'Confiable' : recommendation.confidence === 'exploratory' ? 'Exploratoria' : 'Datos insuficientes'}</span></small>
                     </div>
@@ -201,7 +229,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
               {purchased.map((item, index) => (
                 <article key={item.product.id} className="purchase-row">
                   <span className="purchase-rank">{index + 1}</span>
-                  <div className="purchase-copy"><strong>{item.product.name}</strong><span>{item.quantity} unidades · última compra {shortDate(item.lastDate)}</span></div>
+                  <div className="purchase-copy"><button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(item.product)}>{item.product.name}<ChevronRight size={12} /></button><span>{item.quantity} unidades · última compra {shortDate(item.lastDate)}</span></div>
                   <strong>{money(item.total, true)}</strong>
                 </article>
               ))}
@@ -212,9 +240,15 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
         {tab === 'account' && (
           <>
             <section className="credit-card panel-section first">
-              <div className="credit-top"><span>Condición de pago</span><strong>{client.paymentMethod}</strong></div>
+              <div className="credit-top"><span>Condición configurada en GESI</span><strong>{client.paymentMethod}</strong></div>
               {client.creditLimit > 0 && <><div className="credit-track"><span style={{ width: `${Math.min(100, utilization)}%` }} /></div><div className="credit-values"><span>Saldo neto GESI {money(client.balance)}</span><span>Límite {money(client.creditLimit)} · uso {utilization}%</span></div></>}
               {!client.creditLimit && <div className="credit-values no-limit"><span>Saldo neto GESI {money(client.balance)}</span><span>GESI no informa límite; no se calcula utilización</span></div>}
+            </section>
+            <section className={`observed-term-card panel-section ${client.creditTermStatus}`}>
+              <div className="section-title-row"><div><span className="section-kicker"><CalendarDays size={14} /> Plazo observado</span><h3>{creditTermLabel(client)}</h3></div><span className={`term-status ${client.creditTermStatus}`}>{client.creditTermStatus === 'mixed' ? 'Mixta' : client.creditTermStatus === 'predominant' ? `${client.creditTermDominantShare}%` : client.creditTermSampleSize ? `n=${client.creditTermSampleSize}` : 'Sin muestra'}</span></div>
+              <p>{creditTermDetail(client)}</p>
+              {client.creditTermOptions.length > 1 && <div className="term-option-list">{client.creditTermOptions.slice(0, 5).map((option) => <span key={`${option.days}-${option.minDays}-${option.maxDays}`}><strong>{option.days} d</strong>{option.minDays !== option.maxDays && <small>{option.minDays}–{option.maxDays} exactos</small>}<em>{option.invoiceCount} fact. · {option.share}%</em></span>)}</div>}
+              <small className="term-rule-note">Se calcula con compra/emisión → vencimiento. Las alertas usan siempre la fecha real de cada factura, aun cuando el cliente tenga condiciones diferentes.</small>
             </section>
             <section className="panel-section">
               <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14} /> Comprobantes</span><h3>Historial de cuenta</h3></div></div>
@@ -225,7 +259,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                     <div className={`invoice-status-dot ${invoice.status}`} />
                     <div className="invoice-copy">
                       <strong>{invoice.number}</strong>
-                      <span>Emitida {compactDate(invoice.issuedAt)} · vence {compactDate(invoice.dueAt)}</span>
+                      <span>Emitida {compactDate(invoice.issuedAt)} · vence {compactDate(invoice.dueAt)}{invoice.creditTermDays != null ? ` · plazo ${invoice.creditTermDays} d` : ''}</span>
                       {invoice.paidAt && <small><Check size={12} /> Pagada {compactDate(invoice.paidAt)}</small>}
                     </div>
                     <div className="invoice-amount"><strong>{money(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount)}</strong><span className={`status-text ${invoice.status}`}>{invoiceLabel[invoice.status]}{invoice.outstanding > 0 && invoice.outstanding !== invoice.amount ? ' · saldo' : ''}</span></div>

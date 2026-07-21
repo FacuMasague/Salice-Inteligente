@@ -1,3 +1,5 @@
+import type { Client } from '../../shared/models';
+
 export const money = (value: number, compact = false) => new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
@@ -22,6 +24,35 @@ export const paymentDelay = (days: number) => days === 0
   : days > 0
     ? `${days} d después`
     : `${Math.abs(days)} d antes`;
+
+type CreditTermClient = Pick<Client, 'creditDays' | 'creditTermStatus' | 'creditTermSampleSize' | 'creditTermDominantShare' | 'creditTermMinDays' | 'creditTermMaxDays' | 'creditTermOptions'>;
+
+const termDaysLabel = (days: number) => days === 0 ? 'Contado observado' : `${days} días`;
+
+export const creditTermLabel = (client: CreditTermClient) => {
+  if (client.creditDays == null || client.creditTermStatus === 'unavailable') return 'Sin plazo habitual reciente';
+  if (client.creditTermStatus === 'mixed') return 'Condición mixta';
+  if (client.creditTermStatus === 'single') return `${termDaysLabel(client.creditDays)} · 1 factura`;
+  if (client.creditTermStatus === 'predominant') return `${termDaysLabel(client.creditDays)} predominante`;
+  return `${termDaysLabel(client.creditDays)} habitual`;
+};
+
+export const creditTermDetail = (client: CreditTermClient) => {
+  if (!client.creditTermSampleSize) return 'No hay facturas con compra/emisión y vencimiento válidos en los últimos 365 días.';
+  const observedRange = client.creditTermMinDays !== client.creditTermMaxDays
+    ? ` · rango exacto ${client.creditTermMinDays}–${client.creditTermMaxDays} días`
+    : '';
+  if (client.creditTermStatus === 'single') return `Basado en una única factura${observedRange}.`;
+  if (client.creditTermStatus === 'mixed') {
+    const alternatives = client.creditTermOptions.slice(0, 3).map((option) => `${option.days} d (${option.share}%)`).join(', ');
+    return `${client.creditTermSampleSize} facturas con más de una condición y sin mayoría: ${alternatives}${observedRange}.`;
+  }
+  const calendarNote = client.creditTermOptions[0] && client.creditTermOptions[0].minDays !== client.creditTermOptions[0].maxDays
+    ? `; incluye corrimientos de ${client.creditTermOptions[0].minDays} a ${client.creditTermOptions[0].maxDays} días`
+    : '';
+  const predominance = client.creditTermStatus === 'predominant' ? ` · ${client.creditTermDominantShare}% de la muestra` : '';
+  return `${client.creditTermSampleSize} facturas observadas${predominance}${calendarNote}${observedRange}.`;
+};
 
 export const longDate = (value: string) => {
   if (!value) return 'Sin dato';

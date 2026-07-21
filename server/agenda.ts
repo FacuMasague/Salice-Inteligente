@@ -8,6 +8,7 @@ import type {
   NotificationItem,
   PaymentPromise,
 } from '../shared/models.js';
+import { decodeMultiFilter, matchesMultiFilter } from '../shared/multi-filter.js';
 import type { StoredAgendaItem } from './operational-store.js';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
@@ -73,13 +74,14 @@ export function buildAgendaPayload(
   activities: CommercialActivity[],
   promises: PaymentPromise[],
 ): AgendaPayload {
-  const clients = data.clients.filter((client) => client.active && (!seller || client.seller === seller));
+  const selectedSellers = decodeMultiFilter(seller);
+  const clients = data.clients.filter((client) => client.active && matchesMultiFilter(client.seller, seller));
   const byId = new Map(clients.map((client) => [client.id, client]));
-  const sellerActivities = activities.filter((activity) => !seller || activity.seller === seller);
+  const sellerActivities = activities.filter((activity) => matchesMultiFilter(activity.seller, seller));
   const activitiesOnDate = sellerActivities.filter((activity) => operationalDate(activity.occurredAt) === date);
   const completedClients = new Set(activitiesOnDate.map((activity) => activity.clientId));
   const pendingPromises = promises.filter((promise) => (
-    promise.status === 'pending' && promise.dueAt <= date && (!seller || promise.seller === seller)
+    promise.status === 'pending' && promise.dueAt <= date && matchesMultiFilter(promise.seller, seller)
   ));
   const entries = new Map<number, AgendaEntry>();
 
@@ -92,7 +94,7 @@ export function buildAgendaPayload(
   };
 
   storedItems
-    .filter((item) => item.scheduledFor === date && (!seller || item.seller === seller))
+    .filter((item) => item.scheduledFor === date && matchesMultiFilter(item.seller, seller))
     .forEach((item) => {
       const client = byId.get(item.clientId);
       if (!client) return;
@@ -131,7 +133,7 @@ export function buildAgendaPayload(
       || client.salesBlocked
     ))
     .sort((a, b) => suggestedPriority(b, date) - suggestedPriority(a, date) || b.sales90d - a.sales90d);
-  const limit = seller ? 16 : 24;
+  const limit = selectedSellers.length === 1 ? 16 : 24;
   candidateClients.forEach((client) => {
     if (entries.size >= limit || entries.has(client.id)) return;
     addEntry(clientEntry(client, {
@@ -170,7 +172,7 @@ export function buildAgendaPayload(
     seller,
     entries: ordered,
     activities: sellerActivities.slice(0, 100),
-    promises: promises.filter((promise) => !seller || promise.seller === seller).slice(0, 100),
+    promises: promises.filter((promise) => matchesMultiFilter(promise.seller, seller)).slice(0, 100),
     stats: {
       planned: ordered.length,
       pending: ordered.filter((entry) => entry.status === 'pending').length,
@@ -179,7 +181,7 @@ export function buildAgendaPayload(
       promiseAmountDue: pendingPromises.reduce((sum, promise) => sum + promise.amount, 0),
     },
     definitions: {
-      planned: `Clientes visibles combinando reglas, tareas manuales y promesas. El algoritmo completa una base de hasta ${seller ? 16 : 24}; tareas y promesas siempre se agregan aunque superen esa base.`,
+      planned: `Clientes visibles combinando reglas, tareas manuales y promesas. El algoritmo completa una base de hasta ${selectedSellers.length === 1 ? 16 : 24}; tareas y promesas siempre se agregan aunque superen esa base.`,
       completed: 'Cantidad de gestiones guardadas localmente en la fecha seleccionada; no presume visitas no registradas.',
       promiseAmountDue: 'Suma de promesas pendientes con fecha igual o anterior a la fecha seleccionada.',
     },

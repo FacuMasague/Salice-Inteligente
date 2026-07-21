@@ -43,6 +43,8 @@ for (const client of data.clients) {
   check(client.purchases.every((purchase) => productIDs.has(purchase.productId)), `${prefix}: compra con producto inexistente`);
   check(Math.abs(roundMoney(purchaseTotal + client.unmappedSales90d - client.sales90d)) <= .02, `${prefix}: facturación 90d no reconciliada`);
   check(client.paymentSampleSize >= client.paymentTrend.length, `${prefix}: muestra de pago incoherente`);
+  check(client.creditTermOptions.reduce((sum, option) => sum + option.invoiceCount, 0) === client.creditTermSampleSize, `${prefix}: resumen de plazos no reconcilia`);
+  check(client.creditTermStatus !== 'mixed' || client.creditTermOptions.length > 1, `${prefix}: condición mixta sin alternativas`);
   check(client.nextVisitAt >= snapshotDate, `${prefix}: próxima visita anterior al snapshot`);
 
   for (const invoice of client.invoices) {
@@ -84,6 +86,9 @@ const totals = {
   netBalance: roundMoney(data.clients.reduce((sum, client) => sum + client.balance, 0)),
   openDocuments: data.clients.flatMap((client) => client.invoices).filter((invoice) => invoice.outstanding > 0).length,
   paymentSamples: data.clients.reduce((sum, client) => sum + client.paymentSampleSize, 0),
+  creditTermInvoices: data.clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0),
+  clientsWithObservedCreditTerms: data.clients.filter((client) => client.creditTermSampleSize > 0).length,
+  clientsWithMixedCreditTerms: data.clients.filter((client) => client.creditTermStatus === 'mixed').length,
 };
 
 if (issues.length) {

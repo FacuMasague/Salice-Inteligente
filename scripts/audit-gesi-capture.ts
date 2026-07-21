@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
+import { invoiceCreditTermDays } from '../shared/credit-terms.js';
 
 const capturePath = resolve(process.cwd(), 'data/raw/gesi-salice-latest.json');
 const capture = JSON.parse(await readFile(capturePath, 'utf8')) as GesiRawCapture;
@@ -71,6 +72,7 @@ const soldProductIDs = uniqueStrings(allItems, 'codigoDeItem');
 const catalogProductIDs = new Set([...stockProductIDs, ...soldProductIDs]);
 
 const invoiceKeys = capture.invoices.map(documentKey);
+const invoiceCreditTerms = capture.invoices.map((row) => invoiceCreditTermDays(date(row.fechaDeEmision), date(row.fechaDePrimerVencimiento)));
 const collectionKeys = capture.collections.map(documentKey);
 const pendingKeys = capture.pendingDocuments.map(documentKey);
 
@@ -164,6 +166,9 @@ const report = {
     dateMax: capture.invoices.map((row) => date(row.fechaDeEmision)).filter(Boolean).sort().at(-1),
     annulled: capture.invoices.filter((row) => row.anulado === true).length,
     nonPositiveAmounts: capture.invoices.filter((row) => number(row.importeTotal) <= 0).length,
+    creditTermsValid: invoiceCreditTerms.filter((value) => value != null).length,
+    creditTermsInvalid: invoiceCreditTerms.filter((value) => value == null).length,
+    creditTermDays: quantiles(invoiceCreditTerms.filter((value): value is number => value != null)),
     itemRows180d: allItems.length,
     itemTypes: countBy(allItems, 'tipoDeItem'),
     negativeItemQuantity: allItems.filter((row) => number(row.cantidadU1) < 0).length,

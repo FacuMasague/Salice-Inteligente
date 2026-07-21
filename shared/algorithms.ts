@@ -1,11 +1,7 @@
-import { SALICE_DEPOT, type Client, type Product, type Recommendation, type RoutePlan, type VectorKey } from './models.js';
+import { SALICE_DEPOT, VECTOR_LABELS, type Client, type Product, type Recommendation, type RoutePlan, type VectorKey } from './models.js';
+import { VECTOR_KEYS, vectorSimilarityV2 } from './product-vectors.js';
 
-const keys: VectorKey[] = [
-  'perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior',
-  'premium', 'economico', 'alimento_seco', 'alimento_humedo', 'snacks',
-  'farmacia', 'antiparasitario', 'natural', 'funcional', 'higiene',
-  'accesorios', 'granel', 'consumo_humano', 'promocional',
-];
+const keys: VectorKey[] = VECTOR_KEYS;
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -53,7 +49,12 @@ export function recommendProducts(client: Client, clients: Client[], products: P
   return products
     .filter((product) => !owned.has(product.id) && product.stock > 0 && speciesCompatible(profile, product))
     .map((product) => {
-      const similarity = cosineSimilarity(profile, product.vector) * 100;
+      const similarity = vectorSimilarityV2(profile, product.vector);
+      const sharedTraits = VECTOR_KEYS
+        .filter((key) => profile[key] >= 55 && product.vector[key] >= 55)
+        .sort((left, right) => Math.min(profile[right], product.vector[right]) - Math.min(profile[left], product.vector[left]))
+        .slice(0, 3)
+        .map((key) => VECTOR_LABELS[key]);
       const peerAdoption = peers.length
         ? peers.filter((peer) => peer.purchases.some((purchase) => purchase.productId === product.id)).length / peers.length * 100
         : 0;
@@ -64,9 +65,10 @@ export function recommendProducts(client: Client, clients: Client[], products: P
       const score = Math.round(clamp(coldStart
         ? similarity * .2 + peerAdoption * .35 + zoneAdoption * .25 + popularity * .2
         : similarity * .5 + peerAdoption * .25 + zoneAdoption * .15 + popularity * .1));
-      const confidence: Recommendation['confidence'] = distinctPurchases >= 4 && peers.length >= 20
+      const vectorConfidence = product.vectorMeta.confidence;
+      const confidence: Recommendation['confidence'] = distinctPurchases >= 4 && peers.length >= 20 && vectorConfidence >= 70
         ? 'reliable'
-        : distinctPurchases >= 1 && peers.length >= 8
+        : distinctPurchases >= 1 && peers.length >= 8 && vectorConfidence >= 45
           ? 'exploratory'
           : 'insufficient';
       const reason = confidence === 'insufficient'
@@ -74,7 +76,7 @@ export function recommendProducts(client: Client, clients: Client[], products: P
         : peerAdoption >= 35
           ? `${Math.round(peerAdoption)}% de ${peers.length} clientes comparables ya lo compra`
           : similarity >= 72
-            ? `Afinidad de ${Math.round(similarity)}% con su mix de compra`
+            ? `Afinidad v2.1 de ${Math.round(similarity)}%${sharedTraits.length ? `: ${sharedTraits.join(', ')}` : ' con su mix de compra'}`
             : `Complementa su mix y tiene rotación en la cartera`;
       return {
         product,

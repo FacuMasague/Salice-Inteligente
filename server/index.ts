@@ -9,8 +9,19 @@ import {
   type CommercialActivityType,
   type PaymentPromiseStatus,
 } from '../shared/models.js';
+import { decodeMultiFilter } from '../shared/multi-filter.js';
+import { metricCatalogSummary } from '../shared/metrics.js';
 import { buildAgendaPayload, buildNotifications } from './agenda.js';
+import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
+import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
+import { buildDataHealth, loadPlatformAuditSummary } from './data-health.js';
+import { buildGeneralReport, getGeneralReportMeta, getGeneralReportPath } from './general-report.js';
+import { buildMarsReport, getMarsReportMeta, getMarsReportPath } from './mars-report.js';
+import { buildNonBuyerReport, getNonBuyerReportMeta, getNonBuyerReportPath } from './non-buyers-report.js';
+import { buildPendingBalancesReport, getPendingBalancesReportMeta, getPendingBalancesReportPath } from './pending-balances-report.js';
+import { buildNutriPetReport, getNutriPetReportMeta, getNutriPetReportPath } from './nutripet-report.js';
 import { ensureSnapshot, getBackupCount, getSnapshotPath, loadSnapshot } from './store.js';
+import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report.js';
 import {
   createAgendaItem,
   createCommercialActivity,
@@ -58,17 +69,141 @@ app.get('/api/dashboard', async (_req, res) => {
   res.json(await loadSnapshot());
 });
 
+app.get('/api/metrics/catalog', (_req, res) => {
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.json(metricCatalogSummary());
+});
+
+app.get('/api/reports/spt/meta', (_req, res) => {
+  const meta = getSptReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/spt', (req, res) => {
+  const report = buildSptReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/commercial-sales/meta', (_req, res) => {
+  const meta = getCommercialSalesReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base comercial de GESI todavía no fue construida.', path: getCommercialSalesReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/commercial-sales', (req, res) => {
+  const report = buildCommercialSalesReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base comercial de GESI todavía no fue construida.', path: getCommercialSalesReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/general/meta', (_req, res) => {
+  const meta = getGeneralReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base del Reporte General todavía no fue construida.', path: getGeneralReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/general', (req, res) => {
+  const report = buildGeneralReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base del Reporte General todavía no fue construida.', path: getGeneralReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/mars/meta', (_req, res) => {
+  const meta = getMarsReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base Mars de GESI todavía no fue construida.', path: getMarsReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/mars', (req, res) => {
+  const report = buildMarsReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base Mars de GESI todavía no fue construida.', path: getMarsReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/nutripet/meta', (_req, res) => {
+  const meta = getNutriPetReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base NutriPet de GESI todavía no fue construida.', path: getNutriPetReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/nutripet', (req, res) => {
+  const report = buildNutriPetReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base NutriPet de GESI todavía no fue construida.', path: getNutriPetReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/baires/meta', (_req, res) => {
+  const meta = getBairesReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base Baires de GESI todavía no fue construida.', path: getBairesReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/baires', (req, res) => {
+  const report = buildBairesReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base Baires de GESI todavía no fue construida.', path: getBairesReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/non-buyers/meta', (_req, res) => {
+  const meta = getNonBuyerReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base de cuentas no compradoras todavía no fue construida.', path: getNonBuyerReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/non-buyers', (req, res) => {
+  const report = buildNonBuyerReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base de cuentas no compradoras todavía no fue construida.', path: getNonBuyerReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/reports/pending-balances/meta', (_req, res) => {
+  const meta = getPendingBalancesReportMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/reports/pending-balances', (req, res) => {
+  const report = buildPendingBalancesReport(req.query);
+  if (!report) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
 app.get('/api/system/status', async (_req, res) => {
   res.json({ ...operationalStatus(), backups: await getBackupCount() });
 });
 
+app.get('/api/system/data-health', async (_req, res) => {
+  const data = await loadSnapshot();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(buildDataHealth(data, getSptReportMeta(), getPendingBalancesReportMeta(), operationalStatus(), new Date(), loadPlatformAuditSummary()));
+});
+
 app.get('/api/agenda', async (req, res) => {
   const date = validDate(req.query.date) || localDate();
-  const seller = String(req.query.seller || '').trim().slice(0, 120);
+  const seller = String(req.query.seller || '').trim().slice(0, 1000);
+  const selectedSellers = decodeMultiFilter(seller);
   const data = await loadSnapshot();
   const activities = listActivities({ limit: 1000 });
   const promises = listPromises({ limit: 1000 });
-  const items = listAgendaItems({ date, seller: seller || undefined });
+  const items = listAgendaItems({ date, seller: selectedSellers.length === 1 ? selectedSellers[0] : undefined });
   res.json(buildAgendaPayload(data, date, seller, items, activities, promises));
 });
 

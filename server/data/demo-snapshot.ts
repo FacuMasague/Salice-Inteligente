@@ -1,14 +1,19 @@
 import { APP_VERSION, SNAPSHOT_REVISION, type Client, type DashboardData, type Invoice, type Product, type VectorKey } from '../../shared/models.js';
+import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 
 const v = (values: Partial<Record<VectorKey, number>>): Record<VectorKey, number> => ({
   perros: 0, gatos: 0, otras_especies: 0, cachorros: 0, adultos: 0, senior: 0,
+  tamano_pequeno: 0, tamano_mediano: 0, tamano_grande: 0,
   premium: 0, economico: 0, alimento_seco: 0, alimento_humedo: 0, snacks: 0,
   farmacia: 0, antiparasitario: 0, natural: 0, funcional: 0, higiene: 0,
   accesorios: 0, granel: 0, consumo_humano: 0, promocional: 0,
+  esterilizados: 0, control_peso: 0, piel_pelaje: 0, salud_urinaria: 0,
+  salud_digestiva: 0, salud_dental: 0, sabor_pollo: 0, sabor_carne: 0,
+  sabor_pescado: 0, sabor_cordero: 0,
   ...values,
 });
 
-const products: Product[] = [
+const productSeeds = [
   { id: 'P001', sku: 'ALI-PER-ADU-15', name: 'Nutrición Perro Adulto 15 kg', family: 'Alimento seco', brand: 'Línea Equilibrio', pack: 'Bolsa 15 kg', price: 48900, stock: 84, monthlyUnits: 142, margin: 24, vector: v({ perros: 100, adultos: 100, economico: 62, granel: 28 }) },
   { id: 'P002', sku: 'ALI-PER-PRE-15', name: 'Perro Adulto Premium 15 kg', family: 'Alimento seco', brand: 'Línea Selecta', pack: 'Bolsa 15 kg', price: 68700, stock: 61, monthlyUnits: 96, margin: 29, vector: v({ perros: 100, adultos: 100, premium: 96, natural: 48 }) },
   { id: 'P003', sku: 'ALI-PER-CAC-12', name: 'Cachorro Crecimiento 12 kg', family: 'Alimento seco', brand: 'Línea Equilibrio', pack: 'Bolsa 12 kg', price: 57200, stock: 42, monthlyUnits: 74, margin: 27, vector: v({ perros: 100, cachorros: 100, premium: 58, funcional: 35 }) },
@@ -26,6 +31,34 @@ const products: Product[] = [
   { id: 'P015', sku: 'ALI-GRA-PER-25', name: 'Balanceado Perro Económico 25 kg', family: 'Alimento seco', brand: 'Línea Rinde', pack: 'Bolsa 25 kg', price: 42100, stock: 112, monthlyUnits: 188, margin: 19, vector: v({ perros: 100, adultos: 90, economico: 100, granel: 86 }) },
   { id: 'P016', sku: 'ALI-GRA-GAT-15', name: 'Balanceado Gato Económico 15 kg', family: 'Alimento seco', brand: 'Línea Rinde', pack: 'Bolsa 15 kg', price: 44800, stock: 75, monthlyUnits: 133, margin: 21, vector: v({ gatos: 100, adultos: 88, economico: 100, granel: 82 }) },
 ];
+
+const products: Product[] = productSeeds.map((product, index) => ({
+  ...product,
+  description: '',
+  subcategory: product.family,
+  line: product.brand,
+  commercialFamily: 'Catálogo demostrativo',
+  group: 'Datos demostrativos',
+  unit: 'UN',
+  unitsPerCase: null,
+  masterStatus: 'active',
+  contentKg: null,
+  referencePricePerKg: null,
+  pricePosition: product.vector.premium >= 75 ? 'premium' : product.vector.economico >= 75 ? 'budget' : 'unknown',
+  units90d: product.monthlyUnits * 3,
+  sales90d: product.price * product.monthlyUnits * 3,
+  clients90d: 4 + index % 8,
+  lastSaleAt: '2026-07-12',
+  stockCoverageMonths: Math.round(product.stock / Math.max(product.monthlyUnits, 1) * 10) / 10,
+  vectorMeta: {
+    version: '2.1',
+    confidence: 92,
+    sourceCoverage: 100,
+    evidence: Object.fromEntries(Object.entries(product.vector)
+      .filter(([, value]) => value > 0)
+      .map(([key]) => [key, ['Nombre y clasificación del catálogo demostrativo']])),
+  },
+}));
 
 interface ClientSeed {
   name: string;
@@ -88,14 +121,15 @@ function createPurchases(seed: ClientSeed, index: number) {
 function createInvoices(seed: ClientSeed, index: number): Invoice[] {
   const firstIssuedAt = '2026-04-03';
   const secondIssuedAt = '2026-05-05';
+  const contractualDays = seed.payDays > 30 ? 45 : 30;
   const invoices: Invoice[] = [
-    { id: `INV-${index + 1}-01`, number: `FAC B-${String(61320 + index).padStart(8, '0')}`, issuedAt: firstIssuedAt, dueAt: '2026-04-24', paidAt: addDays(firstIssuedAt, seed.payDays - 2), amount: 246000 + index * 17300, outstanding: 0, status: 'paid' },
-    { id: `INV-${index + 1}-02`, number: `FAC B-${String(61880 + index).padStart(8, '0')}`, issuedAt: secondIssuedAt, dueAt: '2026-05-26', paidAt: addDays(secondIssuedAt, seed.payDays + 2), amount: 198000 + index * 12100, outstanding: 0, status: 'paid' },
+    { id: `INV-${index + 1}-01`, number: `FAC B-${String(61320 + index).padStart(8, '0')}`, issuedAt: firstIssuedAt, dueAt: addDays(firstIssuedAt, contractualDays), paidAt: addDays(firstIssuedAt, seed.payDays - 2), amount: 246000 + index * 17300, outstanding: 0, status: 'paid', creditTermDays: contractualDays },
+    { id: `INV-${index + 1}-02`, number: `FAC B-${String(61880 + index).padStart(8, '0')}`, issuedAt: secondIssuedAt, dueAt: addDays(secondIssuedAt, contractualDays), paidAt: addDays(secondIssuedAt, seed.payDays + 2), amount: 198000 + index * 12100, outstanding: 0, status: 'paid', creditTermDays: contractualDays },
   ];
   if (seed.balance > 0) {
     const critical = seed.balance / seed.credit > 0.78 || seed.payDays > 44;
     const status: Invoice['status'] = critical ? 'overdue' : index % 3 === 0 ? 'due_soon' : index % 3 === 1 ? 'open' : 'overdue';
-    invoices.unshift({
+    const openInvoice = {
       id: `INV-${index + 1}-03`,
       number: `FAC B-${String(62410 + index).padStart(8, '0')}`,
       issuedAt: '2026-06-24',
@@ -103,7 +137,8 @@ function createInvoices(seed: ClientSeed, index: number): Invoice[] {
       amount: seed.balance,
       outstanding: seed.balance,
       status,
-    });
+    };
+    invoices.unshift({ ...openInvoice, creditTermDays: invoiceCreditTermDays(openInvoice.issuedAt, openInvoice.dueAt) });
   }
   return invoices;
 }
@@ -116,6 +151,7 @@ const clients: Client[] = seeds.map((seed, index) => {
   const utilization = seed.balance / seed.credit;
   const health = overdue && (utilization > 0.6 || seed.payDays > 40) ? 'critical' : overdue || utilization > 0.55 ? 'attention' : 'healthy';
   const baseTrend = Math.round(sales90d / 3 / 1000);
+  const creditTerm = summarizeCreditTerms(invoices.map((invoice) => ({ issuedAt: invoice.issuedAt, dueAt: invoice.dueAt })));
   return {
     id: 4100 + index,
     active: true,
@@ -140,7 +176,13 @@ const clients: Client[] = seeds.map((seed, index) => {
     salesBlocked: false,
     deliveryBlocked: false,
     paymentMethod: seed.payDays > 30 ? 'CTA CTE 45 DÍAS' : 'CTA CTE 30 DÍAS',
-    creditDays: seed.payDays > 30 ? 45 : 30,
+    creditDays: creditTerm.creditDays,
+    creditTermStatus: creditTerm.status,
+    creditTermSampleSize: creditTerm.sampleSize,
+    creditTermDominantShare: creditTerm.dominantShare,
+    creditTermMinDays: creditTerm.minDays,
+    creditTermMaxDays: creditTerm.maxDays,
+    creditTermOptions: creditTerm.options,
     avgPaymentDays: seed.payDays,
     avgPaymentDelayDays: seed.payDays - (seed.payDays > 30 ? 45 : 30),
     onTimePaymentRate: seed.payDays <= (seed.payDays > 30 ? 45 : 30) ? 80 : 40,
@@ -175,6 +217,7 @@ export function createDemoSnapshot(): DashboardData {
       sourceLabel: 'Datos demostrativos',
       syncStatus: 'demo',
       apiBaseConfigured: false,
+      productVectorVersion: '2.1',
       disclaimer: 'Los nombres, importes y movimientos son sintéticos. Falta configurar la URL del servidor GESI de Salice.',
     },
     products,

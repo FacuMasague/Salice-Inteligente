@@ -31,6 +31,8 @@ import type {
   Product,
   Recommendation,
 } from '../../shared/models';
+import { matchesMultiFilter, multiFilterLabel } from '../../shared/multi-filter';
+import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { compactDate, longDate, money } from '../lib/format';
 
 const actionLabels: Record<CommercialActivityType, string> = {
@@ -69,11 +71,13 @@ interface AgendaViewProps {
   clients: Client[];
   products: Product[];
   onOpen: (client: Client) => void;
+  onOpenSeller: (seller: string) => void;
+  onOpenProduct: (product: Product) => void;
   onPlanRoute: (clientId: number) => void;
   onOperationalChange: () => void;
 }
 
-export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperationalChange }: AgendaViewProps) {
+export function AgendaView({ clients, products, onOpen, onOpenSeller, onOpenProduct, onPlanRoute, onOperationalChange }: AgendaViewProps) {
   const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller).filter((name) => name && name !== 'Sin vendedor'))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const [date, setDate] = useState(today);
@@ -82,7 +86,7 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'all' | 'completed'>('pending');
+  const [statusFilter, setStatusFilter] = useState('pending');
   const [activityOpen, setActivityOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -103,9 +107,7 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
   }, [date, seller, refreshToken]);
 
   const reload = () => setRefreshToken((value) => value + 1);
-  const visibleEntries = useMemo(() => (data?.entries ?? []).filter((entry) => (
-    statusFilter === 'all' || entry.status === statusFilter
-  )), [data, statusFilter]);
+  const visibleEntries = useMemo(() => (data?.entries ?? []).filter((entry) => matchesMultiFilter(entry.status, statusFilter)), [data, statusFilter]);
   const selectedEntry = data?.entries.find((entry) => entry.id === selectedId) ?? visibleEntries[0] ?? null;
   const selectedClient = selectedEntry ? clients.find((client) => client.id === selectedEntry.clientId) ?? null : null;
   const selectedActivities = data?.activities.filter((activity) => activity.clientId === selectedClient?.id).slice(0, 8) ?? [];
@@ -129,7 +131,7 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
         <div className="agenda-command-title"><span className="section-kicker"><ClipboardCheck size={14} /> Puesto del vendedor</span><h2>Agenda operativa</h2><p>{selectedDateLabel} · las tareas explican por qué conviene contactar a cada cliente.</p></div>
         <div className="agenda-command-controls">
           <label><span>Fecha</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-          <label><span>Vendedor</span><select value={seller} onChange={(event) => setSeller(event.target.value)}><option value="">Toda la fuerza comercial</option>{sellers.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} allLabel="Todos" />
           <button className="button secondary" onClick={reload} disabled={loading}><RefreshCw size={15} /> Actualizar</button>
           <button className="button primary" onClick={() => setTaskOpen(true)}><Plus size={16} /> Nueva tarea</button>
         </div>
@@ -144,7 +146,7 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
 
       <div className="agenda-layout">
         <section className="data-card agenda-list-card">
-          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Prioridades del día</span><h2>{seller || 'Todos los vendedores'}</h2></div><div className="agenda-status-tabs"><button className={statusFilter === 'pending' ? 'active' : ''} onClick={() => setStatusFilter('pending')}>Pendientes</button><button className={statusFilter === 'completed' ? 'active' : ''} onClick={() => setStatusFilter('completed')}>Hechas</button><button className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>Todas</button></div></div>
+          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Prioridades del día</span><h2>{multiFilterLabel(seller, 'Todos los vendedores')}</h2></div><MultiSelectFilter className="agenda-status-filter" label="Estado" value={statusFilter} options={[{ value: 'pending', label: 'Pendientes' }, { value: 'completed', label: 'Hechas' }]} onChange={setStatusFilter} /></div>
           <div className="agenda-entry-list">
             {loading && <div className="agenda-empty"><RefreshCw size={22} /><strong>Cargando prioridades…</strong></div>}
             {error && <div className="agenda-empty error"><AlertTriangle size={22} /><strong>{error}</strong><button className="button secondary" onClick={reload}>Reintentar</button></div>}
@@ -161,16 +163,16 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
           {!selectedClient || !selectedEntry ? <div className="agenda-detail-empty"><UserRound size={38} /><h2>Elegí una tarea</h2><p>Vas a ver contexto, sugerencias de producto e historial antes de contactar al cliente.</p></div> : <>
             <header className="agenda-client-hero">
               <div className="client-avatar">{selectedClient.tradeName.split(' ').map((word) => word[0]).slice(0, 2).join('')}</div>
-              <div><span className="section-kicker">{selectedClient.reference} · {selectedClient.segment}</span><h2>{selectedClient.tradeName}</h2><p><MapPin size={13} /> {selectedClient.address}, {selectedClient.locality}</p></div>
+              <div><span className="section-kicker">{selectedClient.reference} · {selectedClient.segment}</span><h2>{selectedClient.tradeName}</h2><p><MapPin size={13} /> {selectedClient.address}, {selectedClient.locality}</p><button className="entity-link agenda-seller-link" onClick={() => onOpenSeller(selectedClient.seller)}>{selectedClient.seller}<ChevronRight size={12} /></button></div>
               <button className="icon-button" aria-label="Abrir ficha completa" onClick={() => onOpen(selectedClient)}><ChevronRight size={18} /></button>
             </header>
             <div className="agenda-reason"><span className={`agenda-action-icon ${selectedEntry.actionType}`}>{selectedEntry.actionType === 'call' ? <Phone size={16} /> : selectedEntry.actionType === 'collection' ? <CircleDollarSign size={16} /> : selectedEntry.actionType === 'offer' ? <Package size={16} /> : <MapPin size={16} />}</span><div><span>Motivo de la tarea · {sourceLabels[selectedEntry.source]}</span><strong>{selectedEntry.reason}</strong></div></div>
             {selectedClient.salesBlocked && <div className="agenda-guardrail"><AlertTriangle size={17} /><span>GESI informa bloqueo de ventas. Validalo con administración antes de tomar un pedido.</span></div>}
             <div className="agenda-client-metrics"><article><span>Riesgo</span><strong>C{selectedClient.collectionRisk}</strong><small>{money(selectedClient.overdueOutstanding, true)} vencido</small></article><article><span>Oportunidad</span><strong>O{selectedClient.commercialOpportunity}</strong><small>{selectedClient.salesDelta >= 0 ? '+' : ''}{selectedClient.salesDelta}% ventas</small></article><article><span>Última compra</span><strong>{compactDate(selectedClient.lastPurchaseAt)}</strong><small>{money(selectedClient.sales90d, true)} en 90d</small></article></div>
-            {selectedClient.salesBlocked ? <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><AlertTriangle size={14} /> Oferta pausada</span><h3>Validar antes de recomendar</h3></div></div><p className="section-description">Las sugerencias de producto se ocultan en la agenda mientras GESI informe bloqueo de ventas. La ficha conserva el contexto para administración.</p></section> : <AgendaRecommendations client={selectedClient} />}
+            {selectedClient.salesBlocked ? <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><AlertTriangle size={14} /> Oferta pausada</span><h3>Validar antes de recomendar</h3></div></div><p className="section-description">Las sugerencias de producto se ocultan en la agenda mientras GESI informe bloqueo de ventas. La ficha conserva el contexto para administración.</p></section> : <AgendaRecommendations client={selectedClient} onOpenProduct={onOpenProduct} />}
             <section className="agenda-history-section">
               <div className="section-title-row"><div><span className="section-kicker"><MessageSquareText size={14} /> Historial local</span><h3>Gestiones y promesas</h3></div></div>
-              {!selectedActivities.length && !selectedPromises.length && <p className="section-description">Todavía no hay actividad guardada en la v0.0.4 para este cliente.</p>}
+              {!selectedActivities.length && !selectedPromises.length && <p className="section-description">Todavía no hay actividad guardada para este cliente.</p>}
               {selectedPromises.map((promise) => <article className={`agenda-promise-row ${promise.status}`} key={promise.id}><span><CircleDollarSign size={15} /></span><div><strong>{money(promise.amount)} · {promiseLabels[promise.status]}</strong><small>Fecha prometida {longDate(promise.dueAt)}{promise.note ? ` · ${promise.note}` : ''}</small></div>{promise.status === 'pending' && <div className="promise-actions"><button title="Marcar cumplida" onClick={() => completePromise(promise.id, 'kept')}><Check size={13} /></button><button title="Marcar incumplida" onClick={() => completePromise(promise.id, 'broken')}><X size={13} /></button></div>}</article>)}
               {selectedActivities.map((activity) => <article className="agenda-activity-row" key={activity.id}><span>{actionLabels[activity.type]}</span><div><strong>{outcomeLabels[activity.outcome]}</strong><small>{longDate(activity.occurredAt)}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}
             </section>
@@ -185,7 +187,7 @@ export function AgendaView({ clients, products, onOpen, onPlanRoute, onOperation
   );
 }
 
-function AgendaRecommendations({ client }: { client: Client }) {
+function AgendaRecommendations({ client, onOpenProduct }: { client: Client; onOpenProduct: (product: Product) => void }) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -198,7 +200,7 @@ function AgendaRecommendations({ client }: { client: Client }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [client.id]);
-  return <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Oferta sugerida</span><h3>Productos para conversar</h3></div><span className="algorithm-pill">Algorítmico</span></div>{loading && <p className="section-description">Calculando afinidad y adopción en clientes comparables…</p>}<div className="agenda-offer-grid">{recommendations.slice(0, 3).map((item) => <article key={item.product.id}><span><Package size={16} /></span><div><strong>{item.product.name}</strong><small>{item.reason}</small></div><em>{item.score}</em></article>)}</div>{!loading && !recommendations.length && <p className="section-description">No hay una recomendación suficientemente útil con los datos actuales.</p>}</section>;
+  return <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Oferta sugerida</span><h3>Productos para conversar</h3></div><span className="algorithm-pill">Algorítmico</span></div>{loading && <p className="section-description">Calculando afinidad y adopción en clientes comparables…</p>}<div className="agenda-offer-grid">{recommendations.slice(0, 3).map((item) => <article key={item.product.id}><span><Package size={16} /></span><div><button className="entity-link product-entity-link" onClick={() => onOpenProduct(item.product)}>{item.product.name}<ChevronRight size={12} /></button><small>{item.reason}</small></div><em>{item.score}</em></article>)}</div>{!loading && !recommendations.length && <p className="section-description">No hay una recomendación suficientemente útil con los datos actuales.</p>}</section>;
 }
 
 function ActivityDialog({ client, entry, operationalDate, products, onClose, onSaved }: { client: Client; entry: AgendaEntry; operationalDate: string; products: Product[]; onClose: () => void; onSaved: () => void }) {
@@ -244,7 +246,7 @@ function ActivityDialog({ client, entry, operationalDate, products, onClose, onS
 }
 
 function TaskDialog({ clients, seller, initialDate, onClose, onSaved }: { clients: Client[]; seller: string; initialDate: string; onClose: () => void; onSaved: () => void }) {
-  const pool = useMemo(() => clients.filter((client) => !seller || client.seller === seller), [clients, seller]);
+  const pool = useMemo(() => clients.filter((client) => matchesMultiFilter(client.seller, seller)), [clients, seller]);
   const [query, setQuery] = useState('');
   const [clientId, setClientId] = useState<number | null>(null);
   const [scheduledFor, setScheduledFor] = useState(initialDate);

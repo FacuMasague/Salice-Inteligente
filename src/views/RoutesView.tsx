@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Check, Clock3, MapPin, Navigation, Route, Sparkles, Truck } from 'lucide-react';
 import { distanceKm } from '../../shared/algorithms';
 import type { Client, RoutePlan } from '../../shared/models';
+import { matchesMultiFilter } from '../../shared/multi-filter';
+import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { minutesAsTime, money } from '../lib/format';
 
 const initialRouteIDs = (clients: Client[]) => {
@@ -16,7 +19,7 @@ const initialRouteIDs = (clients: Client[]) => {
   return ordered.slice(0, 5).map((client) => client.id);
 };
 
-export function RoutesView({ clients, initialClientId }: { clients: Client[]; initialClientId: number | null }) {
+export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSeller }: { clients: Client[]; initialClientId: number | null; onOpenClient: (client: Client) => void; onOpenSeller: (seller: string) => void }) {
   const routableClients = useMemo(() => clients.filter((client) => client.active && client.coordinates !== null), [clients]);
   const sellers = useMemo(() => [...new Set(routableClients.map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')), [routableClients]);
   const [seller, setSeller] = useState(() => {
@@ -49,13 +52,13 @@ export function RoutesView({ clients, initialClientId }: { clients: Client[]; in
     setPlan(null);
   }, [initialClientId, routableClients]);
   const orderedClients = useMemo(
-    () => routableClients.filter((client) => !seller || client.seller === seller).sort((a, b) => b.visitPriority - a.visitPriority),
+    () => routableClients.filter((client) => matchesMultiFilter(client.seller, seller)).sort((a, b) => b.visitPriority - a.visitPriority),
     [routableClients, seller],
   );
   const selectedSales = clients.filter((client) => selectedIds.has(client.id)).reduce((sum, client) => sum + client.sales90d, 0);
 
   const changeSeller = (nextSeller: string) => {
-    const pool = routableClients.filter((client) => !nextSeller || client.seller === nextSeller);
+    const pool = routableClients.filter((client) => matchesMultiFilter(client.seller, nextSeller));
     setSeller(nextSeller);
     setSelectedIds(new Set(initialRouteIDs(pool)));
     setPlan(null);
@@ -82,15 +85,16 @@ export function RoutesView({ clients, initialClientId }: { clients: Client[]; in
   return (
     <div className="page-view routes-layout">
       <section className="data-card route-picker" data-tour="route-picker">
-        <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Planificador</span><h2>Visitas sugeridas</h2></div><div className="route-picker-actions"><label><span>Vendedor</span><select value={seller} onChange={(event) => changeSeller(event.target.value)}><option value="">Todos</option>{sellers.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><span className="count-badge">{selectedIds.size} elegidas</span></div></div>
+        <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Planificador</span><h2>Visitas sugeridas</h2></div><div className="route-picker-actions"><MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={changeSeller} /><span className="count-badge">{selectedIds.size} elegidas</span></div></div>
         <p className="section-description">{orderedClients.length} clientes geolocalizados · P visita combina 58% riesgo de cobranza y 42% oportunidad comercial.</p>
-        <div className="route-constraints"><label><span>Duración por visita</span><select value={visitMinutes} onChange={(event) => { setVisitMinutes(Number(event.target.value)); setPlan(null); }}><option value={15}>15 min</option><option value={25}>25 min</option><option value={35}>35 min</option><option value={45}>45 min</option></select></label><label><span>Jornada máxima</span><select value={maxWorkMinutes} onChange={(event) => { setMaxWorkMinutes(Number(event.target.value)); setPlan(null); }}><option value={360}>6 horas</option><option value={420}>7 horas</option><option value={480}>8 horas</option><option value={540}>9 horas</option></select></label></div>
+        <div className="route-constraints"><SingleSelectFilter label="Duración por visita" value={visitMinutes} options={[{ value: 15, label: '15 min' }, { value: 25, label: '25 min' }, { value: 35, label: '35 min' }, { value: 45, label: '45 min' }]} onChange={(value) => { setVisitMinutes(Number(value)); setPlan(null); }} /><SingleSelectFilter label="Jornada máxima" value={maxWorkMinutes} options={[{ value: 360, label: '6 horas' }, { value: 420, label: '7 horas' }, { value: 480, label: '8 horas' }, { value: 540, label: '9 horas' }]} onChange={(value) => { setMaxWorkMinutes(Number(value)); setPlan(null); }} /></div>
         <div className="route-client-list">
-          {orderedClients.map((client) => <button className={`route-client ${selectedIds.has(client.id) ? 'selected' : ''}`} key={client.id} onClick={() => toggle(client.id)}>
-            <span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span>
-            <div><strong>{client.tradeName}</strong><span><MapPin size={12} /> {client.locality} · {client.seller}</span></div>
+          {orderedClients.map((client) => <article className={`route-client ${selectedIds.has(client.id) ? 'selected' : ''}`} key={client.id}>
+            <button className="route-check-button" onClick={() => toggle(client.id)} aria-label={`${selectedIds.has(client.id) ? 'Quitar' : 'Agregar'} ${client.tradeName} de la ruta`}><span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span></button>
+            <button className="route-client-identity" onClick={() => onOpenClient(client)}><strong>{client.tradeName}</strong><span><MapPin size={12} /> {client.locality}</span></button>
+            <button className="entity-link route-seller-link" onClick={() => onOpenSeller(client.seller)}>{client.seller}</button>
             <div className="route-priority"><strong>P{client.visitPriority}</strong><span>C{client.collectionRisk} · O{client.commercialOpportunity}</span></div>
-          </button>)}
+          </article>)}
         </div>
         <div className="route-picker-footer"><div><span>Venta 90d seleccionada</span><strong>{money(selectedSales, true)}</strong></div><button className="button primary large" disabled={!selectedIds.size || loading} onClick={optimize}><Sparkles size={17} /> {loading ? 'Optimizando…' : 'Optimizar recorrido'}</button></div>
       </section>

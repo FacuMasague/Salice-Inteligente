@@ -7,8 +7,9 @@ export type CommercialActivityOutcome = 'completed' | 'sale' | 'promise' | 'no_c
 export type PaymentPromiseStatus = 'pending' | 'kept' | 'broken' | 'cancelled';
 export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
+export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.0.4';
+export const APP_VERSION = '0.3.2';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -29,6 +30,9 @@ export type VectorKey =
   | 'cachorros'
   | 'adultos'
   | 'senior'
+  | 'tamano_pequeno'
+  | 'tamano_mediano'
+  | 'tamano_grande'
   | 'premium'
   | 'economico'
   | 'alimento_seco'
@@ -38,24 +42,66 @@ export type VectorKey =
   | 'antiparasitario'
   | 'natural'
   | 'funcional'
+  | 'esterilizados'
+  | 'control_peso'
+  | 'piel_pelaje'
+  | 'salud_urinaria'
+  | 'salud_digestiva'
+  | 'salud_dental'
   | 'higiene'
   | 'accesorios'
   | 'granel'
   | 'consumo_humano'
-  | 'promocional';
+  | 'promocional'
+  | 'sabor_pollo'
+  | 'sabor_carne'
+  | 'sabor_pescado'
+  | 'sabor_cordero';
+
+export interface ProductVectorMeta {
+  version: '2.1';
+  /** Calidad de la clasificación, no probabilidad de venta. */
+  confidence: number;
+  /** Cobertura de los campos descriptivos y maestros disponibles en GESI. */
+  sourceCoverage: number;
+  evidence: Partial<Record<VectorKey, string[]>>;
+}
+
+export type ProductMasterStatus = 'active' | 'inactive' | 'unknown';
+export type ProductPricePosition = 'budget' | 'market' | 'premium' | 'unknown';
 
 export interface Product {
   id: string;
   sku: string;
   name: string;
+  description: string;
   family: string;
+  subcategory: string;
   brand: string;
+  line: string;
+  commercialFamily: string;
+  group: string;
   pack: string;
+  unit: string;
+  unitsPerCase: number | null;
+  masterStatus: ProductMasterStatus;
   price: number;
+  /** Contenido neto estimado sólo cuando la presentación es inequívoca. */
+  contentKg: number | null;
+  /** Precio de referencia normalizado; no se calcula si la unidad es ambigua. */
+  referencePricePerKg: number | null;
+  /** Posición relativa dentro de alimentos secos comparables. */
+  pricePosition: ProductPricePosition;
   stock: number;
+  units90d: number;
   monthlyUnits: number;
+  sales90d: number;
+  clients90d: number;
+  lastSaleAt: string;
+  stockCoverageMonths: number | null;
   margin: number | null;
   vector: Record<VectorKey, number>;
+  vectorMeta: ProductVectorMeta;
 }
 
 export interface Purchase {
@@ -74,6 +120,16 @@ export interface Invoice {
   amount: number;
   outstanding: number;
   status: InvoiceStatus;
+  creditTermDays: number | null;
+}
+
+export interface CreditTermOption {
+  days: number;
+  minDays: number;
+  maxDays: number;
+  invoiceCount: number;
+  share: number;
+  lastUsedAt: string;
 }
 
 export interface Client {
@@ -100,7 +156,13 @@ export interface Client {
   salesBlocked: boolean;
   deliveryBlocked: boolean;
   paymentMethod: string;
-  creditDays: number;
+  creditDays: number | null;
+  creditTermStatus: CreditTermStatus;
+  creditTermSampleSize: number;
+  creditTermDominantShare: number;
+  creditTermMinDays: number | null;
+  creditTermMaxDays: number | null;
+  creditTermOptions: CreditTermOption[];
   avgPaymentDays: number;
   avgPaymentDelayDays: number;
   onTimePaymentRate: number;
@@ -133,6 +195,7 @@ export interface SnapshotMeta {
   syncStatus: 'demo' | 'connected' | 'error';
   apiBaseConfigured: boolean;
   disclaimer?: string;
+  productVectorVersion?: '2.1';
   coverage?: {
     rawClients: number;
     includedClients: number;
@@ -157,15 +220,740 @@ export interface SnapshotMeta {
     activePortfolioReviewClients?: number;
     activeSalesBlockedClients?: number;
     clientsWithPaymentTerms?: number;
+    creditTermInvoices?: number;
+    invalidCreditTermInvoices?: number;
+    clientsWithObservedCreditTerms?: number;
+    clientsWithMixedCreditTerms?: number;
   };
 }
 
-export const SNAPSHOT_REVISION = 5;
+export const SNAPSHOT_REVISION = 8;
 
 export interface DashboardData {
   meta: SnapshotMeta;
   clients: Client[];
   products: Product[];
+}
+
+export type SptFilterKey =
+  | 'seller'
+  | 'brand'
+  | 'productGroup'
+  | 'channel'
+  | 'product'
+  | 'client'
+  | 'line'
+  | 'category'
+  | 'subcategory'
+  | 'clientType'
+  | 'grouping'
+  | 'locality';
+
+export type SptFilters = Record<SptFilterKey, string> & { month: string };
+export type SptReportPage = 'main' | 'sellers' | 'quarters';
+
+export interface SptReportMeta {
+  available: boolean;
+  sourceFile: string;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  minDate: string;
+  maxDate: string;
+  latestMonth: string;
+  months: string[];
+  options: Record<SptFilterKey, string[]>;
+  defaultUniverse: {
+    companies: number[];
+    sellers: string[];
+    channels: string[];
+    productGroups: string[];
+    excludedCategories: string[];
+  };
+}
+
+export interface SptPeriodMetrics {
+  kilos: number;
+  units: number;
+  netAmount: number;
+  clients: number;
+}
+
+export interface SptDailyPoint {
+  day: number;
+  current: number;
+  previousMonth: number;
+  previousYear: number;
+}
+
+export interface SptMonthlyPoint extends SptPeriodMetrics {
+  month: string;
+}
+
+export interface SptBreakdownRow extends SptPeriodMetrics {
+  label: string;
+}
+
+export interface SptQuarterPoint {
+  quarter: number;
+  current: number;
+  previousYear: number;
+}
+
+export interface SptReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  page: SptReportPage;
+  selectedMonth: string;
+  cutoffDay: number;
+  filters: SptFilters;
+  current: SptPeriodMetrics;
+  previousMonth: SptPeriodMetrics;
+  previousYear: SptPeriodMetrics;
+  ytd: SptPeriodMetrics;
+  previousYtd: SptPeriodMetrics;
+  averageLast3MonthsKilos: number;
+  daily: SptDailyPoint[];
+  monthly: SptMonthlyPoint[];
+  sellers: SptBreakdownRow[];
+  productGroups: SptBreakdownRow[];
+  quarters: SptQuarterPoint[];
+}
+
+export type CommercialSalesFilterKey = 'seller' | 'category' | 'brand' | 'productGroup';
+
+export type CommercialSalesPeriodMode = 'month' | 'year';
+
+export type CommercialSalesFilters = Record<CommercialSalesFilterKey, string> & {
+  periodMode: CommercialSalesPeriodMode;
+  month: string;
+  year: string;
+};
+
+export interface CommercialSalesReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  latestMonth: string;
+  latestYear: string;
+  months: string[];
+  years: string[];
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: Record<CommercialSalesFilterKey, string[]>;
+  universe: {
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    excludedClients: string[];
+  };
+}
+
+export interface CommercialSalesMetrics {
+  netAmount: number;
+  kilos: number;
+  units: number;
+  clients: number;
+}
+
+export interface CommercialSalesMixRow extends CommercialSalesMetrics {
+  label: 'Balanceado' | 'Autoservicio' | 'Drovet' | 'Sanitarios' | 'Otros';
+  share: number;
+}
+
+export interface CommercialSalesMonthlyPoint {
+  month: string;
+  current: number;
+  previousYear: number;
+}
+
+export interface CommercialSalesProductRow extends CommercialSalesMetrics {
+  productId: string;
+  product: string;
+  averagePricePerKilo: number | null;
+}
+
+export interface CommercialSalesBrandRow extends CommercialSalesMetrics {
+  brand: string;
+  averagePricePerKilo: number | null;
+  kiloShare: number;
+  salesShare: number;
+  averageDailySales: number;
+  products: CommercialSalesProductRow[];
+}
+
+export interface CommercialSalesBrandTotal extends CommercialSalesMetrics {
+  averagePricePerKilo: number | null;
+  averageDailySales: number;
+}
+
+export interface CommercialSalesReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  periodMode: CommercialSalesPeriodMode;
+  selectedPeriod: string;
+  selectedMonth: string;
+  cutoffDay: number;
+  periodStart: string;
+  periodEnd: string;
+  comparisonStart: string;
+  comparisonEnd: string;
+  elapsedDays: number;
+  comparisonAvailable: boolean;
+  filters: CommercialSalesFilters;
+  current: CommercialSalesMetrics;
+  comparison: CommercialSalesMetrics;
+  difference: number;
+  variation: number | null;
+  segments: {
+    balanceado: CommercialSalesMetrics;
+    drovet: CommercialSalesMetrics;
+    sanitarios: CommercialSalesMetrics;
+    autoservicio: CommercialSalesMetrics;
+  };
+  mix: CommercialSalesMixRow[];
+  monthly: CommercialSalesMonthlyPoint[];
+  brandTotal: CommercialSalesBrandTotal;
+  brands: CommercialSalesBrandRow[];
+}
+
+export type MarsClientMode = 'branch' | 'account';
+
+export type MarsFilterKey = 'branch' | 'clientType' | 'channelGroup' | 'brand' | 'subcategoryGroup';
+
+export type MarsFilters = Record<MarsFilterKey, string> & {
+  year: string;
+  period: string;
+  clientMode: MarsClientMode;
+};
+
+export interface MarsPeriodDefinition {
+  year: number;
+  period: number;
+  label: string;
+  quarter: string;
+  start: string;
+  end: string;
+  days: number;
+}
+
+export interface MarsReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  clientTypeCatalogSource: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  capturedAt: string;
+  latestYear: string;
+  latestPeriod: string;
+  years: string[];
+  periods: Record<string, MarsPeriodDefinition[]>;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: Record<MarsFilterKey, string[]>;
+  universe: {
+    companies: number[];
+    branches: number[];
+    productGroup: string;
+    excludedClients: string[];
+  };
+}
+
+export interface MarsMetrics {
+  kilos: number;
+  clients: number;
+  accounts: number;
+  clientBranches: number;
+}
+
+export interface MarsPeriodPoint extends MarsMetrics {
+  period: number;
+  label: string;
+  quarter: string;
+  start: string;
+  end: string;
+  isPartial: boolean;
+  previousYearKilos: number;
+  previousPeriodKilos: number;
+  ytdKilos: number;
+  previousYtdKilos: number;
+  ytdVsPreviousYear: number | null;
+  vsPreviousYear: number | null;
+  vsPreviousPeriod: number | null;
+}
+
+export interface MarsQuarterPoint {
+  quarter: string;
+  kilos: number;
+  previousYearKilos: number;
+}
+
+export interface MarsBrandRow extends MarsMetrics {
+  brand: string;
+  share: number;
+  previousYearKilos: number;
+  variation: number | null;
+}
+
+export interface MarsReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  filters: MarsFilters;
+  selected: MarsPeriodDefinition;
+  isPartial: boolean;
+  elapsedDays: number;
+  current: MarsMetrics;
+  previousPeriod: MarsMetrics;
+  previousYear: MarsMetrics;
+  ytd: MarsMetrics;
+  previousYtd: MarsMetrics;
+  periods: MarsPeriodPoint[];
+  quarters: MarsQuarterPoint[];
+  brands: MarsBrandRow[];
+}
+
+export type NutriPetFilterKey = 'channelGroup' | 'brand' | 'product' | 'line' | 'client' | 'grouping' | 'category';
+
+export type NutriPetFilters = Record<NutriPetFilterKey, string> & {
+  year: string;
+  month: string;
+};
+
+export interface NutriPetReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  capturedAt: string;
+  latestYear: string;
+  latestMonth: string;
+  years: string[];
+  monthsByYear: Record<string, string[]>;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: Record<NutriPetFilterKey, string[]>;
+  universe: {
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    productGroup: string;
+    excludedCategories: string[];
+    excludedClients: string[];
+  };
+}
+
+export interface NutriPetMetrics {
+  kilos: number;
+  clients: number;
+  units: number;
+  netAmount: number;
+}
+
+export interface NutriPetMonthlyPoint extends NutriPetMetrics {
+  month: string;
+  isPartial: boolean;
+  comparisonAvailable: boolean;
+  previousMonthKilos: number;
+  previousYearKilos: number;
+  ytdKilos: number;
+  previousYtdKilos: number;
+  vsPreviousMonth: number | null;
+  vsPreviousYear: number | null;
+  ytdVsPreviousYear: number | null;
+}
+
+export interface NutriPetQuarterPoint extends NutriPetMetrics {
+  quarter: string;
+  isPartial: boolean;
+}
+
+export interface NutriPetBrandRow extends NutriPetMetrics {
+  brand: string;
+  share: number;
+  previousYearKilos: number;
+  variation: number | null;
+}
+
+export interface NutriPetProductRow extends NutriPetMetrics {
+  productId: string;
+  product: string;
+  brand: string;
+  share: number;
+}
+
+export interface NutriPetReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  selectedMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  isPartial: boolean;
+  elapsedDays: number;
+  comparisonAvailable: boolean;
+  filters: NutriPetFilters;
+  current: NutriPetMetrics;
+  previousMonth: NutriPetMetrics;
+  previousYear: NutriPetMetrics;
+  ytd: NutriPetMetrics;
+  previousYtd: NutriPetMetrics;
+  monthly: NutriPetMonthlyPoint[];
+  quarters: NutriPetQuarterPoint[];
+  brands: NutriPetBrandRow[];
+  products: NutriPetProductRow[];
+}
+
+export type BairesFilterKey = 'segment' | 'brand' | 'subcategory' | 'branch';
+
+export type BairesFilters = Record<BairesFilterKey, string> & {
+  year: string;
+  month: string;
+};
+
+export interface BairesReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  capturedAt: string;
+  latestYear: string;
+  latestMonth: string;
+  years: string[];
+  monthsByYear: Record<string, string[]>;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: Record<BairesFilterKey, string[]>;
+  universe: {
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    productGroups: string[];
+    excludedCategories: string[];
+    excludedClients: string[];
+  };
+}
+
+export interface BairesMetrics {
+  kilos: number;
+  clients: number;
+  units: number;
+  netAmount: number;
+}
+
+export interface BairesMonthlyPoint extends BairesMetrics {
+  month: string;
+  isPartial: boolean;
+  comparisonAvailable: boolean;
+  previousMonthKilos: number;
+  previousYearKilos: number;
+  ytdKilos: number;
+  previousYtdKilos: number;
+  vsPreviousMonth: number | null;
+  vsPreviousYear: number | null;
+  ytdVsPreviousYear: number | null;
+}
+
+export interface BairesQuarterPoint extends BairesMetrics {
+  quarter: string;
+  isPartial: boolean;
+}
+
+export interface BairesBreakdownRow extends BairesMetrics {
+  name: string;
+  share: number;
+  previousYearKilos: number;
+  variation: number | null;
+}
+
+export interface BairesReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  selectedMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  isPartial: boolean;
+  elapsedDays: number;
+  comparisonAvailable: boolean;
+  filters: BairesFilters;
+  current: BairesMetrics;
+  previousMonth: BairesMetrics;
+  previousYear: BairesMetrics;
+  ytd: BairesMetrics;
+  previousYtd: BairesMetrics;
+  monthly: BairesMonthlyPoint[];
+  quarters: BairesQuarterPoint[];
+  brands: BairesBreakdownRow[];
+  subcategories: BairesBreakdownRow[];
+}
+
+export type GeneralReportMode = 'core' | 'strategic' | 'autoservice';
+export type GeneralReportUnit = 'kilos' | 'currency';
+
+export interface GeneralReportFilters {
+  mode: GeneralReportMode;
+  month: string;
+  seller: string;
+  category: string;
+  brand: string;
+}
+
+export interface GeneralReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  capturedAt: string;
+  latestMonth: string;
+  months: string[];
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: {
+    sellers: string[];
+    coreCategories: string[];
+    coreBrands: string[];
+    strategicBrands: string[];
+  };
+  targetSource: {
+    label: string;
+    capturedAt: string;
+    coverageFrom: string;
+    coverageThrough: string;
+  };
+  universe: {
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    sellers: string[];
+    coreCategories: string[];
+    coreBrands: string[];
+    strategicBrands: string[];
+    autoserviceSellers: string[];
+  };
+}
+
+export interface GeneralPerformanceRow {
+  name: string;
+  actual: number;
+  target: number;
+  completion: number | null;
+  gap: number;
+  share: number;
+}
+
+export interface GeneralTrendPoint {
+  month: string;
+  actual: number;
+  target: number;
+  completion: number | null;
+  isPartial: boolean;
+}
+
+export interface GeneralReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  selectedMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  isPartial: boolean;
+  elapsedDays: number;
+  daysInMonth: number;
+  unit: GeneralReportUnit;
+  filters: GeneralReportFilters;
+  actual: number;
+  target: number;
+  completion: number | null;
+  gap: number;
+  projection: number | null;
+  projectedCompletion: number | null;
+  previousMonthActual: number;
+  previousYearActual: number;
+  kilos: number;
+  clients: number;
+  units: number;
+  netAmount: number;
+  trend: GeneralTrendPoint[];
+  sellers: GeneralPerformanceRow[];
+  categories: GeneralPerformanceRow[];
+  brands: GeneralPerformanceRow[];
+}
+
+export type PendingBalanceStatus = 'all' | 'overdue' | 'not_due';
+
+export interface PendingBalanceFilters {
+  seller: string;
+  paymentMethod: string;
+  status: string;
+}
+
+export interface PendingBalanceReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  capturedAt: string;
+  asOfDate: string;
+  salesFrom: string;
+  clientCount: number;
+  documentCount: number;
+  options: {
+    sellers: string[];
+    paymentMethods: string[];
+  };
+  universe: {
+    companies: number[];
+    branches: number[];
+    excludedSellerGroup: string;
+    visibleSellers: string[];
+    balanceRule: string;
+  };
+}
+
+export interface PendingBalanceClientRow {
+  clientId: number;
+  name: string;
+  tradeName: string;
+  seller: string;
+  paymentMethod: string;
+  active: boolean;
+  pendingBalance: number;
+  overdueBalance: number;
+  overdueShare: number;
+  earliestDue: string | null;
+  oldestOverdueDays: number;
+  openDocuments: number;
+  overdueDocuments: number;
+  creditTermTotalDays: number;
+  creditTermAverageDays: number | null;
+  sales30: number;
+  overdueToSales30: number | null;
+}
+
+export interface PendingBalanceSellerRow {
+  seller: string;
+  clients: number;
+  overdueClients: number;
+  pendingBalance: number;
+  overdueBalance: number;
+  overdueShare: number;
+  sales30: number;
+  overdueToSales30: number | null;
+}
+
+export interface PendingBalanceAgingRow {
+  key: 'overdue_90' | 'overdue_61_90' | 'overdue_31_60' | 'overdue_1_30' | 'not_due';
+  label: string;
+  amount: number;
+  documents: number;
+  share: number;
+}
+
+export interface PendingBalanceReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  salesWindowFrom: string;
+  filters: PendingBalanceFilters;
+  pendingBalance: number;
+  overdueBalance: number;
+  overdueShare: number;
+  sales30: number;
+  overdueToSales30: number | null;
+  clientsWithBalance: number;
+  overdueClients: number;
+  openDocuments: number;
+  overdueDocuments: number;
+  sellers: PendingBalanceSellerRow[];
+  clients: PendingBalanceClientRow[];
+  aging: PendingBalanceAgingRow[];
+}
+
+export type NonBuyerFilterKey = 'productGroup' | 'category' | 'brand' | 'seller';
+
+export type NonBuyerFilters = Record<NonBuyerFilterKey, string>;
+
+export interface NonBuyerReportMeta {
+  available: boolean;
+  sourceSystem: string;
+  rowCount: number;
+  coverageFrom: string;
+  minDate: string;
+  maxDate: string;
+  capturedAt: string;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: Record<NonBuyerFilterKey, string[]>;
+  agreementsAvailable: boolean;
+  agreementsNote: string;
+  universe: {
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    clientStatuses: string[];
+    excludedClients: string[];
+    excludedProductGroups: string[];
+    excludedCategories: string[];
+    excludedSellers: string[];
+    excludedBrands: string[];
+  };
+}
+
+export interface NonBuyerSummary {
+  universe90: number;
+  buyers30: number;
+  nonBuyers30: number;
+  rate: number | null;
+  universe180: number;
+}
+
+export interface NonBuyerEntityRow {
+  id: string;
+  clientId: number | null;
+  name: string;
+  seller: string;
+  lastPurchaseDate: string | null;
+  daysSinceLastPurchase: number | null;
+  averageKilos3Months: number;
+  averageSales3Months: number;
+  net180: number;
+  net90: number;
+  net30: number;
+  isNonBuyer30: boolean;
+}
+
+export interface NonBuyerSellerRow {
+  seller: string;
+  universe90: number;
+  nonBuyers30: number;
+  rate: number | null;
+}
+
+export interface NonBuyerReportPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  filters: NonBuyerFilters;
+  windows: {
+    from180: string;
+    from90: string;
+    from30: string;
+    through: string;
+    averageFrom: string;
+    averageThrough: string;
+  };
+  accountsSummary: NonBuyerSummary;
+  brandsSummary: NonBuyerSummary;
+  accounts: NonBuyerEntityRow[];
+  brands: NonBuyerEntityRow[];
+  accountSellers: NonBuyerSellerRow[];
+  brandSellers: NonBuyerSellerRow[];
 }
 
 export interface Recommendation {
@@ -289,6 +1077,9 @@ export const VECTOR_LABELS: Record<VectorKey, string> = {
   cachorros: 'Cachorros',
   adultos: 'Adultos',
   senior: 'Senior',
+  tamano_pequeno: 'Mascota pequeña',
+  tamano_mediano: 'Mascota mediana',
+  tamano_grande: 'Mascota grande',
   premium: 'Premium',
   economico: 'Económico',
   alimento_seco: 'Alimento seco',
@@ -298,11 +1089,21 @@ export const VECTOR_LABELS: Record<VectorKey, string> = {
   antiparasitario: 'Antiparasitario',
   natural: 'Natural',
   funcional: 'Funcional',
+  esterilizados: 'Esterilizados',
+  control_peso: 'Control de peso',
+  piel_pelaje: 'Piel y pelaje',
+  salud_urinaria: 'Salud urinaria',
+  salud_digestiva: 'Salud digestiva',
+  salud_dental: 'Salud dental',
   higiene: 'Higiene',
   accesorios: 'Accesorios',
   granel: 'Granel',
   consumo_humano: 'Consumo humano',
   promocional: 'Promocional',
+  sabor_pollo: 'Pollo',
+  sabor_carne: 'Carne vacuna',
+  sabor_pescado: 'Pescado',
+  sabor_cordero: 'Cordero',
 };
 
 export const VECTOR_DESCRIPTIONS: Record<VectorKey, string> = {
@@ -312,6 +1113,9 @@ export const VECTOR_DESCRIPTIONS: Record<VectorKey, string> = {
   cachorros: 'Productos formulados para primeras etapas de vida.',
   adultos: 'Productos orientados a animales adultos.',
   senior: 'Productos para animales mayores o de edad avanzada.',
+  tamano_pequeno: 'Productos formulados, dosificados o dimensionados para mascotas pequeñas.',
+  tamano_mediano: 'Productos formulados, dosificados o dimensionados para mascotas medianas.',
+  tamano_grande: 'Productos formulados, dosificados o dimensionados para mascotas grandes o gigantes.',
   premium: 'Posicionamiento de calidad, formulación o precio superior.',
   economico: 'Oferta de mantenimiento, rendimiento o precio accesible.',
   alimento_seco: 'Alimentos balanceados secos y croquetas.',
@@ -321,9 +1125,28 @@ export const VECTOR_DESCRIPTIONS: Record<VectorKey, string> = {
   antiparasitario: 'Pipetas y tratamientos contra pulgas, garrapatas y parásitos.',
   natural: 'Ingredientes o posicionamiento natural, orgánico o sin conservantes.',
   funcional: 'Soluciones dietarias, terapéuticas o para necesidades específicas.',
+  esterilizados: 'Alimentos y soluciones destinados explícitamente a animales castrados o esterilizados.',
+  control_peso: 'Productos light, de peso ideal o control de peso para mascotas.',
+  piel_pelaje: 'Cuidado dermatológico, sensibilidad de piel y mantenimiento del pelaje.',
+  salud_urinaria: 'Productos urinarios, renales o de soporte de las vías urinarias.',
+  salud_digestiva: 'Soporte gastrointestinal, digestivo o hepático explícito.',
+  salud_dental: 'Higiene oral, control de sarro y snacks dentales.',
   higiene: 'Arenas, sanitarios, shampoo y productos de limpieza.',
   accesorios: 'Correas, collares, juguetes, camas y equipamiento.',
   granel: 'Productos o formatos adecuados para venta fraccionada o gran volumen.',
   consumo_humano: 'Almacén, bebidas, congelados y otros alimentos para personas.',
   promocional: 'Material POP, bonificaciones, merchandising y promociones.',
+  sabor_pollo: 'Alimentos para mascotas con pollo declarado en su descripción.',
+  sabor_carne: 'Alimentos para mascotas con carne vacuna declarada.',
+  sabor_pescado: 'Alimentos para mascotas con pescado, atún o salmón declarado.',
+  sabor_cordero: 'Alimentos para mascotas con cordero declarado.',
 };
+
+export const VECTOR_GROUPS: { id: string; label: string; description: string; keys: VectorKey[] }[] = [
+  { id: 'species', label: 'Especie', description: 'Para quién está destinado el producto.', keys: ['perros', 'gatos', 'otras_especies'] },
+  { id: 'life-stage', label: 'Edad y tamaño', description: 'Etapa de vida y porte explícitos de la mascota.', keys: ['cachorros', 'adultos', 'senior', 'tamano_pequeno', 'tamano_mediano', 'tamano_grande'] },
+  { id: 'positioning', label: 'Posicionamiento', description: 'Calidad, precio relativo y forma de comercialización.', keys: ['premium', 'economico', 'natural', 'granel', 'promocional'] },
+  { id: 'product-type', label: 'Tipo de producto', description: 'Formato y uso principal del artículo.', keys: ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano'] },
+  { id: 'needs', label: 'Necesidades específicas', description: 'Funciones de salud o cuidado declaradas.', keys: ['funcional', 'esterilizados', 'control_peso', 'piel_pelaje', 'salud_urinaria', 'salud_digestiva', 'salud_dental'] },
+  { id: 'flavour', label: 'Proteína o sabor', description: 'Ingredientes principales declarados en alimentos para mascotas.', keys: ['sabor_pollo', 'sabor_carne', 'sabor_pescado', 'sabor_cordero'] },
+];

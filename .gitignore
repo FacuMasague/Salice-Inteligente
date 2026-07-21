@@ -5,7 +5,15 @@ data/snapshot.json
 data/raw/
 data/staging/
 data/backups/
+data/refresh-backups/
 data/operations.sqlite*
+data/spt-report.sqlite*
+data/spt-gesi.sqlite*
+data/pending-balances.sqlite*
+data/raw/spt-backfill-*.json*
+data/reference/
+data/quality/
+.venv-pbix/
 tmp/
 .DS_Store
 *.log

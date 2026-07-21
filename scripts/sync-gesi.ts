@@ -4,6 +4,7 @@ import { normalizeCapture, validateNormalizedSnapshot } from '../server/gesi/nor
 import type { GesiRawCapture } from '../server/gesi/types.js';
 import { saveSnapshot } from '../server/store.js';
 import { importSnapshotNotes, recordSuccessfulSync } from '../server/operational-store.js';
+import { buildPendingBalancesDatabase } from '../server/pending-balances-build.js';
 import type { DashboardData } from '../shared/models.js';
 
 const capturePath = resolve(process.cwd(), 'data/raw/gesi-salice-latest.json');
@@ -40,6 +41,7 @@ try {
 }
 await saveSnapshot(snapshot);
 recordSuccessfulSync(snapshot);
+const pendingBalances = buildPendingBalancesDatabase(capture);
 
 console.log('Snapshot GESI validado y activado.');
 console.log(JSON.stringify({
@@ -54,4 +56,6 @@ console.log(JSON.stringify({
   invoices90d: snapshot.meta.coverage?.invoices90d,
   openDocuments: snapshot.meta.coverage?.openDocuments,
   paymentSamples: snapshot.meta.coverage?.paymentSamples,
+  pendingBalanceClients: pendingBalances.clientCount,
+  pendingBalanceDocuments: pendingBalances.documentCount,
 }, null, 2));
