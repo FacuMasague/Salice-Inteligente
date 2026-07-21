@@ -4,6 +4,6 @@ services:
     runtime: node
     plan: free
     branch: Hackaton
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm start
     healthCheckPath: /api/health
