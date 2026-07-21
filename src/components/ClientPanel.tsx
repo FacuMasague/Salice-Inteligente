@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Maximize2, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
-import type { Client, CommercialActivity, PaymentPromise, Product, Recommendation } from '../../shared/models';
+import type { Client, CommercialActivity, PaymentPromise, Product, ReceivableCaseEvent, Recommendation } from '../../shared/models';
+import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
@@ -17,7 +18,13 @@ interface ClientPanelProps {
   onExpand?: () => void;
   onOpenSeller?: (seller: string) => void;
   onOpenProduct?: (product: Product) => void;
+  onOpenInvoice?: (invoiceId: string) => void;
 }
+
+const receivableEventLabels: Record<ReceivableCaseEvent['eventType'], string> = {
+  created: 'Seguimiento iniciado', assignment: 'Responsable asignado', status: 'Estado actualizado',
+  follow_up: 'Seguimiento guardado', promise: 'Promesa informada', comment: 'Comentario de cobranza',
+};
 
 function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapshotDate: string }) {
   const anchor = new Date(snapshotDate);
@@ -40,7 +47,7 @@ function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapsho
   </section>;
 }
 
-export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct }: ClientPanelProps) {
+export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct, onOpenInvoice }: ClientPanelProps) {
   const [tab, setTab] = useState<'summary' | 'purchases' | 'account' | 'operations'>('summary');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
@@ -51,6 +58,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const [saveError, setSaveError] = useState('');
   const [activities, setActivities] = useState<CommercialActivity[]>([]);
   const [promises, setPromises] = useState<PaymentPromise[]>([]);
+  const [receivableEvents, setReceivableEvents] = useState<ReceivableCaseEvent[]>([]);
 
   useEffect(() => {
     setTab('summary');
@@ -60,11 +68,12 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
     setRecommendationError('');
     setActivities([]);
     setPromises([]);
+    setReceivableEvents([]);
     const controller = new AbortController();
     fetch(`/api/clients/${client.id}/operations`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((payload) => { setActivities(payload.activities || []); setPromises(payload.promises || []); })
-      .catch((error: Error) => { if (error.name !== 'AbortError') { setActivities([]); setPromises([]); } });
+      .then((payload) => { setActivities(payload.activities || []); setPromises(payload.promises || []); setReceivableEvents(payload.receivableEvents || []); })
+      .catch((error: Error) => { if (error.name !== 'AbortError') { setActivities([]); setPromises([]); setReceivableEvents([]); } });
     if (!client.active) {
       setRecommendationLoading(false);
       return () => controller.abort();
@@ -114,15 +123,17 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
 
   const utilization = client.creditLimit ? Math.round(Math.max(0, client.balance) / client.creditLimit * 100) : 0;
   const openInvoices = client.invoices.filter((invoice) => invoice.outstanding > 0);
+  const activeReceivableEvents = receivableEvents.filter((event) => !event.deletedAt && event.eventType !== 'status');
 
   return (
-    <aside className={`client-panel ${mode === 'full' ? 'client-profile' : 'client-panel-compact'}`} data-tour="client-panel" aria-label={`Ficha de ${client.tradeName}`}>
+    <aside className={`client-panel ${mode === 'full' ? 'client-profile' : 'client-panel-compact'}`} data-tour="client-panel" aria-label={`Ficha de ${clientPrimaryName(client)}`}>
       <div className="client-panel-header">
         <div className="client-panel-actions">{mode === 'compact' && onExpand && <button className="icon-button" onClick={onExpand} aria-label="Expandir ficha completa" title="Abrir ficha completa"><Maximize2 size={17} /></button>}<button className="icon-button" onClick={onClose} aria-label="Cerrar ficha"><X size={18} /></button></div>
-        <div className="client-avatar">{client.tradeName.split(' ').map((word) => word[0]).slice(0, 2).join('')}</div>
+        <div className="client-avatar">{clientInitials(client)}</div>
         <div className="client-title-block">
           <div className="eyebrow">{client.reference} · {client.segment}</div>
-          <h2>{client.tradeName}</h2>
+          <h2>{clientPrimaryName(client)}</h2>
+          {clientSecondaryName(client) && <span className="client-profile-trade-name">{clientSecondaryName(client)}</span>}
           <p><MapPin size={14} /> {client.address}, {client.locality}</p>
         </div>
         <div className="client-header-statuses"><span className={`gesi-status-badge ${client.active ? 'active' : 'inactive'}`}>{client.active ? 'Activo GESI' : 'Inactivo GESI'}</span><span className={`portfolio-badge ${client.portfolioStatus}`}>{client.portfolioStatus === 'confirmed' ? 'Salice confirmado' : 'Revisar cartera'}</span>{client.active && <span className={`health-badge ${client.health}`}>{healthLabel[client.health]}</span>}</div>
@@ -255,15 +266,17 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
               <div className="invoice-list">
                 {!client.invoices.length && <p className="section-description">No hay comprobantes pendientes ni pagos conciliados en la ventana analizada.</p>}
                 {client.invoices.map((invoice) => (
-                  <article className="invoice-row" key={invoice.id}>
+                  <button className="invoice-row" key={invoice.id} onClick={() => onOpenInvoice?.(invoice.id)} disabled={!onOpenInvoice}>
                     <div className={`invoice-status-dot ${invoice.status}`} />
                     <div className="invoice-copy">
                       <strong>{invoice.number}</strong>
                       <span>Emitida {compactDate(invoice.issuedAt)} · vence {compactDate(invoice.dueAt)}{invoice.creditTermDays != null ? ` · plazo ${invoice.creditTermDays} d` : ''}</span>
+                      <small>{invoice.paymentMethod || 'Sin forma de pago informada'}</small>
                       {invoice.paidAt && <small><Check size={12} /> Pagada {compactDate(invoice.paidAt)}</small>}
                     </div>
                     <div className="invoice-amount"><strong>{money(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount)}</strong><span className={`status-text ${invoice.status}`}>{invoiceLabel[invoice.status]}{invoice.outstanding > 0 && invoice.outstanding !== invoice.amount ? ' · saldo' : ''}</span></div>
-                  </article>
+                    <ChevronRight size={15} />
+                  </button>
                 ))}
               </div>
             </section>
@@ -277,6 +290,11 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
 
         {tab === 'operations' && (
           <>
+            <section className="panel-section first">
+              <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14} /> Cuentas por cobrar</span><h3>Seguimientos administrativos</h3></div><span className="count-badge">{activeReceivableEvents.length}</span></div>
+              {!activeReceivableEvents.length && <p className="section-description">Todavía no hay seguimientos guardados desde Cuentas por cobrar.</p>}
+              <div className="panel-operation-list receivable-events">{activeReceivableEvents.map((event) => <article key={event.id}><span>{receivableEventLabels[event.eventType]}</span><div><strong>{event.comment || receivableEventLabels[event.eventType]}</strong><small>{longDate(event.createdAt)} · {event.actor}</small></div></article>)}</div>
+            </section>
             <section className="panel-section first">
               <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Actividad local</span><h3>Gestiones registradas</h3></div><span className="count-badge">{activities.length}</span></div>
               {!activities.length && <p className="section-description">Todavía no hay visitas, llamadas, cobranzas u ofertas guardadas para este cliente.</p>}

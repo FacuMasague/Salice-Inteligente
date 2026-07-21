@@ -3,8 +3,10 @@ import { BarChart3, CalendarRange, CheckCircle2, ChevronRight, Database, Gauge, 
 import type { Client, DashboardData, GeneralPerformanceRow, GeneralReportMeta, GeneralReportMode, GeneralReportPayload } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
+import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 
@@ -12,6 +14,7 @@ interface ReportsViewProps {
   data: DashboardData;
   onOpen: (client: Client) => void;
   onOpenSeller: (seller: string) => void;
+  onOpenBrand: (brand: string) => void;
 }
 
 type PerformanceSortKey = 'name' | 'actual' | 'target' | 'completion' | 'gap';
@@ -94,7 +97,7 @@ function PerformanceTable({ title, subtitle, rows, unit, onOpenName }: { title: 
   </section>;
 }
 
-export function ReportsView({ data, onOpen, onOpenSeller }: ReportsViewProps) {
+export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: ReportsViewProps) {
   const [meta, setMeta] = useState<GeneralReportMeta | null>(null);
   const [report, setReport] = useState<GeneralReportPayload | null>(null);
   const [mode, setMode] = useState<GeneralReportMode>('core');
@@ -139,6 +142,14 @@ export function ReportsView({ data, onOpen, onOpenSeller }: ReportsViewProps) {
   const pulseOverdue = pulseClients.reduce((sum, client) => sum + client.overdueOutstanding, 0);
   const priority = [...pulseClients].sort((left, right) => right.visitPriority - left.visitPriority)[0];
   const breakdown = report?.brands.length ? report.brands : report?.categories ?? [];
+  const savedFilters = { mode, month, seller, category, brand };
+  const applySaved = (saved: Record<string, string>) => {
+    setMode(modes.some((item) => item.id === saved.mode) ? saved.mode as GeneralReportMode : 'core');
+    setMonth(saved.month || meta?.latestMonth || '');
+    setSeller(saved.seller || '');
+    setCategory(saved.category || '');
+    setBrand(saved.brand || '');
+  };
 
   if (error && !report) return <div className="page-view"><section className="data-card report-error"><Info size={22} /><div><h2>Reporte General no disponible</h2><p>{error}</p></div></section></div>;
   if (!meta || !report) return <div className="page-view"><section className="data-card report-loading"><span /><h2>Preparando Reporte General…</h2><p>Calculando resultados y objetivos desde las fuentes conciliadas.</p></section></div>;
@@ -153,6 +164,7 @@ export function ReportsView({ data, onOpen, onOpenSeller }: ReportsViewProps) {
         {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
         {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
       </div>
+      <SavedViewsBar viewKey="reports" filters={savedFilters} onApply={applySaved} />
     </section>
 
     <div className="general-kpis">
@@ -175,7 +187,7 @@ export function ReportsView({ data, onOpen, onOpenSeller }: ReportsViewProps) {
 
       <section className="data-card general-pulse-card">
         <div className="data-card-header"><div><span className="section-kicker"><PackageCheck size={14} /> Contexto operativo</span><h2>Pulso de la cartera</h2><p>Señales complementarias, no incluidas en el objetivo.</p></div></div>
-        <div className="general-pulse-list"><article><span>Ventas últimos 90 días</span><strong>{money(pulseSales, true)}</strong></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{priority.tradeName}</strong><small>P{priority.visitPriority} · {priority.seller}</small></button>}</div>
+        <div className="general-pulse-list"><article><span>Ventas últimos 90 días</span><strong>{money(pulseSales, true)}</strong></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{clientPrimaryName(priority)}</strong><small>{clientSecondaryName(priority) ? `${clientSecondaryName(priority)} · ` : ''}P{priority.visitPriority} · {priority.seller}</small></button>}</div>
       </section>
     </div>
 
@@ -186,7 +198,7 @@ export function ReportsView({ data, onOpen, onOpenSeller }: ReportsViewProps) {
 
     <div className="general-detail-grid">
       <PerformanceTable title="Resultado por vendedor" subtitle="Cada columna admite orden ascendente, descendente y original." rows={report.sellers} unit={report.unit} onOpenName={onOpenSeller} />
-      <PerformanceTable title={report.brands.length ? 'Resultado por marca' : 'Composición por rubro'} subtitle={report.brands.length ? 'Participación y objetivos del universo seleccionado.' : 'Composición real del período; el plan no baja a este nivel.'} rows={breakdown} unit={report.unit} />
+      <PerformanceTable title={report.brands.length ? 'Resultado por marca' : 'Composición por rubro'} subtitle={report.brands.length ? 'Participación y objetivos del universo seleccionado.' : 'Composición real del período; el plan no baja a este nivel.'} rows={breakdown} unit={report.unit} onOpenName={report.brands.length ? onOpenBrand : undefined} />
     </div>
 
     {mode === 'core' && report.categories.length > 0 && <PerformanceTable title="Resultado por rubro" subtitle="Alimento húmedo, balanceados y C&T bajo las mismas reglas del reporte." rows={report.categories} unit={report.unit} />}

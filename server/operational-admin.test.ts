@@ -72,14 +72,21 @@ describe('persistencia administrativa v0.4.0', () => {
       filters: { from: '2026-04-22', to: '2026-07-20' },
     });
     const updated = store.updateSavedView(created.id, { favorite: true, filters: { seller: 'Reventas' } });
+    const brandView = store.createSavedView({
+      viewKey: 'brands',
+      name: 'Marca buscada',
+      filters: { query: 'MaxPet', productQuery: 'gato', selectedBrand: 'MaxPet' },
+    });
     expect(updated?.favorite).toBe(true);
     expect(store.listSavedViews('sales-explorer')).toHaveLength(1);
+    expect(store.listSavedViews('brands')[0]?.filters).toMatchObject({ query: 'MaxPet', productQuery: 'gato' });
     expect(store.listSavedViews('receivables')).toHaveLength(0);
     expect(store.deleteSavedView(created.id)).toBe(true);
+    expect(store.deleteSavedView(brandView.id)).toBe(true);
     expect(store.listSavedViews()).toHaveLength(0);
   });
 
-  it('registra asignación, estado, seguimiento y comentarios como eventos append-only', () => {
+  it('registra un evento por seguimiento, materializa promesas y revierte el estado al borrar', () => {
     store.saveReceivableCase({
       clientId: 123,
       responsible: 'Administración',
@@ -93,20 +100,55 @@ describe('persistencia administrativa v0.4.0', () => {
       responsible: 'Cobranzas',
       status: 'promise',
       nextFollowUpAt: '2026-07-25',
+      promiseAmount: 125_000,
+      promiseDueAt: '2026-07-24',
       actor: 'Prueba oficina',
       comment: 'Promesa informada por el cliente',
     });
     store.addReceivableComment(123, 'Se adjuntó el comprobante de conversación.', 'Prueba oficina');
+    store.syncReceivablePaymentPromise(123, 'Vendedor prueba');
     const workflow = store.getReceivableCase(123);
     const events = store.listReceivableCaseEvents(123);
     expect(workflow?.responsible).toBe('Cobranzas');
     expect(workflow?.status).toBe('promise');
-    expect(workflow?.eventCount).toBe(events.length);
-    expect(events.map((event) => event.eventType)).toEqual(expect.arrayContaining([
-      'created', 'assignment', 'status', 'follow_up', 'comment',
-    ]));
-    expect(events.filter((event) => event.eventType === 'comment')).toHaveLength(3);
+    expect(workflow?.promiseAmount).toBe(125_000);
+    expect(workflow?.promiseDueAt).toBe('2026-07-24');
+    expect(events).toHaveLength(3);
+    expect(workflow?.eventCount).toBe(3);
+    expect(events.map((event) => event.eventType)).toEqual(expect.arrayContaining(['created', 'follow_up', 'comment']));
+    expect(events.some((event) => event.eventType === 'status')).toBe(false);
+    expect(store.listPromises({ clientId: 123 })).toEqual([expect.objectContaining({
+      amount: 125_000, dueAt: '2026-07-24', status: 'pending', seller: 'Vendedor prueba',
+    })]);
+    const removable = events.find((event) => event.eventType === 'follow_up')!;
+    expect(store.deleteReceivableCaseEvent(123, removable.id, 'Prueba oficina')).toBe(true);
+    store.syncReceivablePaymentPromise(123, 'Vendedor prueba');
+    expect(store.listReceivableCaseEvents(123).find((event) => event.id === removable.id)).toMatchObject({
+      deletedBy: 'Prueba oficina',
+    });
+    expect(store.getReceivableCase(123)).toMatchObject({
+      responsible: 'Administración', status: 'to_contact', nextFollowUpAt: '2026-07-22',
+      promiseAmount: null, promiseDueAt: null, eventCount: 2,
+    });
+    expect(store.listPromises({ clientId: 123 })).toHaveLength(0);
+
+    expect(store.setClientTrendReviewed(123, 'decline', true)).toMatchObject({ clientId: 123, direction: 'decline' });
+    expect(store.listClientTrendReviews('decline')).toEqual([expect.objectContaining({ clientId: 123 })]);
+    expect(store.setClientTrendReviewed(123, 'decline', false)).toBeNull();
+    expect(store.listClientTrendReviews('decline')).toHaveLength(0);
+
     const database = new DatabaseSync(store.getOperationalDatabasePath());
+    store.saveReceivableCase({
+      clientId: 456, responsible: 'Cobranzas', status: 'promise', nextFollowUpAt: null,
+      promiseAmount: 10_500, promiseDueAt: '2026-07-30', actor: 'Prueba legado',
+    });
+    const legacyEvent = store.listReceivableCaseEvents(456)[0];
+    database.prepare('UPDATE receivable_case_events SET deleted_at = ?, deleted_by = ? WHERE id = ?')
+      .run('2026-07-21T12:00:00.000Z', 'Versión anterior', legacyEvent.id);
+    expect(store.getReceivableCase(456)?.status).toBe('promise');
+    store.rebuildAllReceivableCasesFromEvents();
+    expect(store.getReceivableCase(456)).toBeNull();
+
     expect(() => database.prepare('DELETE FROM receivable_case_events WHERE client_id = 123').run()).toThrow(/append-only/);
     expect(() => database.prepare('DELETE FROM commercial_goal_changes').run()).toThrow(/append-only/);
     database.close();

@@ -84,16 +84,16 @@ export function buildReceivablesDashboard(input: Partial<Record<string, unknown>
     values.push(document);
     documentsByClient.set(document.clientId, values);
   }
-  const rows: ReceivableDashboardRow[] = base.clients.map((client) => ({
+  const commonRows: ReceivableDashboardRow[] = base.clients.map((client) => ({
     ...client,
     workflow: caseMap.get(client.clientId) ?? emptyReceivableCase(client.clientId),
   })).filter((client) => {
     if (selectedResponsibles.length && !selectedResponsibles.includes(client.workflow.responsible)) return false;
-    if (selectedStatuses.length && !selectedStatuses.includes(client.workflow.status)) return false;
     if (selectedAging.length && !(documentsByClient.get(client.clientId) ?? []).some((document) => selectedAging.includes(documentBand(document)))) return false;
     if (query && !`${client.clientId} ${client.name} ${client.tradeName} ${client.seller} ${client.workflow.responsible} ${client.workflow.lastComment}`.toLocaleLowerCase('es').includes(query)) return false;
     return true;
-  }).sort((left, right) => (
+  });
+  const rows = commonRows.filter((client) => !selectedStatuses.length || selectedStatuses.includes(client.workflow.status)).sort((left, right) => (
     Number(Boolean(right.workflow.nextFollowUpAt && right.workflow.nextFollowUpAt <= localDate() && right.workflow.status !== 'resolved'))
       - Number(Boolean(left.workflow.nextFollowUpAt && left.workflow.nextFollowUpAt <= localDate() && left.workflow.status !== 'resolved'))
     || right.overdueBalance - left.overdueBalance
@@ -119,7 +119,7 @@ export function buildReceivablesDashboard(input: Partial<Record<string, unknown>
     unmanagedClients: rows.filter((row) => row.workflow.status === 'unmanaged').length,
     aging: agingRows(documents),
     statusBreakdown: RECEIVABLE_STATUSES.map((status) => {
-      const values = rows.filter((row) => row.workflow.status === status);
+      const values = commonRows.filter((row) => row.workflow.status === status);
       return { status, clients: values.length, amount: values.reduce((sum, row) => sum + row.pendingBalance, 0) };
     }),
     rows,

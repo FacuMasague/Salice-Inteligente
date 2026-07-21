@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { SALICE_DEPOT, type Client } from '../../shared/models';
 import { money } from '../lib/format';
+import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 
 const markerIcon = (client: Client, selected: boolean) => L.divIcon({
   className: 'client-marker-shell',
@@ -70,11 +71,11 @@ function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: Geocoded
     if (group.clients.length === 1) {
       const client = group.clients[0];
       return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} eventHandlers={{ click: () => onSelect(client) }}>
-        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{client.tradeName}</strong><span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo GESI'}</span><span>Ventas 90d: {money(client.sales90d, true)} · Cobranza C{client.collectionRisk}</span></div></Tooltip>
+        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo GESI'}</span><span>Ventas 90d: {money(client.sales90d, true)} · Cobranza C{client.collectionRisk}</span></div></Tooltip>
       </Marker>;
     }
     return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>
-      <Tooltip direction="top" offset={[0, -20]} opacity={1}><div className="map-tooltip"><strong>{group.clients.length} clientes agrupados</strong><span>{group.clients.slice(0, 3).map((client) => client.tradeName).join(' · ')}{group.clients.length > 3 ? '…' : ''}</span><span>Hacé clic para acercar</span></div></Tooltip>
+      <Tooltip direction="top" offset={[0, -20]} opacity={1}><div className="map-tooltip"><strong>{group.clients.length} clientes agrupados</strong><span>{group.clients.slice(0, 3).map(clientPrimaryName).join(' · ')}{group.clients.length > 3 ? '…' : ''}</span><span>Hacé clic para acercar</span></div></Tooltip>
     </Marker>;
   })}</>;
 }

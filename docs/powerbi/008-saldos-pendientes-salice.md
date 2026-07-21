@@ -102,3 +102,9 @@ Las filas se reprodujeron desde saldos, comprobantes pendientes, facturas y nota
 La pantalla agrega filtros por responsable, estado interno y antigüedad, búsqueda operativa, seguimientos exigibles, cuentas sin gestionar, detalle exacto de documentos y acceso al perfil completo. El estado `Cerrado internamente` no modifica ni cancela una deuda en GESI.
 
 La exportación CSV/XLSX incluye saldo, vencido, antigüedad, documentos, venta 30d y campos de seguimiento; corte, universo y filtros se incorporan como metadatos. Las pruebas reconcilian el tablero contra la implementación de esta ficha y verifican que los documentos abiertos sumen exactamente al saldo de la cuenta.
+
+## Ajuste operativo v0.4.4
+
+La ventana `Centro operativo → Cartera` deja de mostrar comprobantes pertenecientes a clientes inactivos en el maestro GESI. La bandeja administrativa `Cuentas por cobrar` conserva el universo documental de esta ficha para no borrar silenciosamente deuda histórica; son dos superficies con finalidades distintas.
+
+En Cartera, la dimensión temporal se divide en bandas hasta el vencimiento y bandas desde el vencimiento. Es una presentación calculada sobre la fecha exacta de cada comprobante y el corte activo, sin cambiar las métricas conciliadas. Las bandas se pueden combinar con OR dentro de la dimensión y con AND respecto de vendedor, forma de pago, estado y los demás filtros.

@@ -229,6 +229,7 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
   if (!value || !meta.available) return [];
   const validIds = [...new Set((clientIds ?? []).filter(Number.isFinite))];
   const filter = validIds.length ? `WHERE client_id IN (${validIds.map(() => '?').join(', ')})` : '';
+  const hasDocumentPaymentMethod = rows<{ name: string }>(value.prepare('PRAGMA table_info(documents)')).some((column) => column.name === 'payment_method');
   return rows<{
     document_id: string;
     client_id: number;
@@ -237,8 +238,11 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
     due_at: string;
     outstanding: number;
     credit_term_days: number | null;
+    payment_method: string;
     status: string;
-  }>(value.prepare(`SELECT * FROM documents ${filter} ORDER BY due_at, document_number`), validIds).map((row) => ({
+  }>(value.prepare(`SELECT d.*, ${hasDocumentPaymentMethod ? 'd.payment_method' : 'c.payment_method'} AS payment_method
+      FROM documents d JOIN clients c ON c.client_id = d.client_id ${filter ? filter.replaceAll('client_id', 'd.client_id') : ''}
+      ORDER BY d.due_at, d.document_number`), validIds).map((row) => ({
     documentId: row.document_id,
     clientId: Number(row.client_id),
     documentNumber: row.document_number,
@@ -246,6 +250,7 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
     dueAt: row.due_at,
     outstanding: Number(row.outstanding),
     creditTermDays: row.credit_term_days == null ? null : Number(row.credit_term_days),
+    paymentMethod: row.payment_method || 'Sin condición informada',
     status: row.status === 'overdue' ? 'overdue' : 'not_due',
     overdueDays: row.due_at < meta.asOfDate
       ? Math.max(0, Math.round((new Date(`${meta.asOfDate}T12:00:00Z`).getTime() - new Date(`${row.due_at}T12:00:00Z`).getTime()) / 86_400_000))

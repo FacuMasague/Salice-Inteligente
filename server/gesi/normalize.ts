@@ -364,6 +364,11 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const paymentMethodID = number(branchDefinition?.formaDePagoID || row.enEstaSucursal_FormaDePagoID || row.formaDePagoID);
       const paymentMethod = paymentMethodLabels.get(paymentMethodID)
         || (paymentMethodID ? `Forma de pago ${paymentMethodID}` : 'Sin condición informada');
+      const documentPaymentMethod = (document: GesiRow) => {
+        const documentPaymentID = number(document.formaDePagoID);
+        return paymentMethodLabels.get(documentPaymentID)
+          || (documentPaymentID ? `Forma de pago ${documentPaymentID}` : paymentMethod);
+      };
       const channelID = number(row.canalDeVentaID);
       const zoneID = number(row.zonaID);
       const typeID = number(row.tipoDeClienteID);
@@ -381,6 +386,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
             outstanding: roundMoney(number(document.saldoPendiente)),
             status: invoiceStatus(dueAt, snapshotDate),
             creditTermDays: invoiceCreditTermDays(date(document.fechaDeEmision), dueAt),
+            paymentMethod: documentPaymentMethod(document),
           };
         });
       const paidInvoices: Invoice[] = paymentSamples.slice(-5).reverse().map((sample) => ({
@@ -393,6 +399,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         outstanding: 0,
         status: 'paid',
         creditTermDays: invoiceCreditTermDays(sample.issuedAt, sample.dueAt),
+        paymentMethod: documentPaymentMethod(sample.invoice),
       }));
       const overdue = openInvoices.filter((invoice) => invoice.status === 'overdue');
       const dueSoon = openInvoices.some((invoice) => invoice.status === 'due_soon');

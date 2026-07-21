@@ -12,6 +12,8 @@ import type {
   CommercialGoalsPayload,
   CommercialGoalRow,
   CommercialGoalVersion,
+  ClientTrendDirection,
+  ClientTrendReview,
   DashboardData,
   PaymentPromise,
   PaymentPromiseStatus,
@@ -160,6 +162,8 @@ function db() {
       responsible TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'unmanaged',
       next_follow_up_at TEXT,
+      promise_amount REAL,
+      promise_due_at TEXT,
       updated_at TEXT NOT NULL,
       updated_by TEXT NOT NULL
     );
@@ -173,9 +177,20 @@ function db() {
       comment TEXT NOT NULL DEFAULT '',
       before_json TEXT,
       after_json TEXT,
+      batch_id TEXT,
+      deleted_at TEXT,
+      deleted_by TEXT,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_receivable_events_client ON receivable_case_events(client_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS client_trend_reviews (
+      client_id INTEGER NOT NULL,
+      direction TEXT NOT NULL,
+      reviewed_at TEXT NOT NULL,
+      PRIMARY KEY (client_id, direction),
+      CHECK (direction IN ('growth', 'decline'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_client_trend_reviews_direction ON client_trend_reviews(direction, reviewed_at DESC);
     CREATE TABLE IF NOT EXISTS saved_views (
       id TEXT PRIMARY KEY,
       view_key TEXT NOT NULL,
@@ -225,9 +240,6 @@ function db() {
       FOREIGN KEY(version_id) REFERENCES commercial_goal_versions(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_goal_changes_version ON commercial_goal_changes(version_id, created_at DESC);
-    CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_update
-      BEFORE UPDATE ON receivable_case_events
-      BEGIN SELECT RAISE(ABORT, 'El historial de cobranzas es append-only'); END;
     CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_delete
       BEFORE DELETE ON receivable_case_events
       BEGIN SELECT RAISE(ABORT, 'El historial de cobranzas es append-only'); END;
@@ -237,6 +249,19 @@ function db() {
     CREATE TRIGGER IF NOT EXISTS prevent_goal_change_delete
       BEFORE DELETE ON commercial_goal_changes
       BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+  `);
+  const caseColumns = new Set(database.prepare('PRAGMA table_info(receivable_cases)').all().map((row) => String(row.name)));
+  if (!caseColumns.has('promise_amount')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_amount REAL');
+  if (!caseColumns.has('promise_due_at')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_due_at TEXT');
+  const eventColumns = new Set(database.prepare('PRAGMA table_info(receivable_case_events)').all().map((row) => String(row.name)));
+  if (!eventColumns.has('batch_id')) database.exec('ALTER TABLE receivable_case_events ADD COLUMN batch_id TEXT');
+  if (!eventColumns.has('deleted_at')) database.exec('ALTER TABLE receivable_case_events ADD COLUMN deleted_at TEXT');
+  if (!eventColumns.has('deleted_by')) database.exec('ALTER TABLE receivable_case_events ADD COLUMN deleted_by TEXT');
+  database.exec(`
+    DROP TRIGGER IF EXISTS prevent_receivable_event_update;
+    CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_core_update
+      BEFORE UPDATE OF id, client_id, event_type, actor, comment, before_json, after_json, batch_id, created_at ON receivable_case_events
+      BEGIN SELECT RAISE(ABORT, 'El contenido del historial de cobranzas es inmutable'); END;
   `);
   seedCommercialGoals(database);
   return database;
@@ -334,6 +359,8 @@ export function emptyReceivableCase(clientId: number): ReceivableCase {
     responsible: '',
     status: 'unmanaged',
     nextFollowUpAt: null,
+    promiseAmount: null,
+    promiseDueAt: null,
     updatedAt: '',
     updatedBy: '',
     lastComment: '',
@@ -347,6 +374,8 @@ function receivableCaseFromRow(row: Record<string, unknown>): ReceivableCase {
     responsible: textValue(row.responsible),
     status: textValue(row.status) as ReceivableCaseStatus,
     nextFollowUpAt: nullableText(row.next_follow_up_at),
+    promiseAmount: row.promise_amount == null ? null : Number(row.promise_amount),
+    promiseDueAt: nullableText(row.promise_due_at),
     updatedAt: textValue(row.updated_at),
     updatedBy: textValue(row.updated_by),
     lastComment: textValue(row.last_comment),
@@ -364,6 +393,16 @@ function receivableEventFromRow(row: Record<string, unknown>): ReceivableCaseEve
     before: jsonRecord(row.before_json),
     after: jsonRecord(row.after_json),
     createdAt: textValue(row.created_at),
+    deletedAt: nullableText(row.deleted_at),
+    deletedBy: nullableText(row.deleted_by),
+  };
+}
+
+function clientTrendReviewFromRow(row: Record<string, unknown>): ClientTrendReview {
+  return {
+    clientId: Number(row.client_id),
+    direction: textValue(row.direction) as ClientTrendDirection,
+    reviewedAt: textValue(row.reviewed_at),
   };
 }
 
@@ -627,13 +666,60 @@ export function updatePromiseStatus(id: string, status: PaymentPromiseStatus) {
   return promiseFromRow({ ...current, status, resolved_at: resolvedAt });
 }
 
+export function listClientTrendReviews(direction?: ClientTrendDirection) {
+  const rows = direction
+    ? db().prepare('SELECT * FROM client_trend_reviews WHERE direction = ? ORDER BY reviewed_at DESC').all(direction)
+    : db().prepare('SELECT * FROM client_trend_reviews ORDER BY reviewed_at DESC').all();
+  return rows.map((row) => clientTrendReviewFromRow(row));
+}
+
+export function setClientTrendReviewed(clientId: number, direction: ClientTrendDirection, reviewed: boolean) {
+  if (reviewed) {
+    const reviewedAt = new Date().toISOString();
+    db().prepare(`
+      INSERT INTO client_trend_reviews (client_id, direction, reviewed_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(client_id, direction) DO UPDATE SET reviewed_at = excluded.reviewed_at
+    `).run(clientId, direction, reviewedAt);
+    return { clientId, direction, reviewedAt } satisfies ClientTrendReview;
+  }
+  db().prepare('DELETE FROM client_trend_reviews WHERE client_id = ? AND direction = ?').run(clientId, direction);
+  return null;
+}
+
+const receivablePromiseId = (clientId: number) => `receivable-case:${clientId}`;
+
+export function syncReceivablePaymentPromise(clientId: number, seller: string) {
+  const store = db();
+  const workflow = getReceivableCase(clientId);
+  const id = receivablePromiseId(clientId);
+  if (!workflow || workflow.status !== 'promise' || workflow.promiseAmount == null || !workflow.promiseDueAt) {
+    store.prepare('DELETE FROM payment_promises WHERE id = ?').run(id);
+    return null;
+  }
+  const now = new Date().toISOString();
+  const cleanSeller = seller.trim().slice(0, 120) || workflow.responsible || 'Sin vendedor';
+  store.prepare(`
+    INSERT INTO payment_promises (id, client_id, activity_id, seller, due_at, amount, status, note, created_at, resolved_at)
+    VALUES (?, ?, NULL, ?, ?, ?, 'pending', ?, ?, NULL)
+    ON CONFLICT(id) DO UPDATE SET
+      seller = excluded.seller,
+      due_at = excluded.due_at,
+      amount = excluded.amount,
+      status = 'pending',
+      note = excluded.note,
+      resolved_at = NULL
+  `).run(id, clientId, cleanSeller, workflow.promiseDueAt, workflow.promiseAmount, 'Promesa registrada desde Cuentas por cobrar.', now);
+  return promiseFromRow(store.prepare('SELECT * FROM payment_promises WHERE id = ?').get(id)!);
+}
+
 export function listReceivableCases() {
   return db().prepare(`
     SELECT cases.*,
-      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id) AS event_count,
+      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id AND events.deleted_at IS NULL) AS event_count,
       COALESCE((
         SELECT comment FROM receivable_case_events events
-        WHERE events.client_id = cases.client_id AND TRIM(comment) <> ''
+        WHERE events.client_id = cases.client_id AND events.deleted_at IS NULL AND TRIM(comment) <> ''
         ORDER BY created_at DESC, rowid DESC LIMIT 1
       ), '') AS last_comment
     FROM receivable_cases cases
@@ -644,10 +730,10 @@ export function listReceivableCases() {
 export function getReceivableCase(clientId: number) {
   const row = db().prepare(`
     SELECT cases.*,
-      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id) AS event_count,
+      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id AND events.deleted_at IS NULL) AS event_count,
       COALESCE((
         SELECT comment FROM receivable_case_events events
-        WHERE events.client_id = cases.client_id AND TRIM(comment) <> ''
+        WHERE events.client_id = cases.client_id AND events.deleted_at IS NULL AND TRIM(comment) <> ''
         ORDER BY created_at DESC, rowid DESC LIMIT 1
       ), '') AS last_comment
     FROM receivable_cases cases WHERE client_id = ?
@@ -662,16 +748,17 @@ function addReceivableEvent(store: DatabaseSync, input: {
   comment?: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  batchId?: string;
   createdAt: string;
 }) {
   store.prepare(`
     INSERT INTO receivable_case_events (
-      id, client_id, event_type, actor, comment, before_json, after_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, client_id, event_type, actor, comment, before_json, after_json, batch_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     randomUUID(), input.clientId, input.eventType, input.actor, input.comment ?? '',
     input.before ? JSON.stringify(input.before) : null,
-    input.after ? JSON.stringify(input.after) : null,
+    input.after ? JSON.stringify(input.after) : null, input.batchId ?? randomUUID(),
     input.createdAt,
   );
 }
@@ -681,6 +768,8 @@ export function saveReceivableCase(input: {
   responsible: string;
   status: ReceivableCaseStatus;
   nextFollowUpAt: string | null;
+  promiseAmount?: number | null;
+  promiseDueAt?: string | null;
   actor: string;
   comment?: string;
 }) {
@@ -691,42 +780,44 @@ export function saveReceivableCase(input: {
   const responsible = input.responsible.trim().slice(0, 120);
   const actor = input.actor.trim().slice(0, 120) || 'Oficina Salice';
   const comment = String(input.comment ?? '').trim().slice(0, 2000);
+  const promiseAmount = input.status === 'promise' && input.promiseAmount != null ? Number(input.promiseAmount) : null;
+  const promiseDueAt = input.status === 'promise' ? input.promiseDueAt ?? null : null;
   const changed = !current
     || before.responsible !== responsible
     || before.status !== input.status
-    || before.nextFollowUpAt !== input.nextFollowUpAt;
+    || before.nextFollowUpAt !== input.nextFollowUpAt
+    || before.promiseAmount !== promiseAmount
+    || before.promiseDueAt !== promiseDueAt;
   if (!changed && !comment) return current;
   store.exec('BEGIN IMMEDIATE');
   try {
     store.prepare(`
-      INSERT INTO receivable_cases (client_id, responsible, status, next_follow_up_at, updated_at, updated_by)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO receivable_cases (client_id, responsible, status, next_follow_up_at, promise_amount, promise_due_at, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(client_id) DO UPDATE SET
         responsible = excluded.responsible,
         status = excluded.status,
         next_follow_up_at = excluded.next_follow_up_at,
+        promise_amount = excluded.promise_amount,
+        promise_due_at = excluded.promise_due_at,
         updated_at = excluded.updated_at,
         updated_by = excluded.updated_by
-    `).run(input.clientId, responsible, input.status, input.nextFollowUpAt, createdAt, actor);
-    const after = { responsible, status: input.status, nextFollowUpAt: input.nextFollowUpAt };
-    if (!current) {
-      addReceivableEvent(store, { clientId: input.clientId, eventType: 'created', actor, before: null, after, createdAt });
-    } else {
-      if (before.responsible !== responsible) addReceivableEvent(store, {
-        clientId: input.clientId, eventType: 'assignment', actor,
-        before: { responsible: before.responsible }, after: { responsible }, createdAt,
-      });
-      if (before.status !== input.status) addReceivableEvent(store, {
-        clientId: input.clientId, eventType: 'status', actor,
-        before: { status: before.status }, after: { status: input.status }, createdAt,
-      });
-      if (before.nextFollowUpAt !== input.nextFollowUpAt) addReceivableEvent(store, {
-        clientId: input.clientId, eventType: 'follow_up', actor,
-        before: { nextFollowUpAt: before.nextFollowUpAt }, after: { nextFollowUpAt: input.nextFollowUpAt }, createdAt,
-      });
-    }
-    if (comment) addReceivableEvent(store, {
-      clientId: input.clientId, eventType: 'comment', actor, comment, before: null, after: null, createdAt,
+    `).run(input.clientId, responsible, input.status, input.nextFollowUpAt, promiseAmount, promiseDueAt, createdAt, actor);
+    const after = { responsible, status: input.status, nextFollowUpAt: input.nextFollowUpAt, promiseAmount, promiseDueAt };
+    addReceivableEvent(store, {
+      clientId: input.clientId,
+      eventType: !current ? 'created' : changed ? 'follow_up' : 'comment',
+      actor,
+      comment,
+      before: current ? {
+        responsible: before.responsible,
+        status: before.status,
+        nextFollowUpAt: before.nextFollowUpAt,
+        promiseAmount: before.promiseAmount,
+        promiseDueAt: before.promiseDueAt,
+      } : null,
+      after,
+      createdAt,
     });
     store.exec('COMMIT');
   } catch (error) {
@@ -765,6 +856,91 @@ export function listReceivableCaseEvents(clientId: number, limit = 100) {
     SELECT * FROM receivable_case_events WHERE client_id = ?
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(clientId, Math.max(1, Math.min(500, limit))).map((row) => receivableEventFromRow(row));
+}
+
+function rebuildReceivableCaseFromEvents(store: DatabaseSync, clientId: number) {
+  const events = store.prepare(`
+    SELECT * FROM receivable_case_events
+    WHERE client_id = ? AND deleted_at IS NULL
+    ORDER BY created_at ASC, rowid ASC
+  `).all(clientId).map((row) => receivableEventFromRow(row));
+  if (!events.length) {
+    store.prepare('DELETE FROM receivable_cases WHERE client_id = ?').run(clientId);
+    return;
+  }
+  const state = emptyReceivableCase(clientId);
+  for (const event of events) {
+    const after = event.after;
+    if (!after) continue;
+    if (Object.hasOwn(after, 'responsible')) state.responsible = String(after.responsible ?? '');
+    if (Object.hasOwn(after, 'status')) state.status = String(after.status ?? 'unmanaged') as ReceivableCaseStatus;
+    if (Object.hasOwn(after, 'nextFollowUpAt')) state.nextFollowUpAt = nullableText(after.nextFollowUpAt);
+    if (Object.hasOwn(after, 'promiseAmount')) state.promiseAmount = after.promiseAmount == null ? null : Number(after.promiseAmount);
+    if (Object.hasOwn(after, 'promiseDueAt')) state.promiseDueAt = nullableText(after.promiseDueAt);
+  }
+  const latest = events.at(-1)!;
+  store.prepare(`
+    INSERT INTO receivable_cases (client_id, responsible, status, next_follow_up_at, promise_amount, promise_due_at, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(client_id) DO UPDATE SET
+      responsible = excluded.responsible,
+      status = excluded.status,
+      next_follow_up_at = excluded.next_follow_up_at,
+      promise_amount = excluded.promise_amount,
+      promise_due_at = excluded.promise_due_at,
+      updated_at = excluded.updated_at,
+      updated_by = excluded.updated_by
+  `).run(
+    clientId, state.responsible, state.status, state.nextFollowUpAt, state.promiseAmount,
+    state.promiseDueAt, latest.createdAt, latest.actor,
+  );
+}
+
+export function rebuildAllReceivableCasesFromEvents() {
+  const store = db();
+  const clientIds = store.prepare('SELECT client_id FROM receivable_cases ORDER BY client_id').all().map((row) => Number(row.client_id));
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    for (const clientId of clientIds) rebuildReceivableCaseFromEvents(store, clientId);
+    // Estas filas son una proyección de los seguimientos, no un segundo origen.
+    // Se recrean desde los casos válidos al iniciar el servidor.
+    store.prepare("DELETE FROM payment_promises WHERE id LIKE 'receivable-case:%'").run();
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function deleteReceivableCaseEvent(clientId: number, eventId: string, actor = 'Oficina Salice') {
+  const store = db();
+  const current = store.prepare('SELECT * FROM receivable_case_events WHERE id = ? AND client_id = ?').get(eventId, clientId);
+  if (!current || current.deleted_at) return false;
+  const deletedAt = new Date().toISOString();
+  const deletedBy = actor.trim().slice(0, 120) || 'Oficina Salice';
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    // Las versiones anteriores guardaban una misma acción humana como varios
+    // eventos con el mismo timestamp. Se eliminan juntos para no dejar activo
+    // un estado o una promesa huérfanos.
+    if (current.batch_id) {
+      store.prepare(`
+        UPDATE receivable_case_events SET deleted_at = ?, deleted_by = ?
+        WHERE client_id = ? AND batch_id = ? AND deleted_at IS NULL
+      `).run(deletedAt, deletedBy, clientId, textValue(current.batch_id));
+    } else {
+      store.prepare(`
+        UPDATE receivable_case_events SET deleted_at = ?, deleted_by = ?
+        WHERE client_id = ? AND created_at = ? AND deleted_at IS NULL
+      `).run(deletedAt, deletedBy, clientId, textValue(current.created_at));
+    }
+    rebuildReceivableCaseFromEvents(store, clientId);
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return true;
 }
 
 export function listSavedViews(viewKey?: SavedView['viewKey']) {

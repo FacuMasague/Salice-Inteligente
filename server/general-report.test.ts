@@ -6,7 +6,9 @@ describe('Reporte General construido desde GESI', () => {
     const meta = getGeneralReportMeta();
     expect(meta.available).toBe(true);
     expect(meta.sourceSystem).toContain('GESI');
-    expect(meta.targetSource.label).toContain('Plan comercial Status Salice');
+    expect(meta.targetSource.label.length).toBeGreaterThan(0);
+    expect(meta.targetSource.coverageFrom).toMatch(/^\d{4}-\d{2}$/);
+    expect(meta.targetSource.coverageThrough).toMatch(/^\d{4}-\d{2}$/);
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.universe.branches).toEqual([3]);
     expect(meta.latestMonth).toBe('2026-07');

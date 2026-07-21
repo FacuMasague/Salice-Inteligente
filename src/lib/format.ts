@@ -1,13 +1,26 @@
 import type { Client } from '../../shared/models';
 
-export const money = (value: number, compact = false) => new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-  maximumFractionDigits: 0,
-  notation: compact ? 'compact' : 'standard',
+export const number = (value: number, maximumFractionDigits = 0) => new Intl.NumberFormat('es-AR', {
+  maximumFractionDigits,
 }).format(value);
 
-export const number = (value: number) => new Intl.NumberFormat('es-AR').format(value);
+export const compactNumber = (value: number) => {
+  const absolute = Math.abs(value);
+  if (absolute < 1_000) return number(value);
+  const divisor = absolute >= 1_000_000 ? 1_000_000 : 1_000;
+  const suffix = divisor === 1_000_000 ? 'M' : 'mil';
+  const scaled = value / divisor;
+  return `${number(scaled, Math.abs(scaled) < 100 ? 1 : 0)} ${suffix}`;
+};
+
+export const money = (value: number, compact = false) => compact
+  ? `${value < 0 ? '-$' : '$'} ${compactNumber(Math.abs(value))}`
+  : new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 
 export const shortDate = (value: string) => {
   if (!value) return 'Sin dato';

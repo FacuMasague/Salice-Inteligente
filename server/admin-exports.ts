@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
-import type { CommercialGoalsPayload, ReceivableDashboardPayload } from '../shared/models.js';
+import type { CommercialGoalsPayload, InvoiceDetailPayload, ReceivableDashboardPayload } from '../shared/models.js';
 import { buildGeneralReport } from './general-report.js';
 import { getCommercialGoalsPayload } from './operational-store.js';
 import { buildReceivablesDashboard } from './receivables-dashboard.js';
@@ -253,5 +253,91 @@ export function exportGoalsPdf(response: Response, versionId?: string, month?: s
   });
   document.moveDown(1).fontSize(8).fillColor('#65736d')
     .text('Documento generado por Salice Inteligente. Power BI no participa de este cálculo ni de esta exportación.');
+  document.end();
+}
+
+export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPayload) {
+  const generatedAt = new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires',
+  }).format(new Date());
+  const date = (value: string | null) => value
+    ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
+    : 'Sin dato';
+  setDownloadHeaders(response, 'application/pdf', `${invoice.number || invoice.id}.pdf`);
+  const document = new PDFDocument({
+    size: 'A4', margin: 42,
+    info: { Title: `${invoice.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} ${invoice.number}`, Author: 'Salice Inteligente' },
+  });
+  document.pipe(response);
+
+  document.rect(0, 0, 595, 112).fill('#214f3f');
+  document.fillColor('#f5f0df').font('Helvetica-Bold').fontSize(20).text('Salice Inteligente', 42, 35);
+  document.fillColor('#ffffff').fontSize(12).text(invoice.kind === 'credit_note' ? 'NOTA DE CRÉDITO' : 'COMPROBANTE DE VENTA', 42, 66);
+  document.fillColor('#d8b36a').fontSize(18).text(invoice.number, 325, 42, { width: 228, align: 'right' });
+  document.fillColor('#d8e5df').font('Helvetica').fontSize(8).text(`Corte operativo ${date(invoice.sourceMaxDate)}`, 325, 70, { width: 228, align: 'right' });
+
+  document.fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text(invoice.client.name, 42, 137);
+  if (invoice.client.tradeName && invoice.client.tradeName !== invoice.client.name) {
+    document.font('Helvetica').fontSize(9).fillColor('#65736d').text(invoice.client.tradeName, 42, 154);
+  }
+  const contactY = invoice.client.tradeName && invoice.client.tradeName !== invoice.client.name ? 171 : 156;
+  document.font('Helvetica').fontSize(8.5).fillColor('#65736d')
+    .text([invoice.client.address, invoice.client.locality].filter(Boolean).join(' · ') || 'Domicilio no informado', 42, contactY)
+    .text(`Cliente ${invoice.client.id} · Vendedor: ${invoice.client.seller}`, 42, contactY + 13);
+
+  const summaryY = contactY + 42;
+  const box = (x: number, title: string, value: string, accent = '#214f3f') => {
+    document.roundedRect(x, summaryY, 160, 57, 7).fillAndStroke('#f6f8f5', '#dfe5e0');
+    document.fillColor('#75827c').font('Helvetica-Bold').fontSize(7).text(title.toUpperCase(), x + 11, summaryY + 11, { width: 138 });
+    document.fillColor(accent).fontSize(11).text(value, x + 11, summaryY + 29, { width: 138 });
+  };
+  box(42, 'Emisión / vencimiento', `${date(invoice.issuedAt)} · ${date(invoice.dueAt)}`);
+  box(217, 'Forma de pago', invoice.paymentMethod);
+  box(392, invoice.outstanding > 0 ? 'Saldo pendiente' : 'Importe', formatNumber(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount, 'ars'), invoice.outstanding > 0 ? '#a24b3d' : '#214f3f');
+
+  let y = summaryY + 82;
+  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(11).text('Detalle del comprobante', 42, y);
+  y += 23;
+  const tableHeader = () => {
+    document.rect(42, y, 511, 24).fill('#e9efe9');
+    document.fillColor('#315348').font('Helvetica-Bold').fontSize(7.5)
+      .text('PRODUCTO', 50, y + 8, { width: 248 })
+      .text('UNIDADES', 310, y + 8, { width: 65, align: 'right' })
+      .text('KILOS', 384, y + 8, { width: 65, align: 'right' })
+      .text('VENTA NETA', 458, y + 8, { width: 87, align: 'right' });
+    y += 24;
+  };
+  tableHeader();
+  if (!invoice.lineItems.length) {
+    document.fillColor('#65736d').font('Helvetica').fontSize(9)
+      .text('GESI no entregó detalle de renglones para este comprobante. Se conserva el encabezado y la información financiera disponible.', 50, y + 13, { width: 495 });
+    y += 54;
+  } else {
+    for (const item of invoice.lineItems) {
+      if (y > 726) {
+        document.addPage();
+        y = 42;
+        tableHeader();
+      }
+      const rowHeight = 38;
+      document.rect(42, y, 511, rowHeight).fillAndStroke('#ffffff', '#e7ebe7');
+      document.fillColor('#2b473d').font('Helvetica-Bold').fontSize(8).text(item.product, 50, y + 8, { width: 248, height: 12, ellipsis: true });
+      document.fillColor('#849089').font('Helvetica').fontSize(7).text(`${item.productId} · ${item.brand} · ${item.category}`, 50, y + 22, { width: 248, height: 10, ellipsis: true });
+      document.fillColor('#334f45').fontSize(8).text(formatNumber(item.units, 'count'), 310, y + 14, { width: 65, align: 'right' });
+      document.text(new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(item.kilos), 384, y + 14, { width: 65, align: 'right' });
+      document.font('Helvetica-Bold').text(formatNumber(item.netAmount, 'ars'), 458, y + 14, { width: 87, align: 'right' });
+      y += rowHeight;
+    }
+  }
+
+  if (y > 690) { document.addPage(); y = 42; }
+  document.moveTo(360, y + 18).lineTo(553, y + 18).strokeColor('#d8b36a').lineWidth(2).stroke();
+  document.fillColor('#65736d').font('Helvetica').fontSize(8).text('TOTAL DEL COMPROBANTE', 360, y + 29, { width: 193, align: 'right' });
+  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(15).text(formatNumber(invoice.amount, 'ars'), 360, y + 43, { width: 193, align: 'right' });
+  if (invoice.outstanding > 0) document.fillColor('#a24b3d').fontSize(9).text(`Saldo abierto ${formatNumber(invoice.outstanding, 'ars')}`, 360, y + 63, { width: 193, align: 'right' });
+  document.fillColor('#7a867f').font('Helvetica').fontSize(7.5).text(
+    `Generado ${generatedAt}. Fuente: API GESI y bases analíticas propias. ${invoice.detailAvailable ? 'Detalle disponible en la base comercial.' : 'Detalle de productos no disponible en GESI.'} Power BI no participa de este documento.`,
+    42, y + 92, { width: 511, align: 'left' },
+  );
   document.end();
 }

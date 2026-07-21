@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ChevronRight, CircleDollarSign, Clock3, MapPin, Search, Target, TrendingUp, Users, WalletCards } from 'lucide-react';
 import type { Client } from '../../shared/models';
+import { SavedViewsBar } from '../components/SavedViewsBar';
+import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number, paymentDelay, shortDate } from '../lib/format';
 
 const decimal = (value: number, digits = 1) => new Intl.NumberFormat('es-AR', {
@@ -121,6 +123,11 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
   const totalSales = profiles.reduce((sum, profile) => sum + profile.sales90d, 0);
   const totalOverdue = profiles.reduce((sum, profile) => sum + profile.overdue, 0);
   const highRisk = profiles.reduce((sum, profile) => sum + profile.criticalClients, 0);
+  const savedFilters = { query, selectedSeller: selected?.name ?? '' };
+  const applySaved = (saved: Record<string, string>) => {
+    setQuery(saved.query ?? '');
+    if (saved.selectedSeller && profiles.some((profile) => profile.name === saved.selectedSeller)) onSelectSeller(saved.selectedSeller);
+  };
   if (!selected) return <div className="page-view"><section className="data-card report-empty">No hay vendedores asignados en la foto actual.</section></div>;
   const maxSellerSales = Math.max(1, ...profiles.map((profile) => profile.sales90d));
   const maxLocalitySales = Math.max(1, ...selected.localities.map((row) => row.sales));
@@ -131,6 +138,8 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
       <article><span className="seller-kpi-icon ochre"><WalletCards size={20} /></span><div><small>Saldo vencido</small><strong>{money(totalOverdue, true)}</strong><em>de clientes activos asignados</em></div></article>
       <article><span className="seller-kpi-icon blue"><AlertTriangle size={20} /></span><div><small>Riesgo alto</small><strong>{number(highRisk)}</strong><em>clientes con C55 o superior</em></div></article>
     </section>
+
+    <SavedViewsBar viewKey="sellers" filters={savedFilters} onApply={applySaved} />
 
     <div className="seller-workspace">
       <section className="data-card seller-directory-card">
@@ -151,7 +160,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
         </div>
 
         <div className="seller-operational-grid">
-          <section className="data-card seller-priority-card"><div className="data-card-header"><div><span className="section-kicker"><Target size={14} /> Próximas acciones</span><h2>Clientes prioritarios</h2><p>Ordenados por P, combinación de cobranza y oportunidad.</p></div></div><div className="seller-priority-list">{selected.priorityClients.map((client) => <button key={client.id} onClick={() => onOpenClient(client)}><span className={`score-badge ${client.health}`}>{client.visitPriority}</span><div><strong>{client.tradeName}</strong><small>{client.locality} · C{client.collectionRisk} · O{client.commercialOpportunity}</small></div><span>{money(client.sales90d, true)}<small>{money(client.overdueOutstanding, true)} vencido</small></span><ChevronRight size={15} /></button>)}</div></section>
+          <section className="data-card seller-priority-card"><div className="data-card-header"><div><span className="section-kicker"><Target size={14} /> Próximas acciones</span><h2>Clientes prioritarios</h2><p>Ordenados por P, combinación de cobranza y oportunidad.</p></div></div><div className="seller-priority-list">{selected.priorityClients.map((client) => <button key={client.id} onClick={() => onOpenClient(client)}><span className={`score-badge ${client.health}`}>{client.visitPriority}</span><div><strong>{clientPrimaryName(client)}</strong><small>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · C{client.collectionRisk} · O{client.commercialOpportunity}</small></div><span>{money(client.sales90d, true)}<small>{money(client.overdueOutstanding, true)} vencido</small></span><ChevronRight size={15} /></button>)}</div></section>
           <section className="data-card seller-locality-card"><div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Territorio</span><h2>Principales localidades</h2><p>Ordenadas por venta de los últimos 90 días.</p></div></div><div className="seller-locality-list">{selected.localities.map((row) => <article key={row.name}><div><strong>{row.name}</strong><span>{row.clients} clientes</span></div><i><span style={{ width: `${row.sales / maxLocalitySales * 100}%` }} /></i><b>{money(row.sales, true)}</b></article>)}</div></section>
         </div>
       </div>

@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.4.0
+# Salice Inteligente · v0.4.4
 
-Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, trabajar una agenda diaria por vendedor, registrar gestiones y promesas de pago, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
+Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, planificar y registrar gestiones comerciales, documentar promesas de pago, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
 
 ## Abrir el programa
 
@@ -17,25 +17,69 @@ pnpm run dev
 
 ## Estado de los datos
 
-La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 20/07/2026 a las 10:05 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal de Mar del Plata (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
+La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 21/07/2026 a las 12:52 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal de Mar del Plata (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
 
 Cobertura del snapshot actual:
 
-- 5.713 clientes conservados: 1.910 activos y 3.803 inactivos según el estado actual de GESI.
-- 2.468 clientes con coordenadas válidas, de los cuales 877 están activos; el mapa abre en Mar del Plata y zona.
+- 5.714 clientes conservados: 1.911 activos y 3.803 inactivos según el estado actual de GESI.
+- 2.469 clientes con coordenadas válidas, de los cuales 878 están activos; el mapa abre en Mar del Plata y zona.
 - 13.022 maestros de producto y 1.679 productos comercializables vectorizados.
-- 28.963 facturas únicas de los últimos 365 días; 6.279 dentro de la ventana analítica de 90 días.
-- 27.524 cobranzas y 26.720 pagos conciliados para calcular comportamiento de pago.
-- 995 comprobantes con saldo abierto.
-- 28.760 facturas con plazo válido entre compra/emisión y primer vencimiento; 203 quedan fuera porque GESI no informa el primer vencimiento.
-- 1.086 clientes con plazo observable; 17 presentan condiciones realmente mixtas.
-- 1.497 productos con precio de referencia disponible.
+- 28.939 facturas únicas de los últimos 365 días; 6.269 dentro de la ventana analítica de 90 días.
+- 27.559 cobranzas y 26.736 pagos conciliados para calcular comportamiento de pago.
+- 952 comprobantes con saldo abierto.
+- 28.736 facturas con plazo válido entre compra/emisión y primer vencimiento; 203 quedan fuera porque GESI no informa el primer vencimiento.
+- 1.087 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
+- 1.496 productos con precio de referencia disponible.
 
 GESI devuelve error para los maestros de zonas y tipos de cliente, y omitió el detalle de dos facturas. También anuncia 13.023 productos pero devuelve de forma estable 13.022; la captura admite esa diferencia de un registro dentro de la tolerancia de datos vivos. El sistema señala estas limitaciones y no inventa los datos faltantes.
 
-La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 556 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
+La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 557 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
+
+### Priorización comercial y vencimientos · v0.4.4
+
+- Las listas `Mayor crecimiento` y `Mayor caída` muestran únicamente clientes con una variación absoluta de al menos 30% entre los últimos 90 días y los 90 anteriores. Un tilde persistente marca cada cliente como revisado y lo mueve detrás de los pendientes sin eliminarlo.
+- Cartera excluye comprobantes de clientes inactivos en GESI. La bandeja administrativa de Cuentas por cobrar conserva su universo documental independiente.
+- La antigüedad de Cartera se separa en tiempo hasta el vencimiento, con barras verdes, y tiempo transcurrido desde el vencimiento. Las ocho bandas pueden combinarse libremente como filtro.
+- Una promesa registrada desde Cuentas por cobrar se materializa también como pago prometido en el perfil, agenda de alertas y consultas operativas. No se confunde con una cobranza conciliada.
+- Cada guardado genera un único seguimiento visible. Los eventos técnicos históricos `Estado actualizado` dejan de mostrarse y no vuelven a crearse en las nuevas gestiones.
+- Borrar un seguimiento revierte responsable, estado, próxima fecha y promesa al último seguimiento activo; las versiones antiguas guardadas como varios eventos se eliminan como una misma acción.
+- Los campos numéricos editables aceptan la convención argentina (`1.234,56`), mientras que las salidas usan punto para miles y coma para decimales.
+
+Las decisiones y comprobaciones de esta entrega están en `docs/release-v0.4.4.md`.
+
+### Flujo de cobranzas y comprobantes · v0.4.3
+
+- Los seis cuadrantes del flujo interno de Cuentas por cobrar son filtros reales de la bandeja y mantienen sus totales comparables mientras se selecciona un estado.
+- `Promesa informada` exige importe y fecha. Responsable, estado, próximo seguimiento, promesa y comentario quedan en la capa operativa local, separados del saldo GESI.
+- Cada cliente conserva el historial de seguimientos en Cuentas por cobrar y en la pestaña `Gestiones` de su perfil. Una eliminación es lógica: deja marca de fecha y actor para preservar auditoría.
+- La razón social y el vendedor navegan a sus fichas. La edición del seguimiento se abre únicamente desde el lápiz ubicado a la derecha de la fila.
+- La antigua ventana `Agenda` se reemplaza por `Gestiones comerciales` dentro de Administración. Allí quedan visitas, llamadas y ofertas; las cobranzas y promesas se concentran en Cuentas por cobrar.
+- Facturas y notas de crédito abren un panel unificado desde Cartera, Cuentas por cobrar, perfiles y Explorador de ventas. El panel combina encabezado, saldo y renglones disponibles sin inventar faltantes, y genera un PDF A4 trazable.
+- Los filtros de selección única usan el mismo componente visual que los filtros combinables. Los formatos compactos conservan el punto de miles argentino en lugar de abreviaciones ambiguas.
+
+Las decisiones, rutas y comprobaciones de esta entrega están en `docs/release-v0.4.3.md`.
+
+### Identidad de clientes y directorio · v0.4.2
+
+- La razón social de GESI pasa a ser el título principal de cada cliente. El nombre de fantasía se muestra como subtítulo cuando es distinto, sin duplicar valores equivalentes.
+- La misma regla de identidad se aplica en Clientes, búsqueda global, mapa, perfiles, agenda, rutas, vendedores, cartera, cuentas por cobrar y reportes con entidades navegables.
+- La ventana Clientes separa búsqueda, filtros y vistas guardadas en filas estables. Los seis filtros ya no se recortan dentro del ancho útil y la tabla reserva espacio suficiente para razones sociales extensas.
+- La regla vive en un único helper probado; el orden alfabético y las etiquetas accesibles también usan la razón social.
+
+Las decisiones y comprobaciones de esta entrega están en `docs/release-v0.4.2.md`.
+
+### Marcas y continuidad operativa · v0.4.1
+
+- Nueva ventana `Marcas`, con directorio buscable, productos vendidos, venta y unidades de 90 días, rotación mensual, stock, disponibilidad, familias, última venta y participación dentro de la venta atribuible del catálogo. La cobertura de compradores se conserva por producto para no presentar como único un cliente repetido entre artículos.
+- Los nombres de marca funcionan como entidades navegables desde fichas y listados de producto, búsqueda global, Explorador de ventas, Reporte General, Ventas · Comercial, Mars, NutriPet, Baires y Cuentas no compradoras.
+- El indicador de frescura de la esquina superior derecha ejecuta el flujo manual completo de GESI. Captura, audita, reconstruye y publica un paquete nuevo únicamente cuando todos los controles aprueban; una falla conserva la última generación válida y muestra su etapa y error.
+- Clientes incorpora filtro y orden por evolución comercial. Compara los últimos 90 días contra los 90 inmediatamente anteriores: `+10%` o más se considera aumento, `-10%` o menos caída y el rango intermedio se muestra como estable.
+- La forma de pago se toma del `formaDePagoID` de cada factura cuando GESI lo informa. Cartera, ficha de cliente y detalle de cuentas por cobrar distinguen esa forma documental de la condición configurada actualmente para el cliente.
+- Las vistas guardadas están disponibles en todas las ventanas. Además de filtros y modos, conservan los textos escritos en cada buscador; Rutas guarda también clientes seleccionados, duración de visita y límite de jornada.
+
+Las definiciones y comprobaciones específicas están en `docs/release-v0.4.1.md`.
 
 ### Núcleo administrativo · v0.4.0
 
@@ -141,6 +185,8 @@ La única operación aprobada para publicar una generación completa es:
 pnpm run refresh:gesi
 ```
 
+El mismo flujo puede iniciarse haciendo clic en la fecha de actualización de la esquina superior derecha. La pantalla informa la etapa actual, vuelve a leer el snapshot aprobado al terminar y no habilita una segunda ejecución simultánea.
+
 Si el flujo falló después de validar la captura, `pnpm run refresh:gesi:resume` reutiliza únicamente esa captura auditada y reconstruye desde allí las bases activas. La reanudación se rechaza cuando no puede demostrar que el archivo pertenece al intento fallido.
 
 La captura todavía **no está programada diariamente**, de acuerdo con el alcance actual. El flujo separa tres capas para poder auditar y recuperar datos:
@@ -236,7 +282,10 @@ React + Vite
     ├── GET  /api/admin/sales/export
     ├── GET  /api/admin/receivables
     ├── PATCH /api/admin/receivables/:clientId
+    ├── DELETE /api/admin/receivables/:clientId/events/:eventId
     ├── GET  /api/admin/receivables/export
+    ├── GET  /api/invoices/detail
+    ├── GET  /api/invoices/pdf
     ├── GET  /api/admin/goals
     ├── POST /api/admin/goals/versions
     ├── PATCH /api/admin/goals/versions/:versionId/rows/:rowId

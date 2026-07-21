@@ -129,6 +129,7 @@ export function buildPendingBalancesDatabase(
       due_at TEXT NOT NULL,
       outstanding REAL NOT NULL,
       credit_term_days INTEGER,
+      payment_method TEXT NOT NULL,
       status TEXT NOT NULL
     );
     CREATE INDEX clients_seller_idx ON clients(seller);
@@ -142,8 +143,8 @@ export function buildPendingBalancesDatabase(
     open_documents, overdue_documents, term_total_days, term_average_days, sales_30
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const insertDocument = database.prepare(`INSERT INTO documents (
-    document_id, client_id, document_number, issued_at, due_at, outstanding, credit_term_days, status
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    document_id, client_id, document_number, issued_at, due_at, outstanding, credit_term_days, payment_method, status
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
   let clientCount = 0;
   let documentCount = 0;
@@ -192,6 +193,8 @@ export function buildPendingBalancesDatabase(
           document.dueAt,
           document.outstanding,
           document.termDays,
+          paymentLabels.get(numeric(document.row.formaDePagoID))
+            ?? (numeric(document.row.formaDePagoID) ? `Forma de pago ${numeric(document.row.formaDePagoID)}` : client.paymentMethod),
           document.dueAt < asOfDate ? 'overdue' : 'open',
         );
         documentCount += 1;

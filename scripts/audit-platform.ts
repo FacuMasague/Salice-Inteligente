@@ -69,7 +69,7 @@ const operationsIntegrity = (() => {
 const administrativeStorage = (() => {
   try {
     const operations = new DatabaseSync(operationsPath, { readOnly: true });
-    const requiredTables = ['receivable_cases', 'receivable_case_events', 'saved_views', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes'];
+    const requiredTables = ['receivable_cases', 'receivable_case_events', 'client_trend_reviews', 'saved_views', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes'];
     const tables = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name));
     const missing = requiredTables.filter((table) => !tables.has(table));
     const activeVersions = missing.length ? 0 : Number(operations.prepare("SELECT COUNT(*) AS total FROM commercial_goal_versions WHERE status = 'active'").get()?.total ?? 0);

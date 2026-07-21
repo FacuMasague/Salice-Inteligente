@@ -5,10 +5,14 @@ import { resolve } from 'node:path';
 import { recommendProducts, optimizeRoute } from '../shared/algorithms.js';
 import {
   APP_VERSION,
+  SAVED_VIEW_KEYS,
+  type ClientTrendDirection,
   type CommercialActivityOutcome,
   type CommercialActivityType,
   type PaymentPromiseStatus,
+  type SavedViewKey,
 } from '../shared/models.js';
+import { parseLocalizedNumber } from '../shared/localized-number.js';
 import { decodeMultiFilter } from '../shared/multi-filter.js';
 import { REPORT_ENDPOINT_METRICS } from '../shared/metric-links.js';
 import { metricCatalogSummary } from '../shared/metrics.js';
@@ -25,8 +29,10 @@ import { ensureSnapshot, getBackupCount, getSnapshotPath, loadSnapshot } from '.
 import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report.js';
 import { buildSalesExplorer, getSalesExplorerDocument, getSalesExplorerMeta, getSalesExplorerPath } from './sales-explorer.js';
 import { buildReceivablesDashboard, getReceivableCaseDetail, RECEIVABLE_STATUSES } from './receivables-dashboard.js';
-import { exportGoalsPdf, exportGoalsXlsx, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
+import { exportGoalsPdf, exportGoalsXlsx, exportInvoicePdf, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
+import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
+import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
 import { countOperationalBackups } from './operations-backup.js';
 import {
   createAgendaItem,
@@ -36,16 +42,23 @@ import {
   createCommercialGoalVersion,
   createSavedView,
   deleteCommercialGoalRow,
+  deleteReceivableCaseEvent,
   deleteSavedView,
   getCommercialGoalsPayload,
   createCommercialActivity,
   getOperationalDatabasePath,
   listActivities,
   listAgendaItems,
+  listClientTrendReviews,
   listPromises,
+  listReceivableCases,
+  listReceivableCaseEvents,
   operationalStatus,
+  rebuildAllReceivableCasesFromEvents,
   saveClientNote,
   saveReceivableCase,
+  setClientTrendReviewed,
+  syncReceivablePaymentPromise,
   listSavedViews,
   updateCommercialGoalRow,
   updateSavedView,
@@ -57,6 +70,8 @@ const port = Number(process.env.PORT || 8787);
 const activityTypes = new Set<CommercialActivityType>(['visit', 'call', 'collection', 'offer']);
 const activityOutcomes = new Set<CommercialActivityOutcome>(['completed', 'sale', 'promise', 'no_contact', 'rescheduled', 'no_interest']);
 const promiseStatuses = new Set<PaymentPromiseStatus>(['pending', 'kept', 'broken', 'cancelled']);
+const clientTrendDirections = new Set<ClientTrendDirection>(['growth', 'decline']);
+const savedViewKeys = new Set<SavedViewKey>(SAVED_VIEW_KEYS);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function localDate(value = new Date()) {
@@ -84,7 +99,8 @@ function stringRecord(value: unknown) {
 
 function optionalNonNegativeNumber(value: unknown) {
   if (value == null || value === '') return null;
-  const number = Number(value);
+  const number = parseLocalizedNumber(value);
+  if (number == null) return undefined;
   return Number.isFinite(number) && number >= 0 ? number : undefined;
 }
 
@@ -254,11 +270,43 @@ app.get('/api/admin/sales/document', (req, res) => {
   return detail ? res.json(detail) : res.status(404).json({ error: 'Comprobante no encontrado dentro del universo comercial.' });
 });
 
+app.get('/api/invoices/detail', async (req, res) => {
+  const id = String(req.query.id ?? '').trim().slice(0, 300);
+  if (!id) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  const detail = buildInvoiceDetail(await loadSnapshot(), id);
+  res.setHeader('Cache-Control', 'no-store');
+  return detail ? res.json(detail) : res.status(404).json({ error: 'Comprobante no encontrado en las fuentes disponibles.' });
+});
+
+app.get('/api/invoices/pdf', async (req, res) => {
+  const id = String(req.query.id ?? '').trim().slice(0, 300);
+  if (!id) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  const detail = buildInvoiceDetail(await loadSnapshot(), id);
+  if (!detail) return res.status(404).json({ error: 'Comprobante no encontrado en las fuentes disponibles.' });
+  return sendDownload(res, () => exportInvoicePdf(res, detail));
+});
+
 app.get('/api/admin/sales/export', async (req, res) => {
   const format = String(req.query.format ?? 'csv');
   if (format === 'csv') return sendDownload(res, () => exportSalesCsv(res, req.query));
   if (format === 'xlsx') return sendDownload(res, () => exportSalesXlsx(res, req.query));
   return res.status(400).json({ error: 'Formato inválido. Usá csv o xlsx.' });
+});
+
+app.get('/api/client-trend-reviews', (req, res) => {
+  const direction = String(req.query.direction ?? '') as ClientTrendDirection;
+  if (direction && !clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Evolución inválida.' });
+  return res.json({ reviews: listClientTrendReviews(direction || undefined) });
+});
+
+app.put('/api/client-trend-reviews/:clientId/:direction', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const direction = String(req.params.direction) as ClientTrendDirection;
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  if (!clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Evolución inválida.' });
+  const review = setClientTrendReviewed(clientId, direction, req.body?.reviewed !== false);
+  return res.json({ review });
 });
 
 app.get('/api/admin/receivables', (req, res) => {
@@ -285,20 +333,39 @@ app.get('/api/admin/receivables/:clientId', async (req, res) => {
 app.patch('/api/admin/receivables/:clientId', async (req, res) => {
   const clientId = Number(req.params.clientId);
   const data = await loadSnapshot();
-  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const client = data.clients.find((value) => value.id === clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const status = String(req.body?.status ?? '');
   if (!RECEIVABLE_STATUSES.includes(status as typeof RECEIVABLE_STATUSES[number])) return res.status(400).json({ error: 'Estado interno inválido.' });
   const nextFollowUpAt = req.body?.nextFollowUpAt ? validDate(req.body.nextFollowUpAt) : null;
   if (req.body?.nextFollowUpAt && !nextFollowUpAt) return res.status(400).json({ error: 'La fecha de seguimiento no es válida.' });
+  const promiseAmount = status === 'promise' ? parseLocalizedNumber(req.body?.promiseAmount) : null;
+  const promiseDueAt = status === 'promise' ? validDate(req.body?.promiseDueAt) : null;
+  if (status === 'promise' && (promiseAmount == null || promiseAmount <= 0 || !promiseDueAt)) {
+    return res.status(400).json({ error: 'Informá un importe y una fecha válidos para la promesa.' });
+  }
   const workflow = saveReceivableCase({
     clientId,
     responsible: String(req.body?.responsible ?? '').slice(0, 120),
     status: status as typeof RECEIVABLE_STATUSES[number],
     nextFollowUpAt,
+    promiseAmount,
+    promiseDueAt,
     actor: 'Oficina Salice',
     comment: String(req.body?.comment ?? '').slice(0, 2000),
   });
+  syncReceivablePaymentPromise(clientId, client.seller);
   return res.json({ workflow, detail: getReceivableCaseDetail(clientId) });
+});
+
+app.delete('/api/admin/receivables/:clientId/events/:eventId', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  const client = data.clients.find((value) => value.id === clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const deleted = deleteReceivableCaseEvent(clientId, String(req.params.eventId), 'Oficina Salice');
+  if (deleted) syncReceivablePaymentPromise(clientId, client.seller);
+  return deleted ? res.json(getReceivableCaseDetail(clientId)) : res.status(404).json({ error: 'Seguimiento no encontrado o ya eliminado.' });
 });
 
 app.post('/api/admin/receivables/:clientId/comments', async (req, res) => {
@@ -416,16 +483,16 @@ app.post('/api/admin/goals/versions/:versionId/activate', (req, res) => {
 
 app.get('/api/saved-views', (req, res) => {
   const viewKey = String(req.query.viewKey ?? '');
-  if (viewKey && !['sales-explorer', 'receivables'].includes(viewKey)) return res.status(400).json({ error: 'Vista inválida.' });
-  const normalizedViewKey = viewKey ? viewKey as 'sales-explorer' | 'receivables' : undefined;
+  if (viewKey && !savedViewKeys.has(viewKey as SavedViewKey)) return res.status(400).json({ error: 'Vista inválida.' });
+  const normalizedViewKey = viewKey ? viewKey as SavedViewKey : undefined;
   return res.json({ views: listSavedViews(normalizedViewKey) });
 });
 
 app.post('/api/saved-views', (req, res) => {
-  const viewKey = String(req.body?.viewKey ?? '') as 'sales-explorer' | 'receivables';
+  const viewKey = String(req.body?.viewKey ?? '') as SavedViewKey;
   const name = String(req.body?.name ?? '').trim().slice(0, 80);
   const filters = stringRecord(req.body?.filters);
-  if (!['sales-explorer', 'receivables'].includes(viewKey) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista o filtros inválidos.' });
+  if (!savedViewKeys.has(viewKey) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista o filtros inválidos.' });
   return res.status(201).json({ view: createSavedView({ viewKey, name, filters, favorite: Boolean(req.body?.favorite) }) });
 });
 
@@ -456,6 +523,26 @@ app.get('/api/system/data-health', async (_req, res) => {
   res.json(buildDataHealth(data, getSptReportMeta(), getPendingBalancesReportMeta(), operationalStatus(), new Date(), loadPlatformAuditSummary()));
 });
 
+app.get('/api/system/refresh', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(manualRefreshProcessStatus());
+});
+
+app.post('/api/system/refresh', (_req, res) => {
+  const operational = operationalStatus();
+  if (operational.refresh.current || manualRefreshProcessStatus().running) {
+    return res.status(409).json({
+      error: 'Ya hay una actualización de GESI en curso.',
+      ...manualRefreshProcessStatus(),
+      refresh: operational.refresh.current,
+    });
+  }
+  const result = startManualRefresh();
+  return result.started
+    ? res.status(202).json(result)
+    : res.status(409).json({ error: 'No se pudo iniciar porque ya existe una actualización en curso.', ...result });
+});
+
 app.get('/api/agenda', async (req, res) => {
   const date = validDate(req.query.date) || localDate();
   const seller = String(req.query.seller || '').trim().slice(0, 1000);
@@ -482,6 +569,7 @@ app.get('/api/clients/:id/operations', async (req, res) => {
     activities: listActivities({ clientId, limit: 50 }),
     promises: listPromises({ clientId, limit: 50 }),
     agenda: listAgendaItems({ clientId, includeCancelled: false }).slice(0, 50),
+    receivableEvents: listReceivableCaseEvents(clientId, 100),
   });
 });
 
@@ -502,7 +590,7 @@ app.post('/api/activities', async (req, res) => {
   if (req.body?.nextActionAt && !nextActionAt) return res.status(400).json({ error: 'La fecha de próxima acción no es válida' });
   if (nextActionAt && nextActionAt < occurredDate) return res.status(400).json({ error: 'La próxima acción no puede quedar antes de la gestión' });
   if (outcome === 'rescheduled' && !nextActionAt) return res.status(400).json({ error: 'Indicá la nueva fecha para una gestión reprogramada' });
-  const rawAmount = req.body?.amount == null || req.body.amount === '' ? null : Number(req.body.amount);
+  const rawAmount = req.body?.amount == null || req.body.amount === '' ? null : parseLocalizedNumber(req.body.amount);
   if (rawAmount != null && (!Number.isFinite(rawAmount) || rawAmount < 0)) return res.status(400).json({ error: 'El importe no es válido' });
   const amount = rawAmount === 0 ? null : rawAmount;
   const knownProducts = new Set(data.products.map((product) => product.id));
@@ -513,8 +601,8 @@ app.post('/api/activities', async (req, res) => {
   let promise: { dueAt: string; amount: number; note: string } | null = null;
   if (outcome === 'promise') {
     const dueAt = validDate(req.body?.promise?.dueAt);
-    const amount = Number(req.body?.promise?.amount);
-    if (!dueAt || !Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Indicá fecha e importe válidos para la promesa' });
+    const amount = parseLocalizedNumber(req.body?.promise?.amount);
+    if (!dueAt || amount == null || amount <= 0) return res.status(400).json({ error: 'Indicá fecha e importe válidos para la promesa' });
     if (dueAt < occurredDate) return res.status(400).json({ error: 'La promesa no puede vencer antes de la gestión' });
     promise = { dueAt, amount, note: String(req.body?.promise?.note || '').trim().slice(0, 500) };
   } else if (req.body?.promise) {
@@ -593,6 +681,12 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 await ensureSnapshot();
+rebuildAllReceivableCasesFromEvents();
+const startupSnapshot = await loadSnapshot();
+const startupClients = new Map(startupSnapshot.clients.map((client) => [client.id, client]));
+for (const workflow of listReceivableCases()) {
+  syncReceivablePaymentPromise(workflow.clientId, startupClients.get(workflow.clientId)?.seller ?? workflow.responsible);
+}
 acquireServerLock();
 app.listen(port, '127.0.0.1', () => {
   console.log(`Salice API v${APP_VERSION} en http://127.0.0.1:${port}`);

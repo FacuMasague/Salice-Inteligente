@@ -1,4 +1,4 @@
-# Matriz de exportaciones administrativas · v0.4.0
+# Matriz de exportaciones administrativas · v0.4.3
 
 La v0.4.0 implementa las exportaciones prioritarias del núcleo administrativo y conserva el resto como backlog explícito.
 
@@ -9,6 +9,7 @@ La v0.4.0 implementa las exportaciones prioritarias del núcleo administrativo y
 | 1 | Agenda | XLSX/CSV | Tarea o gestión | Pendiente | Seguimiento operativo |
 | 2 | Cuentas no compradoras | XLSX/CSV | Cliente o marca | Pendiente | Campañas de recuperación |
 | 2 | Objetivos y cumplimiento | XLSX/PDF | Lectura-mes-dimensión | Implementado | Reuniones y trazabilidad del plan |
+| 2 | Comprobante individual | PDF | Encabezado y renglón de producto disponible | Implementado v0.4.3 | Consulta y archivo administrativo |
 | 3 | Reportes de proveedor | XLSX/PDF | Marca-producto-período | Pendiente | Intercambio externo controlado |
 
 Reglas para todas las exportaciones:
@@ -26,4 +27,5 @@ Implementación vigente:
 - los XLSX poseen hoja `Metadatos`, autofiltro, anchos y formatos numéricos;
 - el porcentaje vencido se escribe como fracción numérica compatible con Excel;
 - el PDF de objetivos usa A4 y distingue plan activo de borrador;
+- el PDF de comprobante usa A4, identifica corte, cliente, vendedor, forma de pago, importes y detalle disponible; si GESI omitió renglones, lo declara en lugar de completarlos;
 - las exportaciones fueron abiertas y verificadas como archivos válidos durante el cierre de v0.4.0.

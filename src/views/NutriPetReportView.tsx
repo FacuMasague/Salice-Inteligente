@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, PackageSearch, RefreshCw, Scale, ShoppingBag, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { NutriPetBrandRow, NutriPetFilterKey, NutriPetFilters, NutriPetMonthlyPoint, NutriPetProductRow, NutriPetReportMeta, NutriPetReportPayload } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
-import { number } from '../lib/format';
+import { compactNumber, money as formatMoney, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 
 const EMPTY_FILTERS: NutriPetFilters = {
@@ -15,12 +16,9 @@ const FILTER_LABELS: Record<NutriPetFilterKey, string> = {
   channelGroup: 'Canal de venta', brand: 'Marca', product: 'Producto', line: 'Línea', client: 'Cliente', grouping: 'Agrupación', category: 'Rubro',
 };
 
-const kilos = (value: number, compact = false) => new Intl.NumberFormat('es-AR', {
-  maximumFractionDigits: compact ? 1 : 2,
-  notation: compact ? 'compact' : 'standard',
-}).format(value);
+const kilos = (value: number, compact = false) => compact ? compactNumber(value) : number(value, 2);
 const exactKilos = (value: number) => new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(value);
-const money = (value: number) => `$${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1, notation: 'compact' }).format(value)}`;
+const money = (value: number) => formatMoney(value, true);
 const percent = (value: number | null, signed = false) => value == null
   ? 'Sin base'
   : `${signed && value > 0 ? '+' : ''}${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value)}%`;
@@ -127,25 +125,25 @@ function QuarterChart({ report }: { report: NutriPetReportPayload }) {
   return <div className="nutripet-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className={row.isPartial ? 'partial' : ''} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i>{kilos(row.kilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{number(row.clients)} clientes{row.isPartial ? ' · parcial' : ''}</p></article>)}</div>;
 }
 
-function BrandTable({ rows }: { rows: NutriPetBrandRow[] }) {
+function BrandTable({ rows, onOpenBrand }: { rows: NutriPetBrandRow[]; onOpenBrand: (brand: string) => void }) {
   type SortKey = 'brand' | 'kilos' | 'clients' | 'share' | 'previousYearKilos' | 'variation';
   const [sort, setSort] = useState(emptySort<SortKey>());
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const change = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="nutripet-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => change('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => change('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => change('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => change('share')} /><SortButton label="Año anterior comparable" direction={direction('previousYearKilos')} onClick={() => change('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => change('variation')} /></header>{sorted.map((row) => <article key={row.brand}><strong>{row.brand}</strong><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)}</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
+  return <div className="nutripet-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => change('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => change('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => change('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => change('share')} /><SortButton label="Año anterior comparable" direction={direction('previousYearKilos')} onClick={() => change('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => change('variation')} /></header>{sorted.map((row) => <article key={row.brand}><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)}</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
 }
 
-function ProductTable({ rows, onOpenProduct }: { rows: NutriPetProductRow[]; onOpenProduct: (productId: string) => void }) {
+function ProductTable({ rows, onOpenProduct, onOpenBrand }: { rows: NutriPetProductRow[]; onOpenProduct: (productId: string) => void; onOpenBrand: (brand: string) => void }) {
   type SortKey = 'product' | 'brand' | 'kilos' | 'clients' | 'units' | 'share';
   const [sort, setSort] = useState(emptySort<SortKey>());
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const change = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="nutripet-product-table"><header><SortButton label="Producto" direction={direction('product')} onClick={() => change('product')} /><SortButton label="Marca" direction={direction('brand')} onClick={() => change('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => change('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => change('clients')} /><SortButton label="Unidades" direction={direction('units')} onClick={() => change('units')} /><SortButton label="Participación" direction={direction('share')} onClick={() => change('share')} /></header>{sorted.map((row) => <article key={`${row.productId}:${row.brand}`}><button className="entity-link product-entity-link" onClick={() => onOpenProduct(row.productId)}>{row.product}<ChevronRight size={12} /></button><span>{row.brand}</span><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{number(row.units)}</span><span>{percent(row.share)}</span></article>)}</div>;
+  return <div className="nutripet-product-table"><header><SortButton label="Producto" direction={direction('product')} onClick={() => change('product')} /><SortButton label="Marca" direction={direction('brand')} onClick={() => change('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => change('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => change('clients')} /><SortButton label="Unidades" direction={direction('units')} onClick={() => change('units')} /><SortButton label="Participación" direction={direction('share')} onClick={() => change('share')} /></header>{sorted.map((row) => <article key={`${row.productId}:${row.brand}`}><button className="entity-link product-entity-link" onClick={() => onOpenProduct(row.productId)}>{row.product}<ChevronRight size={12} /></button><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{number(row.units)}</span><span>{percent(row.share)}</span></article>)}</div>;
 }
 
-export function NutriPetReportView({ onOpenProduct }: { onOpenProduct: (productId: string) => void }) {
+export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProduct: (productId: string) => void; onOpenBrand: (brand: string) => void }) {
   const [meta, setMeta] = useState<NutriPetReportMeta | null>(null);
   const [filters, setFilters] = useState<NutriPetFilters>(EMPTY_FILTERS);
   const [report, setReport] = useState<NutriPetReportPayload | null>(null);
@@ -198,12 +196,18 @@ export function NutriPetReportView({ onOpenProduct }: { onOpenProduct: (productI
   const clientYtdVariation = variation(report.ytd.clients, report.previousYtd.clients);
   const filterKeys: NutriPetFilterKey[] = ['brand', 'product', 'line', 'client', 'grouping', 'category'];
   const reset = () => setFilters({ ...EMPTY_FILTERS, year: meta.latestYear, month: meta.latestMonth.slice(5, 7) });
+  const applySaved = (saved: Record<string, string>) => setFilters({
+    year: saved.year || meta.latestYear, month: saved.month || meta.latestMonth.slice(5, 7),
+    channelGroup: saved.channelGroup ?? 'Especializado', brand: saved.brand || '', product: saved.product || '',
+    line: saved.line || '', client: saved.client || '', grouping: saved.grouping || '', category: saved.category || '',
+  });
 
   return <div className="page-view nutripet-page">
     <section className="data-card nutripet-filter-card" data-tour="nutripet-overview">
       <div className="nutripet-filter-copy"><span className="section-kicker"><ShoppingBag size={14} /> Reporte NutriPet</span><h2>Nutri Pet · {monthLabel(report.selectedMonth, true)}</h2><p>Volumen y cobertura del proveedor calculados directamente sobre facturas y notas de crédito de GESI.</p></div>
       <div className="nutripet-filter-controls"><SingleSelectFilter label="Año" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Mes" value={filters.month} options={(meta.monthsByYear[filters.year] ?? []).map((month) => ({ value: month, label: monthName(month) }))} onChange={(value) => update('month', value)} /><SelectFilter label={FILTER_LABELS.channelGroup} value={filters.channelGroup} options={meta.options.channelGroup} onChange={(value) => update('channelGroup', value)} /><button className={`button secondary nutripet-more-button ${activeFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)}><Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}<ChevronDown size={13} /></button></div>
       {expanded && <div className="nutripet-filter-expanded">{filterKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" onClick={reset}><X size={14} /> Restablecer</button></div>}
+      <SavedViewsBar viewKey="nutripet" filters={{ ...filters }} onApply={applySaved} />
       {loading && <div className="nutripet-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
 
@@ -220,9 +224,9 @@ export function NutriPetReportView({ onOpenProduct }: { onOpenProduct: (productI
 
     <div className="nutripet-main-grid"><section className="data-card nutripet-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen y acumulado interanual</h2><p>Últimos 13 meses disponibles. Las barras muestran kilos y la línea el YTD contra el año anterior.</p></div><div className="nutripet-legend"><span><i />Volumen</span><span><i className="ratio" />YTD vs LY</span><span><i className="partial" />Mes parcial</span></div></div><EvolutionChart report={report} /></section><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada ClienteID se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section></div>
 
-    <div className="nutripet-secondary-grid"><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><QuarterChart report={report} /></section><section className="data-card nutripet-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBag size={14} /> Marcas</span><h2>Mix del mes seleccionado</h2><p>Volumen y comparación contra el mismo corte del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} /></section></div>
+    <div className="nutripet-secondary-grid"><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><QuarterChart report={report} /></section><section className="data-card nutripet-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBag size={14} /> Marcas</span><h2>Mix del mes seleccionado</h2><p>Volumen y comparación contra el mismo corte del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section></div>
 
-    <section className="data-card nutripet-product-card"><div className="data-card-header"><div><span className="section-kicker"><PackageSearch size={14} /> Detalle auditable</span><h2>Productos del mes seleccionado</h2><p>Seleccioná cualquier encabezado para alternar orden ascendente, descendente y original.</p></div><span className="count-badge">{number(report.products.length)} productos</span></div><ProductTable rows={report.products} onOpenProduct={onOpenProduct} /></section>
+    <section className="data-card nutripet-product-card"><div className="data-card-header"><div><span className="section-kicker"><PackageSearch size={14} /> Detalle auditable</span><h2>Productos del mes seleccionado</h2><p>Seleccioná cualquier encabezado para alternar orden ascendente, descendente y original.</p></div><span className="count-badge">{number(report.products.length)} productos</span></div><ProductTable rows={report.products} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} /></section>
 
     <section className="nutripet-source-note"><Database size={16} /><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos NutriPet · cobertura GESI {meta.coverageFrom} a {meta.maxDate} · empresa 3 / sucursal 3 · grupo Nutri Pet · excluye rubro POP y Via Salice MDP S.A.{meta.unavailableDocumentCount ? ` GESI no entregó el detalle de ${number(meta.unavailableDocumentCount)} de ${number(meta.sourceDocumentCount)} comprobantes; quedan identificados para el próximo refresco.` : ''} El PBIX se usa sólo como referencia funcional y de conciliación.</span></div></section>
   </div>;

@@ -123,8 +123,8 @@ function createInvoices(seed: ClientSeed, index: number): Invoice[] {
   const secondIssuedAt = '2026-05-05';
   const contractualDays = seed.payDays > 30 ? 45 : 30;
   const invoices: Invoice[] = [
-    { id: `INV-${index + 1}-01`, number: `FAC B-${String(61320 + index).padStart(8, '0')}`, issuedAt: firstIssuedAt, dueAt: addDays(firstIssuedAt, contractualDays), paidAt: addDays(firstIssuedAt, seed.payDays - 2), amount: 246000 + index * 17300, outstanding: 0, status: 'paid', creditTermDays: contractualDays },
-    { id: `INV-${index + 1}-02`, number: `FAC B-${String(61880 + index).padStart(8, '0')}`, issuedAt: secondIssuedAt, dueAt: addDays(secondIssuedAt, contractualDays), paidAt: addDays(secondIssuedAt, seed.payDays + 2), amount: 198000 + index * 12100, outstanding: 0, status: 'paid', creditTermDays: contractualDays },
+    { id: `INV-${index + 1}-01`, number: `FAC B-${String(61320 + index).padStart(8, '0')}`, issuedAt: firstIssuedAt, dueAt: addDays(firstIssuedAt, contractualDays), paidAt: addDays(firstIssuedAt, seed.payDays - 2), amount: 246000 + index * 17300, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'CTA CTE 30 DIAS' },
+    { id: `INV-${index + 1}-02`, number: `FAC B-${String(61880 + index).padStart(8, '0')}`, issuedAt: secondIssuedAt, dueAt: addDays(secondIssuedAt, contractualDays), paidAt: addDays(secondIssuedAt, seed.payDays + 2), amount: 198000 + index * 12100, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'CTA CTE 30 DIAS' },
   ];
   if (seed.balance > 0) {
     const critical = seed.balance / seed.credit > 0.78 || seed.payDays > 44;
@@ -138,7 +138,7 @@ function createInvoices(seed: ClientSeed, index: number): Invoice[] {
       outstanding: seed.balance,
       status,
     };
-    invoices.unshift({ ...openInvoice, creditTermDays: invoiceCreditTermDays(openInvoice.issuedAt, openInvoice.dueAt) });
+    invoices.unshift({ ...openInvoice, creditTermDays: invoiceCreditTermDays(openInvoice.issuedAt, openInvoice.dueAt), paymentMethod: 'CTA CTE 30 DIAS' });
   }
   return invoices;
 }

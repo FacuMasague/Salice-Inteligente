@@ -1,10 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Target, Users, WalletCards, X } from 'lucide-react';
-import { VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product } from '../shared/models';
+import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Store, Target, Users, WalletCards, X } from 'lucide-react';
+import { APP_VERSION, VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product } from '../shared/models';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
+import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
 import { ProductPanel } from './components/ProductPanel';
 import { TUTORIAL_STEPS, TutorialOverlay, type TutorialView } from './components/TutorialOverlay';
+import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
+import { number } from './lib/format';
 import type { ClientVisibility } from './views/MapDashboard';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
@@ -12,6 +15,7 @@ const ClientsView = lazy(() => import('./views/ClientsView').then((module) => ({
 const FinanceView = lazy(() => import('./views/FinanceView').then((module) => ({ default: module.FinanceView })));
 const MapDashboard = lazy(() => import('./views/MapDashboard').then((module) => ({ default: module.MapDashboard })));
 const ProductsView = lazy(() => import('./views/ProductsView').then((module) => ({ default: module.ProductsView })));
+const BrandsView = lazy(() => import('./views/BrandsView').then((module) => ({ default: module.BrandsView })));
 const ReportsView = lazy(() => import('./views/ReportsView').then((module) => ({ default: module.ReportsView })));
 const RoutesView = lazy(() => import('./views/RoutesView').then((module) => ({ default: module.RoutesView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((module) => ({ default: module.SettingsView })));
@@ -31,19 +35,20 @@ type View = TutorialView;
 type SidebarSection = 'operations' | 'administration' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
-  map: 'operations', agenda: 'operations', clients: 'operations', sellers: 'operations', finance: 'operations', products: 'operations', routes: 'operations',
-  'sales-explorer': 'administration', receivables: 'administration', goals: 'administration',
+  map: 'operations', clients: 'operations', sellers: 'operations', finance: 'operations', products: 'operations', brands: 'operations', routes: 'operations',
+  agenda: 'administration', 'sales-explorer': 'administration', receivables: 'administration', goals: 'administration',
   reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
   settings: 'system',
 };
 
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
-  agenda: { title: 'Agenda operativa', subtitle: 'Prioridades, gestiones y compromisos del equipo comercial' },
+  agenda: { title: 'Gestiones comerciales', subtitle: 'Planificación y registro administrativo de visitas, llamadas y ofertas' },
   clients: { title: 'Clientes', subtitle: 'Toda la cartera comercial en una sola vista' },
   sellers: { title: 'Vendedores', subtitle: 'Carteras, desempeño, cobranza y prioridades por responsable' },
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
   products: { title: 'Inteligencia de producto', subtitle: 'Catálogo vectorizado para comparar y recomendar' },
+  brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
   routes: { title: 'Planificación de rutas', subtitle: 'Recorridos comerciales priorizados y explicables' },
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
   receivables: { title: 'Cuentas por cobrar', subtitle: 'Cartera, responsables, estados y seguimiento administrativo' },
@@ -61,13 +66,20 @@ const titles: Record<View, { title: string; subtitle: string }> = {
 
 const nav: { id: View; label: string; icon: typeof Map }[] = [
   { id: 'map', label: 'Mapa operativo', icon: Map },
-  { id: 'agenda', label: 'Agenda', icon: ClipboardCheck },
   { id: 'routes', label: 'Rutas', icon: Route },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'sellers', label: 'Vendedores', icon: Users },
   { id: 'finance', label: 'Cartera', icon: CircleDollarSign },
   { id: 'products', label: 'Productos', icon: Boxes },
+  { id: 'brands', label: 'Marcas', icon: Store },
 ];
+
+function localizedDisclaimer(meta: DashboardData['meta']) {
+  if (!meta.disclaimer) return '';
+  const coverageValues = [...new Set(Object.values(meta.coverage ?? {}).filter((value): value is number => typeof value === 'number' && value >= 1000))]
+    .sort((left, right) => right - left);
+  return coverageValues.reduce((text, value) => text.replace(new RegExp(`\\b${value}\\b`, 'g'), number(value)), meta.disclaimer);
+}
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -88,9 +100,13 @@ export default function App() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [productFocusId, setProductFocusId] = useState<string | null>(null);
   const [productProfileOpen, setProductProfileOpen] = useState(false);
+  const [brandFocus, setBrandFocus] = useState('');
+  const [invoiceFocusId, setInvoiceFocusId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [dataHealth, setDataHealth] = useState<DataHealthPayload | null>(null);
   const [reloadingData, setReloadingData] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState<{ tone: 'working' | 'success' | 'error'; message: string } | null>(null);
+  const refreshPollTimer = useRef<number | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,8 +125,8 @@ export default function App() {
 
   useEffect(refreshDataHealth, []);
 
-  const reloadLocalData = async () => {
-    if (reloadingData) return;
+  const reloadLocalData = async (force = false) => {
+    if (reloadingData && !force) return;
     setReloadingData(true);
     try {
       const [dashboardResponse, healthResponse] = await Promise.all([
@@ -124,6 +140,65 @@ export default function App() {
       console.error(cause);
     } finally {
       setReloadingData(false);
+    }
+  };
+
+  useEffect(() => () => { if (refreshPollTimer.current != null) window.clearTimeout(refreshPollTimer.current); }, []);
+
+  const refreshFromGesi = async () => {
+    if (reloadingData || dataHealth?.refresh.current) return;
+    setReloadingData(true);
+    setRefreshFeedback({ tone: 'working', message: 'Iniciando actualización desde GESI…' });
+    let requestedAt = Date.now();
+    try {
+      const response = await fetch('/api/system/refresh', { method: 'POST' });
+      const payload = await response.json().catch(() => ({})) as { error?: string; startedAt?: string | null; refresh?: { startedAt?: string } | null };
+      if (!response.ok && response.status !== 409) throw new Error(payload.error ?? 'No se pudo iniciar la actualización.');
+      const attachedStart = payload.startedAt ?? payload.refresh?.startedAt;
+      if (attachedStart && Number.isFinite(new Date(attachedStart).getTime())) requestedAt = new Date(attachedStart).getTime();
+      const poll = async (): Promise<void> => {
+        const [healthResponse, processResponse] = await Promise.all([
+          fetch('/api/system/data-health', { cache: 'no-store' }),
+          fetch('/api/system/refresh', { cache: 'no-store' }),
+        ]);
+        if (!healthResponse.ok) throw new Error('No se pudo consultar el avance de la actualización.');
+        const health = await healthResponse.json() as DataHealthPayload;
+        const processStatus = processResponse.ok
+          ? await processResponse.json() as { running?: boolean; lastExit?: { code: number | null; signal: string | null } | null }
+          : null;
+        setDataHealth(health);
+        if (health.refresh.current) {
+          setRefreshFeedback({ tone: 'working', message: `Actualizando GESI · ${health.refresh.current.stage}` });
+          refreshPollTimer.current = window.setTimeout(() => { poll().catch(finishWithError); }, 3000);
+          return;
+        }
+        const attempt = health.refresh.lastAttempt;
+        if (!attempt || new Date(attempt.startedAt).getTime() < requestedAt - 5000) {
+          if (processStatus && !processStatus.running) {
+            const exit = processStatus.lastExit;
+            throw new Error(exit?.signal
+              ? `La actualización no pudo iniciarse o terminó por la señal ${exit.signal}.`
+              : `La actualización no pudo iniciarse${exit?.code != null ? ` (código ${exit.code})` : ''}.`);
+          }
+          refreshPollTimer.current = window.setTimeout(() => { poll().catch(finishWithError); }, 1500);
+          return;
+        }
+        if (attempt.status === 'failed') throw new Error(`La actualización falló en ${attempt.stage}: ${attempt.error ?? 'sin detalle'}`);
+        await reloadLocalData(true);
+        refreshNotifications();
+        setRefreshFeedback({ tone: 'success', message: 'Actualización completada y publicada.' });
+        setReloadingData(false);
+        window.setTimeout(() => setRefreshFeedback(null), 7000);
+      };
+      const finishWithError = (cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        setReloadingData(false);
+        setRefreshFeedback({ tone: 'error', message });
+      };
+      await poll();
+    } catch (cause) {
+      setReloadingData(false);
+      setRefreshFeedback({ tone: 'error', message: cause instanceof Error ? cause.message : String(cause) });
     }
   };
 
@@ -145,7 +220,7 @@ export default function App() {
         setSearchOpen(true);
         requestAnimationFrame(() => searchInput.current?.focus());
       }
-      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); }
+      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
@@ -172,11 +247,13 @@ export default function App() {
   const selected = useMemo(() => data?.clients.find((client) => client.id === selectedId) || null, [data, selectedId]);
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
   const activeClients = useMemo(() => data?.clients.filter((client) => client.active) ?? [], [data]);
-  const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
+  const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openClientById = (clientId: number) => { const client = data?.clients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
+  const openBrand = (brand: string) => { if (!brand || brand.startsWith('Sin ')) return; setBrandFocus(brand); setView('brands'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
   const openProductCatalog = (product: Product) => { setProductFocusId(product.id); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
-  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
+  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openInvoice = (invoiceId: string) => { setInvoiceFocusId(invoiceId); setSearchOpen(false); setNotificationsOpen(false); };
   const selectView = (next: View) => { setView(next); setSidebarOpen(false); setClientProfileOpen(false); setProductProfileOpen(false); if (next !== 'map') setSelectedId(null); };
   const toggleSidebarSection = (section: SidebarSection) => setSidebarSections((current) => ({ ...current, [section]: !current[section] }));
   const planRoute = (clientId: number) => { if (!data?.clients.find((client) => client.id === clientId)?.active) return; setRouteClientId(clientId); setView('routes'); setSelectedId(null); setClientProfileOpen(false); };
@@ -202,6 +279,11 @@ export default function App() {
   const sellerResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : [...new Set(data.clients
     .filter((client) => client.active && client.seller !== 'Sin vendedor' && client.seller.toLowerCase().includes(normalizedGlobalQuery))
     .map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')).slice(0, 5), [data, normalizedGlobalQuery]);
+  const brandResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : [...new Set(data.products
+    .map((product) => product.brand)
+    .filter((brand) => brand && !brand.startsWith('Sin ') && brand.toLowerCase().includes(normalizedGlobalQuery)))]
+    .map((brand) => ({ brand, sales90d: data.products.filter((product) => product.brand === brand).reduce((sum, product) => sum + product.sales90d, 0) }))
+    .sort((a, b) => b.sales90d - a.sales90d || a.brand.localeCompare(b.brand, 'es')).slice(0, 5), [data, normalizedGlobalQuery]);
   const nextTutorialStep = () => {
     if (tutorialStep == null) return;
     if (tutorialStep === TUTORIAL_STEPS.length - 1) finishTutorial();
@@ -226,14 +308,14 @@ export default function App() {
             {nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => selectView(item.id)}><Icon size={19} /><span>{item.label}</span>{item.id === 'finance' && activeClients.some((client) => client.health === 'critical') && <i>{activeClients.filter((client) => client.health === 'critical').length}</i>}</button>; })}
           </nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.administration} aria-controls="sidebar-administration" onClick={() => toggleSidebarSection('administration')}><span>Administración</span>{sidebarSections.administration ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'goals' ? 'active' : ''} onClick={() => selectView('goals')}><Target size={19} /><span>Objetivos comerciales</span></button></nav>}
+          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'agenda' ? 'active' : ''} onClick={() => selectView('agenda')}><ClipboardCheck size={19} /><span>Gestiones comerciales</span></button><button className={view === 'goals' ? 'active' : ''} onClick={() => selectView('goals')}><Target size={19} /><span>Objetivos comerciales</span></button></nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.reports} aria-controls="sidebar-reports" onClick={() => toggleSidebarSection('reports')}><span>Reportes</span>{sidebarSections.reports ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={view === 'reports' ? 'active' : ''} onClick={() => selectView('reports')}><LayoutDashboard size={19} /><span>Reporte General</span></button><button className={view === 'commercial-sales' ? 'active' : ''} onClick={() => selectView('commercial-sales')}><ShoppingBasket size={19} /><span>Ventas · Comercial</span></button><button className={view === 'spt' ? 'active' : ''} onClick={() => selectView('spt')}><BarChart3 size={19} /><span>SPT Vol vs mes anterior</span></button><button className={view === 'pending-balances' ? 'active' : ''} onClick={() => selectView('pending-balances')}><WalletCards size={19} /><span>Saldos Pendientes</span></button><button className={view === 'non-buyers' ? 'active' : ''} onClick={() => selectView('non-buyers')}><PackageSearch size={19} /><span>Cuentas no compradoras</span></button><button className={view === 'mars' ? 'active' : ''} onClick={() => selectView('mars')}><PawPrint size={19} /><span>Reporte Mars</span></button><button className={view === 'nutripet' ? 'active' : ''} onClick={() => selectView('nutripet')}><ShoppingBag size={19} /><span>Reporte NutriPet</span></button><button className={view === 'baires' ? 'active' : ''} onClick={() => selectView('baires')}><Package size={19} /><span>Reporte Baires</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.system && <nav className="main-nav muted-nav" id="sidebar-system"><button className={view === 'settings' ? 'active' : ''} onClick={() => selectView('settings')}><Settings2 size={19} /><span>Configuración</span></button></nav>}
-          <div className="sidebar-insight"><div><Sparkles size={16} /><span>Motor activo</span></div><strong>{data.products.length} productos</strong><p>vectorizados en {Object.keys(VECTOR_LABELS).length} dimensiones</p></div>
+          <div className="sidebar-insight"><div><Sparkles size={16} /><span>Motor activo</span></div><strong>{number(data.products.length)} productos</strong><p>vectorizados en {number(Object.keys(VECTOR_LABELS).length)} dimensiones</p></div>
         </div>
-        <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>v{data.meta.version} · {data.meta.sourceLabel}</strong><small>{data.meta.source === 'demo' ? 'Esperando URL de GESI' : 'Snapshot conectado'}</small></div></div>
+        <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>v{APP_VERSION} · {data.meta.sourceLabel}</strong><small>{data.meta.source === 'demo' ? 'Esperando URL de GESI' : 'Snapshot conectado'}</small></div></div>
       </aside>
       {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
@@ -242,47 +324,50 @@ export default function App() {
           <button className="mobile-menu" aria-label="Abrir menú" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
-            <div className={`global-search ${searchOpen ? 'open' : ''}`}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor o producto" /><kbd>⌘ K</kbd>
+            <div className={`global-search ${searchOpen ? 'open' : ''}`}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
               {searchOpen && <div className="global-search-results">
                 {normalizedGlobalQuery.length < 2 && <p>Escribí al menos 2 caracteres para buscar en toda la base.</p>}
-                {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{client.tradeName}</strong><span>{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · P{client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}
+                {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · P{client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!sellerResults.length && <><span className="search-result-label">Vendedores</span>{sellerResults.map((seller) => <button key={seller} onMouseDown={(event) => event.preventDefault()} onClick={() => openSeller(seller)}><Users size={15} /><div><strong>{seller}</strong><span>Abrir cartera y desempeño</span></div><ChevronRight size={15} /></button>)}</>}
-                {!!productResults.length && <><span className="search-result-label">Productos</span>{productResults.map((product) => <button key={product.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openProduct(product)}><Package size={15} /><div><strong>{product.name}</strong><span>{product.brand} · stock {product.stock}</span></div><ChevronRight size={15} /></button>)}</>}
-                {normalizedGlobalQuery.length >= 2 && !clientResults.length && !sellerResults.length && !productResults.length && <p>No encontramos coincidencias.</p>}
+                {!!brandResults.length && <><span className="search-result-label">Marcas</span>{brandResults.map((item) => <button key={item.brand} onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(item.brand)}><Store size={15} /><div><strong>{item.brand}</strong><span>Abrir productos y desempeño de la marca</span></div><ChevronRight size={15} /></button>)}</>}
+                {!!productResults.length && <><span className="search-result-label">Productos</span>{productResults.map((product) => <div className="global-product-search-result" key={product.id}><button onMouseDown={(event) => event.preventDefault()} onClick={() => openProduct(product)}><Package size={15} /><div><strong>{product.name}</strong><span>{product.sku} · stock {product.stock}</span></div><ChevronRight size={15} /></button><button className="global-search-brand-link" onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(product.brand)}><Store size={12} /><span>{product.brand}</span></button></div>)}</>}
+                {normalizedGlobalQuery.length >= 2 && !clientResults.length && !sellerResults.length && !brandResults.length && !productResults.length && <p>No encontramos coincidencias.</p>}
               </div>}
             </div>
-            <button className={`sync-chip ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} onClick={reloadLocalData} title="Releer el último snapshot validado del servidor"><Database size={14} /><div><strong>{reloadingData ? 'Releyendo datos…' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Modo demo' : 'Snapshot validado')}</strong><span>Foto · {snapshotLabel}</span></div>{reloadingData && <RefreshCw className="spin" size={14} />}</button>
-            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{notifications.length}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('agenda'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('agenda'); setNotificationsOpen(false); }}>Abrir agenda operativa</button></div>}</div>
+            <div className="sync-action-wrap"><button className={`sync-chip ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} disabled={reloadingData || Boolean(dataHealth?.refresh.current)} onClick={refreshFromGesi} title="Capturar GESI ahora, auditar el paquete y publicarlo sólo si es válido"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? `Actualizando · ${dataHealth?.refresh.current?.stage ?? 'iniciando'}` : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Modo demo' : 'Snapshot validado')}</strong><span>Foto · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</button>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
+            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{number(notifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
             <div className="user-avatar">FM</div>
           </div>
         </header>
 
-        {data.meta.disclaimer && <div className={`demo-banner ${data.meta.source === 'gesi' ? 'connected' : ''}`}><Database size={15} /><span><strong>{data.meta.source === 'demo' ? 'Prototipo con datos demostrativos.' : 'Snapshot real de Salice.'}</strong> {data.meta.disclaimer}</span></div>}
+        {data.meta.disclaimer && <div className={`demo-banner ${data.meta.source === 'gesi' ? 'connected' : ''}`}><Database size={15} /><span><strong>{data.meta.source === 'demo' ? 'Prototipo con datos demostrativos.' : 'Snapshot real de Salice.'}</strong> {localizedDisclaimer(data.meta)}</span></div>}
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
-          {view === 'map' && <MapDashboard clients={data.clients} products={data.products} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
+          {view === 'map' && <MapDashboard clients={data.clients} products={data.products} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
           {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
-          {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
-          {view === 'products' && <ProductsView products={data.products} focusProductId={productFocusId} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} />}
+          {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
+          {view === 'products' && <ProductsView products={data.products} focusProductId={productFocusId} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} onOpenBrand={openBrand} />}
+          {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
           {view === 'routes' && <RoutesView clients={activeClients} initialClientId={routeClientId} onOpenClient={openClient} onOpenSeller={openSeller} />}
-          {view === 'sales-explorer' && <SalesExplorerView onOpenClient={openClientById} onOpenProduct={openProduct} />}
-          {view === 'receivables' && <ReceivablesView dataClients={data.clients} onOpenClient={openClient} />}
+          {view === 'sales-explorer' && <SalesExplorerView clients={data.clients} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
+          {view === 'receivables' && <ReceivablesView dataClients={data.clients} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}
           {view === 'goals' && <GoalsView />}
-          {view === 'reports' && <ReportsView data={data} onOpen={openClient} onOpenSeller={openSeller} />}
+          {view === 'reports' && <ReportsView data={data} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} />}
           {view === 'spt' && <SptReportView onOpenSeller={openSeller} />}
-          {view === 'commercial-sales' && <CommercialSalesReportView onOpenProduct={openProduct} />}
-          {view === 'mars' && <MarsReportView />}
-          {view === 'nutripet' && <NutriPetReportView onOpenProduct={openProduct} />}
-          {view === 'baires' && <BairesReportView />}
-          {view === 'non-buyers' && <NonBuyersReportView data={data} onOpen={openClient} onOpenSeller={openSeller} />}
+          {view === 'commercial-sales' && <CommercialSalesReportView onOpenProduct={openProduct} onOpenBrand={openBrand} />}
+          {view === 'mars' && <MarsReportView onOpenBrand={openBrand} />}
+          {view === 'nutripet' && <NutriPetReportView onOpenProduct={openProduct} onOpenBrand={openBrand} />}
+          {view === 'baires' && <BairesReportView onOpenBrand={openBrand} />}
+          {view === 'non-buyers' && <NonBuyersReportView data={data} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} />}
           {view === 'pending-balances' && <PendingBalancesReportView data={data} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
         </Suspense></div>
       </main>
-      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
-      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onOpenCatalog={openProductCatalog} /></div>}
+      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
+      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} /></div>}
+      {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} />}
       {tutorialStep != null && <TutorialOverlay stepIndex={tutorialStep} onBack={() => setTutorialStep((value) => value == null ? null : Math.max(0, value - 1))} onNext={nextTutorialStep} onClose={() => setTutorialStep(null)} />}
     </div>
   );

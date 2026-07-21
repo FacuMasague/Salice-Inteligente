@@ -146,7 +146,7 @@ export function optimizeRoute(selectedIds: number[], clients: Client[], options:
     stops.push({
       order: stops.length + 1,
       clientId: next.client.id,
-      clientName: next.client.tradeName,
+      clientName: next.client.name,
       locality: next.client.locality,
       distanceKm: Number(next.distance.toFixed(1)),
       etaMinutes: elapsed,

@@ -16,6 +16,7 @@ interface ProductPanelProps {
   onClose?: () => void;
   onOpenProduct?: (product: Product) => void;
   onOpenCatalog?: (product: Product) => void;
+  onOpenBrand?: (brand: string) => void;
 }
 
 const useful = (value: string) => value && !value.toLowerCase().startsWith('sin ') ? value : 'No informado por GESI';
@@ -43,7 +44,7 @@ function pricePositionLabel(product: Product) {
   return 'Sin cohorte comparable suficiente';
 }
 
-export function ProductPanel({ product, products, mode = 'embedded', onClose, onOpenProduct, onOpenCatalog }: ProductPanelProps) {
+export function ProductPanel({ product, products, mode = 'embedded', onClose, onOpenProduct, onOpenCatalog, onOpenBrand }: ProductPanelProps) {
   const nearest = useMemo(() => products
     .filter((candidate) => candidate.id !== product.id)
     .map((candidate) => ({ product: candidate, comparison: compareProductsV2(product, candidate) }))
@@ -69,7 +70,7 @@ export function ProductPanel({ product, products, mode = 'embedded', onClose, on
         <article className="data-card product-hero product-profile-hero">
           <div className="product-hero-top">
             <div className="large-product-icon"><PackageSearch size={30} /></div>
-            <div className="product-hero-title"><span className="section-kicker">{product.family} · {product.sku}</span><h2>{product.name}</h2><p>{useful(product.brand)} · {product.pack}</p></div>
+            <div className="product-hero-title"><span className="section-kicker">{product.family} · {product.sku}</span><h2>{product.name}</h2><p><button className="entity-link" onClick={() => onOpenBrand?.(product.brand)}>{useful(product.brand)}</button> · {product.pack}</p></div>
             <div className="product-profile-badges"><span className={`master-status ${product.masterStatus}`}>{statusLabel}</span><span className="algorithm-pill"><Sparkles size={13} /> Vector v2.1</span></div>
           </div>
           {!!product.description && product.description !== product.name && <p className="product-description">{product.description}</p>}
@@ -87,7 +88,7 @@ export function ProductPanel({ product, products, mode = 'embedded', onClose, on
           <article className="data-card product-classification-card">
             <div className="data-card-header"><div><span className="section-kicker"><Boxes size={14} /> Clasificación comercial</span><h2>Cómo está organizado en GESI</h2></div></div>
             <div className="product-classification-grid">
-              <div><span>Marca</span><strong>{useful(product.brand)}</strong></div><div><span>Línea</span><strong>{useful(product.line)}</strong></div>
+              <div><span>Marca</span><button className="entity-link" onClick={() => onOpenBrand?.(product.brand)}><strong>{useful(product.brand)}</strong></button></div><div><span>Línea</span><strong>{useful(product.line)}</strong></div>
               <div><span>Rubro</span><strong>{useful(product.family)}</strong></div><div><span>Subrubro</span><strong>{useful(product.subcategory)}</strong></div>
               <div><span>Familia comercial</span><strong>{useful(product.commercialFamily)}</strong></div><div><span>Grupo</span><strong>{useful(product.group)}</strong></div>
               <div><span>Unidad</span><strong>{product.unit}</strong></div><div><span>Unidades por caja</span><strong>{product.unitsPerCase ?? 'No informado'}</strong></div>
@@ -119,7 +120,7 @@ export function ProductPanel({ product, products, mode = 'embedded', onClose, on
 
         <article className="data-card closest-products-card">
           <div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Alternativas cercanas</span><h2>Productos más parecidos</h2><p>Ranking recalculado con el comparador v2.1.</p></div></div>
-          <div className="closest-product-list">{nearest.map((item, index) => <button key={item.product.id} onClick={() => onOpenProduct?.(item.product)}><span>{index + 1}</span><div><strong>{item.product.name}</strong><small>{useful(item.product.brand)} · {item.product.family}</small></div><em>{item.comparison.score}%</em><ChevronRight size={15} /></button>)}</div>
+          <div className="closest-product-list">{nearest.map((item, index) => <article key={item.product.id}><button className="closest-product-main" onClick={() => onOpenProduct?.(item.product)}><span>{index + 1}</span><div><strong>{item.product.name}</strong><small>{item.product.family}</small></div><em>{item.comparison.score}%</em><ChevronRight size={15} /></button><button className="entity-link closest-product-brand" onClick={() => onOpenBrand?.(item.product.brand)}>{useful(item.product.brand)}</button></article>)}</div>
         </article>
 
         <div className="product-data-note"><CalendarDays size={14} /><span>Stock, precio, ventas, clientes y última venta corresponden al snapshot visible. La cobertura se estima con stock actual ÷ rotación media de 90 días.</span></div>

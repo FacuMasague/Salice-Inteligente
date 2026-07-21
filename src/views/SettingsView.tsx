@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Datab
 import type { DashboardData } from '../../shared/models';
 import type { DataHealthPayload } from '../../shared/data-health';
 import type { MetricDefinition, ReportUniverseDefinition } from '../../shared/metrics';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { longDate, number } from '../lib/format';
 
 const lessons = [
@@ -65,13 +66,15 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado · 25 pasos</span><h2>Aprendé a usar Salice Inteligente v0.4.0</h2><p>El tutorial recorre operación, administración, objetivos, reportes, productos y rutas. Sólo los formularios operativos modifican datos locales.</p></div>
+          <div><span className="section-kicker">Recorrido guiado · 26 pasos</span><h2>Aprendé a usar Salice Inteligente v0.4.2</h2><p>El tutorial recorre operación, administración, objetivos, reportes, marcas, productos y rutas. Sólo los formularios operativos modifican datos locales.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
           <button className="button primary large" onClick={onStartTutorial}><PlayCircle size={17} /> {tutorialCompleted ? 'Repetir tutorial' : 'Iniciar tutorial'}</button>
         </div>
       </section>
+
+      <SavedViewsBar viewKey="settings" filters={{ metricQuery }} onApply={(saved) => setMetricQuery(saved.metricQuery ?? '')} />
 
       <section className={`data-card data-health-card ${dataHealth?.overall ?? 'unavailable'}`}>
         <div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Estado de los datos</span><h2>Frescura, fuentes y última validación</h2><p>La pantalla siempre conserva la última foto aprobada; una captura fallida no reemplaza estos datos.</p></div><span className={`data-health-badge ${dataHealth?.freshness.level ?? 'unknown'}`}>{dataHealth ? freshnessLabels[dataHealth.freshness.level] : 'Consultando…'}</span></div>

@@ -9,9 +9,10 @@ import type {
   CommercialSalesReportPayload,
 } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
-import { money, number } from '../lib/format';
+import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 
 const EMPTY_FILTERS: CommercialSalesFilters = { periodMode: 'month', month: '', year: '', seller: '', category: '', brand: '', productGroup: '' };
@@ -35,7 +36,7 @@ const monthLabel = (value: string, long = false) => {
     .format(new Date(year, month - 1, 1)).replace('.', '');
 };
 const dateLabel = (value: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short' }).format(new Date(`${value}T12:00:00`)).replaceAll('.', '');
-const kilos = (value: number, compact = false) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1, notation: compact ? 'compact' : 'standard' }).format(value);
+const kilos = (value: number, compact = false) => compact ? compactNumber(value) : number(value, 1);
 const price = (value: number | null) => value == null ? 'Sin base' : money(value);
 const percent = (value: number | null, signed = false) => value == null
   ? 'Sin base'
@@ -106,7 +107,7 @@ function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
   </div>;
 }
 
-function BrandTable({ report, onOpenProduct }: { report: CommercialSalesReportPayload; onOpenProduct: (productId: string) => void }) {
+function BrandTable({ report, onOpenProduct, onOpenBrand }: { report: CommercialSalesReportPayload; onOpenProduct: (productId: string) => void; onOpenBrand: (brand: string) => void }) {
   type SortKey = 'brand' | 'kilos' | 'averagePricePerKilo' | 'kiloShare' | 'netAmount' | 'salesShare' | 'averageDailySales';
   const [sort, setSort] = useState(emptySort<SortKey>());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -121,14 +122,14 @@ function BrandTable({ report, onOpenProduct }: { report: CommercialSalesReportPa
   return <div className="commercial-brand-table">
     <header><SortButton label="Marca / producto" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Precio prom. / kg" direction={direction('averagePricePerKilo')} onClick={() => changeSort('averagePricePerKilo')} /><SortButton label="% kilos" direction={direction('kiloShare')} onClick={() => changeSort('kiloShare')} /><SortButton label="Venta neta" direction={direction('netAmount')} onClick={() => changeSort('netAmount')} /><SortButton label="% venta" direction={direction('salesShare')} onClick={() => changeSort('salesShare')} /><SortButton label="Promedio diario" direction={direction('averageDailySales')} onClick={() => changeSort('averageDailySales')} /></header>
     <div>{rows.map((row) => <div className="commercial-brand-group" key={row.brand}>
-      <button className="commercial-brand-row" onClick={() => toggle(row.brand)} aria-expanded={expanded.has(row.brand)}><span><ChevronRight size={15} />{row.brand}<small>{number(row.products.length)} productos · {number(row.clients)} clientes</small></span><strong>{kilos(row.kilos)}</strong><strong>{price(row.averagePricePerKilo)}</strong><strong>{percent(row.kiloShare)}</strong><strong>{money(row.netAmount)}</strong><strong>{percent(row.salesShare)}</strong><strong>{money(row.averageDailySales)}</strong></button>
+      <div className="commercial-brand-row" aria-expanded={expanded.has(row.brand)}><span><button className="icon-button" aria-label={`${expanded.has(row.brand) ? 'Ocultar' : 'Mostrar'} productos de ${row.brand}`} onClick={() => toggle(row.brand)}><ChevronRight size={15} /></button><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><small>{number(row.products.length)} productos · {number(row.clients)} clientes</small></span><strong>{kilos(row.kilos)}</strong><strong>{price(row.averagePricePerKilo)}</strong><strong>{percent(row.kiloShare)}</strong><strong>{money(row.netAmount)}</strong><strong>{percent(row.salesShare)}</strong><strong>{money(row.averageDailySales)}</strong></div>
       {expanded.has(row.brand) && <div className="commercial-product-rows">{row.products.map((product) => <article key={product.productId}><span><button className="entity-link product-entity-link" onClick={() => onOpenProduct(product.productId)}>{product.product}<ChevronRight size={12} /></button><small>{product.productId} · {number(product.clients)} clientes</small></span><strong>{kilos(product.kilos)}</strong><strong>{price(product.averagePricePerKilo)}</strong><strong>{percent(row.kilos ? product.kilos / row.kilos * 100 : 0)}</strong><strong>{money(product.netAmount)}</strong><strong>{percent(row.netAmount ? product.netAmount / row.netAmount * 100 : 0)}</strong><strong>{money(product.netAmount / report.elapsedDays)}</strong></article>)}</div>}
     </div>)}</div>
     <footer><strong>Total</strong><strong>{kilos(report.brandTotal.kilos)}</strong><strong>{price(report.brandTotal.averagePricePerKilo)}</strong><strong>100%</strong><strong>{money(report.brandTotal.netAmount)}</strong><strong>100%</strong><strong>{money(report.brandTotal.averageDailySales)}</strong></footer>
   </div>;
 }
 
-export function CommercialSalesReportView({ onOpenProduct }: { onOpenProduct: (productId: string) => void }) {
+export function CommercialSalesReportView({ onOpenProduct, onOpenBrand }: { onOpenProduct: (productId: string) => void; onOpenBrand: (brand: string) => void }) {
   const [meta, setMeta] = useState<CommercialSalesReportMeta | null>(null);
   const [filters, setFilters] = useState<CommercialSalesFilters>(EMPTY_FILTERS);
   const [report, setReport] = useState<CommercialSalesReportPayload | null>(null);
@@ -173,10 +174,17 @@ export function CommercialSalesReportView({ onOpenProduct }: { onOpenProduct: (p
   const comparisonLegend = report.periodMode === 'year' ? String(Number(report.selectedPeriod) - 1) : 'Año anterior';
   const resetFilters = () => setFilters({ ...EMPTY_FILTERS, periodMode: filters.periodMode, month: meta.latestMonth, year: meta.latestYear });
   const filterKeys: CommercialSalesFilterKey[] = ['seller', 'category', 'brand', 'productGroup'];
+  const applySaved = (saved: Record<string, string>) => setFilters({
+    periodMode: saved.periodMode === 'year' ? 'year' : 'month',
+    month: saved.month || meta.latestMonth,
+    year: saved.year || meta.latestYear,
+    seller: saved.seller || '', category: saved.category || '', brand: saved.brand || '', productGroup: saved.productGroup || '',
+  });
   return <div className="page-view commercial-page">
     <section className="data-card commercial-filter-card" data-tour="commercial-sales-overview">
       <div><span className="section-kicker"><Filter size={14} /> Reporte Ventas - Comercial</span><h2>Venta neta · {periodTitle}</h2><p>{report.periodMode === 'year' ? `Vista anual del ${dateLabel(report.periodStart)} al ${dateLabel(report.periodEnd)}.` : 'Vista mensual'} calculada sobre facturas y notas de crédito de GESI.</p><div className="commercial-period-tabs" role="group" aria-label="Frecuencia del reporte"><button type="button" className={filters.periodMode === 'month' ? 'active' : ''} aria-pressed={filters.periodMode === 'month'} onClick={() => update('periodMode', 'month')}>Mensual</button><button type="button" className={filters.periodMode === 'year' ? 'active' : ''} aria-pressed={filters.periodMode === 'year'} onClick={() => update('periodMode', 'year')}>Anual</button></div></div>
       <div className="commercial-filters"><SingleSelectFilter label={filters.periodMode === 'year' ? 'Año' : 'Mes'} value={filters.periodMode === 'year' ? filters.year : filters.month} options={filters.periodMode === 'year' ? meta.years : meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update(filters.periodMode === 'year' ? 'year' : 'month', value)} />{filterKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!activeFilterCount} onClick={resetFilters}><X size={14} /> Limpiar {activeFilterCount ? `(${activeFilterCount})` : ''}</button></div>
+      <SavedViewsBar viewKey="commercial-sales" filters={{ ...filters }} onApply={applySaved} />
       {loading && <div className="commercial-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
 
@@ -198,7 +206,7 @@ export function CommercialSalesReportView({ onOpenProduct }: { onOpenProduct: (p
       <section className="data-card commercial-mix-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Composición</span><h2>Venta neta por negocio</h2><p>Small Retail se muestra como Autoservicio.</p></div></div><MixChart rows={report.mix} /></section>
     </div>
 
-    <section className="data-card commercial-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBasket size={14} /> Detalle comercial</span><h2>Total de kilos y precio promedio por marca</h2><p>Como en el reporte de referencia, esta matriz considera Alimento Húmedo, Alimentos Balanceados y Snacks. Abrí una marca para ver sus productos.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable report={report} onOpenProduct={onOpenProduct} /></section>
+    <section className="data-card commercial-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBasket size={14} /> Detalle comercial</span><h2>Total de kilos y precio promedio por marca</h2><p>Como en el reporte de referencia, esta matriz considera Alimento Húmedo, Alimentos Balanceados y Snacks. La flecha despliega productos y el nombre abre la ficha de marca.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable report={report} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} /></section>
 
     <section className="commercial-source-note"><Database size={16} /><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos disponibles · cobertura {meta.coverageFrom} a {meta.maxDate} · empresa 3, sucursales 3/6 y razones sociales Salice/MDQ Alarcón. Se excluyen movimientos internos definidos en el reporte de referencia.</span></div></section>
   </div>;

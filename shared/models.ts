@@ -9,7 +9,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.4.0';
+export const APP_VERSION = '0.4.4';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -121,6 +121,8 @@ export interface Invoice {
   outstanding: number;
   status: InvoiceStatus;
   creditTermDays: number | null;
+  /** Forma de pago informada por el comprobante; no debe confundirse con la condición actual del cliente. */
+  paymentMethod: string;
 }
 
 export interface CreditTermOption {
@@ -1005,15 +1007,25 @@ export interface PendingBalanceReportPayload {
 
 export type ReceivableCaseStatus = 'unmanaged' | 'to_contact' | 'in_progress' | 'promise' | 'disputed' | 'resolved';
 
+export type ClientTrendDirection = 'growth' | 'decline';
+
+export interface ClientTrendReview {
+  clientId: number;
+  direction: ClientTrendDirection;
+  reviewedAt: string;
+}
+
 export interface ReceivableCaseEvent {
   id: string;
   clientId: number;
-  eventType: 'created' | 'assignment' | 'status' | 'follow_up' | 'comment';
+  eventType: 'created' | 'assignment' | 'status' | 'follow_up' | 'promise' | 'comment';
   actor: string;
   comment: string;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   createdAt: string;
+  deletedAt: string | null;
+  deletedBy: string | null;
 }
 
 export interface ReceivableCase {
@@ -1021,6 +1033,8 @@ export interface ReceivableCase {
   responsible: string;
   status: ReceivableCaseStatus;
   nextFollowUpAt: string | null;
+  promiseAmount: number | null;
+  promiseDueAt: string | null;
   updatedAt: string;
   updatedBy: string;
   lastComment: string;
@@ -1046,6 +1060,7 @@ export interface PendingBalanceDocumentRow {
   dueAt: string;
   outstanding: number;
   creditTermDays: number | null;
+  paymentMethod: string;
   status: 'overdue' | 'not_due';
   overdueDays: number;
 }
@@ -1054,6 +1069,34 @@ export interface ReceivableCaseDetail {
   workflow: ReceivableCase;
   events: ReceivableCaseEvent[];
   documents: PendingBalanceDocumentRow[];
+}
+
+export interface InvoiceDetailPayload {
+  id: string;
+  number: string;
+  kind: 'invoice' | 'credit_note';
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  amount: number;
+  netAmount: number | null;
+  outstanding: number;
+  status: InvoiceStatus | 'not_due';
+  creditTermDays: number | null;
+  paymentMethod: string;
+  client: {
+    id: number;
+    name: string;
+    tradeName: string;
+    seller: string;
+    address: string;
+    locality: string;
+  };
+  issuer: string;
+  branch: string;
+  sourceMaxDate: string;
+  detailAvailable: boolean;
+  lineItems: SalesExplorerDocumentDetail['lineItems'];
 }
 
 export interface ReceivableDashboardPayload {
@@ -1129,9 +1172,22 @@ export interface CommercialGoalsPayload {
   changes: CommercialGoalChange[];
 }
 
+export type SavedViewKey =
+  | 'map' | 'agenda' | 'routes' | 'clients' | 'sellers' | 'finance' | 'products' | 'brands'
+  | 'sales-explorer' | 'receivables' | 'goals'
+  | 'reports' | 'commercial-sales' | 'spt' | 'pending-balances' | 'non-buyers' | 'mars' | 'nutripet' | 'baires'
+  | 'settings';
+
+export const SAVED_VIEW_KEYS: SavedViewKey[] = [
+  'map', 'agenda', 'routes', 'clients', 'sellers', 'finance', 'products', 'brands',
+  'sales-explorer', 'receivables', 'goals',
+  'reports', 'commercial-sales', 'spt', 'pending-balances', 'non-buyers', 'mars', 'nutripet', 'baires',
+  'settings',
+];
+
 export interface SavedView {
   id: string;
-  viewKey: 'sales-explorer' | 'receivables';
+  viewKey: SavedViewKey;
   name: string;
   filters: Record<string, string>;
   favorite: boolean;

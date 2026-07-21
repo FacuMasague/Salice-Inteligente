@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, Search, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
-import { money, number } from '../lib/format';
+import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 
 type ReportTab = 'summary' | 'sellers' | 'quarters';
@@ -20,10 +21,7 @@ const FILTER_LABELS: Record<SptFilterKey, string> = {
   subcategory: 'Subrubro', clientType: 'Tipo de cliente', grouping: 'Agrupación', locality: 'Localidad',
 };
 
-const kilos = (value: number, compact = false) => new Intl.NumberFormat('es-AR', {
-  maximumFractionDigits: compact ? 0 : 1,
-  notation: compact ? 'compact' : 'standard',
-}).format(value);
+const kilos = (value: number, compact = false) => compact ? compactNumber(value) : number(value, 1);
 
 const exactKilos = (value: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(value);
 
@@ -225,12 +223,18 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     ? meta.unavailableDocumentCount / (meta.sourceDocumentCount + meta.unavailableDocumentCount) * 100
     : 0;
   const selectKeys: SptFilterKey[] = ['seller', 'brand', 'productGroup', 'channel', 'line', 'category', 'subcategory', 'clientType', 'grouping', 'locality'];
+  const savedFilters = { ...filters, tab };
+  const applySaved = (saved: Record<string, string>) => {
+    setFilters(Object.fromEntries(Object.keys(EMPTY_FILTERS).map((key) => [key, saved[key] ?? (key === 'month' ? meta.latestMonth : '')])) as unknown as SptFilters);
+    setTab(['summary', 'sellers', 'quarters'].includes(saved.tab) ? saved.tab as ReportTab : 'summary');
+  };
 
   return <div className="page-view spt-page">
     <section className="data-card spt-filter-card" data-tour="spt-overview">
       <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Universo SPT conciliado</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan directamente sobre facturas, notas de crédito y maestros de GESI.</p></div>
       <div className="spt-filter-primary"><SingleSelectFilter label="Mes" value={filters.month} options={meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update('month', value)} /><SelectFilter label="Vendedor" value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label="Canal" value={filters.channel} options={meta.options.channel} onChange={(value) => update('channel', value)} /><button className={`button secondary spt-more-button ${activeFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)}><Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}<ChevronDown size={13} /></button></div>
       {expanded && <div className="spt-filter-expanded">{selectKeys.filter((key) => key !== 'seller' && key !== 'channel').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<SelectFilter label="Producto" value={filters.product} options={meta.options.product} onChange={(value) => update('product', value)} /><SelectFilter label="Cliente" value={filters.client} options={meta.options.client} onChange={(value) => update('client', value)} /><button className="button secondary" onClick={() => setFilters({ ...EMPTY_FILTERS, month: meta.latestMonth })}><X size={14} /> Restablecer universo</button></div>}
+      <SavedViewsBar viewKey="spt" filters={savedFilters} onApply={applySaved} />
       {loading && <div className="spt-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
 

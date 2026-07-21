@@ -4,8 +4,10 @@ import { distanceKm } from '../../shared/algorithms';
 import type { Client, RoutePlan } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { minutesAsTime, money } from '../lib/format';
+import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 
 const initialRouteIDs = (clients: Client[]) => {
   const ranked = clients
@@ -56,6 +58,16 @@ export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSelle
     [routableClients, seller],
   );
   const selectedSales = clients.filter((client) => selectedIds.has(client.id)).reduce((sum, client) => sum + client.sales90d, 0);
+  const savedFilters = { seller, selectedClientIds: [...selectedIds].join(','), visitMinutes: String(visitMinutes), maxWorkMinutes: String(maxWorkMinutes) };
+  const applySaved = (saved: Record<string, string>) => {
+    const nextSeller = saved.seller || '';
+    const validIds = new Set((saved.selectedClientIds || '').split(',').map(Number).filter((id) => routableClients.some((client) => client.id === id)));
+    setSeller(nextSeller);
+    setSelectedIds(validIds);
+    setVisitMinutes([15, 25, 35, 45].includes(Number(saved.visitMinutes)) ? Number(saved.visitMinutes) : 25);
+    setMaxWorkMinutes([360, 420, 480, 540].includes(Number(saved.maxWorkMinutes)) ? Number(saved.maxWorkMinutes) : 480);
+    setPlan(null);
+  };
 
   const changeSeller = (nextSeller: string) => {
     const pool = routableClients.filter((client) => matchesMultiFilter(client.seller, nextSeller));
@@ -88,10 +100,11 @@ export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSelle
         <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Planificador</span><h2>Visitas sugeridas</h2></div><div className="route-picker-actions"><MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={changeSeller} /><span className="count-badge">{selectedIds.size} elegidas</span></div></div>
         <p className="section-description">{orderedClients.length} clientes geolocalizados · P visita combina 58% riesgo de cobranza y 42% oportunidad comercial.</p>
         <div className="route-constraints"><SingleSelectFilter label="Duración por visita" value={visitMinutes} options={[{ value: 15, label: '15 min' }, { value: 25, label: '25 min' }, { value: 35, label: '35 min' }, { value: 45, label: '45 min' }]} onChange={(value) => { setVisitMinutes(Number(value)); setPlan(null); }} /><SingleSelectFilter label="Jornada máxima" value={maxWorkMinutes} options={[{ value: 360, label: '6 horas' }, { value: 420, label: '7 horas' }, { value: 480, label: '8 horas' }, { value: 540, label: '9 horas' }]} onChange={(value) => { setMaxWorkMinutes(Number(value)); setPlan(null); }} /></div>
+        <SavedViewsBar viewKey="routes" filters={savedFilters} onApply={applySaved} />
         <div className="route-client-list">
           {orderedClients.map((client) => <article className={`route-client ${selectedIds.has(client.id) ? 'selected' : ''}`} key={client.id}>
-            <button className="route-check-button" onClick={() => toggle(client.id)} aria-label={`${selectedIds.has(client.id) ? 'Quitar' : 'Agregar'} ${client.tradeName} de la ruta`}><span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span></button>
-            <button className="route-client-identity" onClick={() => onOpenClient(client)}><strong>{client.tradeName}</strong><span><MapPin size={12} /> {client.locality}</span></button>
+            <button className="route-check-button" onClick={() => toggle(client.id)} aria-label={`${selectedIds.has(client.id) ? 'Quitar' : 'Agregar'} ${clientPrimaryName(client)} de la ruta`}><span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span></button>
+            <button className="route-client-identity" onClick={() => onOpenClient(client)}><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) && <>{clientSecondaryName(client)} · </>}<MapPin size={12} /> {client.locality}</span></button>
             <button className="entity-link route-seller-link" onClick={() => onOpenSeller(client.seller)}>{client.seller}</button>
             <div className="route-priority"><strong>P{client.visitPriority}</strong><span>C{client.collectionRisk} · O{client.commercialOpportunity}</span></div>
           </article>)}
@@ -107,7 +120,7 @@ export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSelle
           {!!plan.warnings.length && <div className="route-warnings">{plan.warnings.map((warning) => <p key={warning}><Clock3 size={15} /> {warning}</p>)}</div>}
           <div className="route-timeline">
             <div className="depot-stop"><span><Truck size={16} /></span><div><strong>{plan.depot.name}</strong><small>{plan.depot.address}, {plan.depot.locality} · salida 09:00</small></div></div>
-            {plan.stops.map((stop) => { const client = clients.find((item) => item.id === stop.clientId); const destination = client?.coordinates?.join(','); return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km estimados desde la parada anterior</span><h3>{stop.clientName}</h3><p>{stop.locality} · prioridad P{stop.priority}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${stop.clientName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>; })}
+            {plan.stops.map((stop) => { const client = clients.find((item) => item.id === stop.clientId); const destination = client?.coordinates?.join(','); const visibleName = client ? clientPrimaryName(client) : stop.clientName; return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km estimados desde la parada anterior</span><h3>{visibleName}</h3><p>{client && clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{stop.locality} · prioridad P{stop.priority}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${visibleName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>; })}
             <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso a {plan.depot.address}</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
           </div>
           <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.visitMinutes} min por visita y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito ni ventanas del cliente.</p>
