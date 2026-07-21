@@ -25,4 +25,13 @@ describeWithDatabase('unified document detail', () => {
     expect(detail?.lineItems.reduce((sum, item) => sum + item.netAmount, 0)).toBeCloseTo(detail!.netAmount!, 6);
     expect(detail?.sourceMaxDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('exposes exact synthetic product lines from every customer account document', async () => {
+    const snapshot = await loadSnapshot();
+    const invoice = snapshot.clients[0].invoices[0];
+    const detail = buildInvoiceDetail(snapshot, invoice.id);
+    expect(detail?.detailAvailable).toBe(true);
+    expect(detail?.lineItems.length).toBeGreaterThan(1);
+    expect(detail?.lineItems.reduce((sum, item) => sum + item.netAmount, 0)).toBe(invoice.amount);
+  });
 });

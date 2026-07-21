@@ -35,7 +35,7 @@ export function buildInvoiceDetail(data: DashboardData, id: string): InvoiceDeta
     dueAt: invoice?.dueAt || pending?.dueAt || '',
     paidAt: invoice?.paidAt ?? null,
     amount,
-    netAmount: sales?.netAmount ?? null,
+    netAmount: sales?.netAmount ?? (invoice?.lineItems?.reduce((sum, item) => sum + item.netAmount, 0) ?? null),
     outstanding,
     status: invoice?.status ?? pending?.status ?? (outstanding > 0 ? 'open' : 'paid'),
     creditTermDays: invoice?.creditTermDays ?? pending?.creditTermDays ?? null,
@@ -51,7 +51,7 @@ export function buildInvoiceDetail(data: DashboardData, id: string): InvoiceDeta
     issuer: sales?.issuer || '',
     branch: sales?.branch || '',
     sourceMaxDate: data.meta.generatedAt.slice(0, 10),
-    detailAvailable: Boolean(sales?.lineItems.length),
-    lineItems: sales?.lineItems ?? [],
+    detailAvailable: Boolean(sales?.lineItems.length || invoice?.lineItems?.length),
+    lineItems: sales?.lineItems.length ? sales.lineItems : (invoice?.lineItems ?? []),
   };
 }

@@ -270,6 +270,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
             </section>
             <section className="panel-section">
               <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14}/> Documents</span><h3>Account history</h3></div></div>
+              <p className="section-description">Open any document to inspect the exact products, quantities, kilograms, and line amounts.</p>
               <div className="invoice-list">
                 {!client.invoices.length && <p className="section-description">No pending documents or reconciled payments in the analyzed window.</p>}
                 {client.invoices.map((invoice) => (<button className="invoice-row" key={invoice.id} onClick={() => onOpenInvoice?.(invoice.id)} disabled={!onOpenInvoice}>
@@ -277,7 +278,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                     <div className="invoice-copy">
                       <strong>{invoice.number}</strong>
                       <span>Issued {compactDate(invoice.issuedAt)} · due {compactDate(invoice.dueAt)}{invoice.creditTermDays != null ? ` \u00B7 term ${invoice.creditTermDays} d` : ""}</span>
-                      <small>{invoice.paymentMethod || "Payment terms unavailable"}</small>
+                      <small>{invoice.paymentMethod || "Payment terms unavailable"}{invoice.lineItems?.length ? ` · ${invoice.lineItems.length} product lines` : ""}</small>
                       {invoice.paidAt && <small><Check size={12}/> Paid {compactDate(invoice.paidAt)}</small>}
                     </div>
                     <div className="invoice-amount"><strong>{money(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount)}</strong><span className={`status-text ${invoice.status}`}>{invoiceLabel[invoice.status]}{invoice.outstanding > 0 && invoice.outstanding !== invoice.amount ? " \u00B7 balance" : ""}</span></div>

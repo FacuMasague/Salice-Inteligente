@@ -1,4 +1,4 @@
-import { APP_VERSION, SNAPSHOT_REVISION, type Client, type DashboardData, type Invoice, type Product, type VectorKey } from '../../shared/models.js';
+import { APP_VERSION, SNAPSHOT_REVISION, type Client, type DashboardData, type Invoice, type InvoiceLineItem, type Product, type VectorKey } from '../../shared/models.js';
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 
 const vector = (values: Partial<Record<VectorKey, number>>): Record<VectorKey, number> => ({
@@ -129,21 +129,54 @@ function createPurchases(seed: ClientSeed, index: number) {
   });
 }
 
+function createInvoiceLines(seed: ClientSeed, index: number, sequence: number, amount: number): InvoiceLineItem[] {
+  const selected = Array.from({ length: Math.min(4, seed.productIds.length) }, (_, offset) => {
+    const productId = seed.productIds[(sequence + offset) % seed.productIds.length];
+    const product = DEMO_PRODUCTS.find((item) => item.id === productId)!;
+    const units = 2 + ((index + sequence * 2 + offset * 3) % 7);
+    return { product, units, weight: product.price * units };
+  });
+  const totalWeight = selected.reduce((sum, item) => sum + item.weight, 0);
+  let allocated = 0;
+  return selected.map(({ product, units, weight }, itemIndex) => {
+    const netAmount = itemIndex === selected.length - 1 ? amount - allocated : Math.round(amount * weight / totalWeight);
+    allocated += netAmount;
+    return {
+      productId: product.id,
+      product: product.name,
+      brand: product.brand,
+      category: product.family,
+      units,
+      kilos: product.contentKg == null ? 0 : Math.round(product.contentKg * units * 1000) / 1000,
+      netAmount,
+    };
+  });
+}
+
 function createInvoices(seed: ClientSeed, index: number): Invoice[] {
   const contractualDays = seed.payDays > 30 ? 45 : 30;
+  const firstAmount = 246000 + index * 17300;
+  const secondAmount = 198000 + index * 12100;
   const invoices: Invoice[] = [
-    { id: `INV-${index + 1}-01`, number: `INV-${String(61320 + index).padStart(8, '0')}`, issuedAt: '2026-04-03', dueAt: addDays('2026-04-03', contractualDays), paidAt: addDays('2026-04-03', seed.payDays - 2), amount: 246000 + index * 17300, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'Net 30' },
-    { id: `INV-${index + 1}-02`, number: `INV-${String(61880 + index).padStart(8, '0')}`, issuedAt: '2026-05-05', dueAt: addDays('2026-05-05', contractualDays), paidAt: addDays('2026-05-05', seed.payDays + 2), amount: 198000 + index * 12100, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'Net 30' },
+    { id: `INV-${index + 1}-01`, number: `INV-${String(61320 + index).padStart(8, '0')}`, issuedAt: '2026-04-03', dueAt: addDays('2026-04-03', contractualDays), paidAt: addDays('2026-04-03', seed.payDays - 2), amount: firstAmount, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'Net 30', lineItems: createInvoiceLines(seed, index, 0, firstAmount) },
+    { id: `INV-${index + 1}-02`, number: `INV-${String(61880 + index).padStart(8, '0')}`, issuedAt: '2026-05-05', dueAt: addDays('2026-05-05', contractualDays), paidAt: addDays('2026-05-05', seed.payDays + 2), amount: secondAmount, outstanding: 0, status: 'paid', creditTermDays: contractualDays, paymentMethod: 'Net 30', lineItems: createInvoiceLines(seed, index, 1, secondAmount) },
   ];
   if (seed.balance > 0) {
     const critical = seed.balance / seed.credit > 0.78 || seed.payDays > 44;
-    const status: Invoice['status'] = critical ? 'overdue' : index % 3 === 0 ? 'due_soon' : index % 3 === 1 ? 'open' : 'overdue';
+    const status: Invoice['status'] = critical || index === 5 || index === 15 ? 'overdue' : index % 3 === 0 ? 'due_soon' : 'open';
+    const overdueIndices = [2, 5, 9, 15];
+    const overdueDates = ['2026-07-12', '2026-06-27', '2026-05-31', '2026-03-27'];
+    const futureDates = ['2026-07-18', '2026-08-02', '2026-09-05', '2026-10-04'];
+    const dueAt = status === 'overdue'
+      ? overdueDates[Math.max(0, overdueIndices.indexOf(index))]
+      : status === 'due_soon' ? futureDates[0] : futureDates[1 + (index % 3)];
+    const issuedAt = addDays(dueAt, -contractualDays);
     const openInvoice = {
       id: `INV-${index + 1}-03`, number: `INV-${String(62410 + index).padStart(8, '0')}`,
-      issuedAt: '2026-06-24', dueAt: status === 'overdue' ? '2026-07-07' : status === 'due_soon' ? '2026-07-18' : '2026-08-02',
+      issuedAt, dueAt,
       amount: seed.balance, outstanding: seed.balance, status,
     };
-    invoices.unshift({ ...openInvoice, creditTermDays: invoiceCreditTermDays(openInvoice.issuedAt, openInvoice.dueAt), paymentMethod: contractualDays === 45 ? 'Net 45' : 'Net 30' });
+    invoices.unshift({ ...openInvoice, creditTermDays: invoiceCreditTermDays(openInvoice.issuedAt, openInvoice.dueAt), paymentMethod: contractualDays === 45 ? 'Net 45' : 'Net 30', lineItems: createInvoiceLines(seed, index, 2, seed.balance) });
   }
   return invoices;
 }
@@ -177,7 +210,9 @@ export const DEMO_CLIENTS: Client[] = clientSeeds.map((seed, index) => {
     collectionRisk: health === 'critical' ? 72 : health === 'attention' ? 38 : 12,
     commercialOpportunity: Math.max(15, Math.min(90, 42 - seed.delta)), visitPriority: seed.priority, health,
     overdueOutstanding: invoices.filter((invoice) => invoice.status === 'overdue').reduce((sum, invoice) => sum + invoice.outstanding, 0),
-    oldestOverdueDays: invoices.some((invoice) => invoice.status === 'overdue') ? 8 + index * 3 : 0,
+    oldestOverdueDays: invoices.some((invoice) => invoice.status === 'overdue')
+      ? Math.max(...invoices.filter((invoice) => invoice.status === 'overdue').map((invoice) => Math.max(0, Math.round((new Date('2026-07-15T12:00:00Z').getTime() - new Date(`${invoice.dueAt}T12:00:00Z`).getTime()) / 86_400_000))))
+      : 0,
     purchases, invoices,
     note: index % 3 === 0 ? 'Review stock gaps and offer high-rotation items.' : index % 3 === 1 ? 'Prefers a message before an office follow-up.' : 'Confirm available stock before preparing the order.',
   };

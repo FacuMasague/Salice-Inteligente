@@ -47,6 +47,8 @@ describe('synthetic local report pack', () => {
     const report = buildGeneralReport({ mode: 'core', month: '2026-07' });
     expect(report?.actual).toBeGreaterThan(0);
     expect(report?.target).toBeGreaterThan(0);
+    expect(report?.trend.some((point) => (point.completion ?? 0) >= 100)).toBe(true);
+    expect(report?.trend.some((point) => (point.completion ?? 0) < 100)).toBe(true);
     expect(getGeneralReportMeta().targetSource.label).toContain('Synthetic commercial plan');
   });
 
@@ -58,5 +60,10 @@ describe('synthetic local report pack', () => {
     expect(balances?.clients.length).toBeGreaterThan(0);
     expect(listPendingBalanceDocuments().length).toBeGreaterThan(0);
     expect(balances?.clients.some((client) => client.overdueBalance > 0)).toBe(true);
+    const overdueDays = listPendingBalanceDocuments().filter((document) => document.status === 'overdue').map((document) => document.overdueDays);
+    expect(overdueDays.some((days) => days <= 7)).toBe(true);
+    expect(overdueDays.some((days) => days >= 8 && days <= 30)).toBe(true);
+    expect(overdueDays.some((days) => days >= 31 && days <= 90)).toBe(true);
+    expect(overdueDays.some((days) => days > 90)).toBe(true);
   });
 });

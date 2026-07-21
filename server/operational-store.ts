@@ -31,7 +31,41 @@ let database: DatabaseSync | null = null;
 
 function seedCommercialGoals(store: DatabaseSync) {
   const existing = Number(store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total ?? 0);
-  if (existing) return;
+  if (existing) {
+    const generated = store.prepare(`
+      SELECT id, source_label FROM commercial_goal_versions
+      WHERE status = 'active' AND name = 'Synthetic demo plan' AND created_by = 'SMART Salice demo generator'
+      ORDER BY version_number DESC LIMIT 1
+    `).get() as { id: string; source_label: string } | undefined;
+    if (!generated || generated.source_label === STATUS_TARGET_SOURCE.label) return;
+    const insertGoal = store.prepare(`
+      INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const createdAt = new Date().toISOString();
+    store.exec('BEGIN IMMEDIATE');
+    try {
+      store.prepare('DELETE FROM commercial_goals WHERE version_id = ?').run(generated.id);
+      for (const row of STATUS_TARGETS) {
+        insertGoal.run(randomUUID(), generated.id, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
+      }
+      store.prepare(`UPDATE commercial_goal_versions SET source_label = ?, coverage_from = ?, coverage_through = ?, notes = ? WHERE id = ?`)
+        .run(STATUS_TARGET_SOURCE.label, STATUS_TARGET_SOURCE.coverageFrom, STATUS_TARGET_SOURCE.coverageThrough,
+          'Deterministic planning targets generated locally for the demo, with intentional wins and misses.', generated.id);
+      store.prepare(`
+        INSERT INTO commercial_goal_changes (
+          id, version_id, event_type, entity_key, actor, comment, before_json, after_json, created_at
+        ) VALUES (?, ?, 'row_updated', 'demo-plan-balance', ?, ?, NULL, ?, ?)
+      `).run(randomUUID(), generated.id, 'SMART Salice demo generator',
+        'Updated the packaged synthetic plan to include a balanced mix of achieved and missed months.',
+        JSON.stringify({ rows: STATUS_TARGETS.length, source: STATUS_TARGET_SOURCE.label }), createdAt);
+      store.exec('COMMIT');
+    } catch (error) {
+      store.exec('ROLLBACK');
+      throw error;
+    }
+    return;
+  }
   const versionId = randomUUID();
   const createdAt = new Date().toISOString();
   const insertGoal = store.prepare(`

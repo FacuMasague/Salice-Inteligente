@@ -111,6 +111,16 @@ export interface Purchase {
   total: number;
 }
 
+export interface InvoiceLineItem {
+  productId: string;
+  product: string;
+  brand: string;
+  category: string;
+  units: number;
+  kilos: number;
+  netAmount: number;
+}
+
 export interface Invoice {
   id: string;
   number: string;
@@ -123,6 +133,8 @@ export interface Invoice {
   creditTermDays: number | null;
   /** Payment method recorded on the document; distinct from the customer's current terms. */
   paymentMethod: string;
+  /** Verified or synthetic document lines when item-level detail is available. */
+  lineItems?: InvoiceLineItem[];
 }
 
 export interface CreditTermOption {
@@ -906,15 +918,7 @@ export interface SalesExplorerDocumentDetail extends SalesExplorerDocumentRow {
   branch: string;
   address: string;
   locality: string;
-  lineItems: Array<{
-    productId: string;
-    product: string;
-    brand: string;
-    category: string;
-    units: number;
-    kilos: number;
-    netAmount: number;
-  }>;
+  lineItems: InvoiceLineItem[];
 }
 
 export type PendingBalanceStatus = 'all' | 'overdue' | 'not_due';

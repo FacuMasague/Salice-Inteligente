@@ -270,7 +270,7 @@ export default function App() {
     const snapshotLabel = `${snapshotDay} \u00B7 ${snapshotTime}`;
     return (<div className="app-shell">
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="brand"><div className="brand-mark"><span>S</span></div><div><strong>SMART</strong><small>SALICE</small></div><button className="mobile-close" aria-label="Close menu" onClick={() => setSidebarOpen(false)}><X size={19}/></button></div>
+        <div className="brand"><div className="brand-mark"><span>S</span></div><div className="brand-copy"><small>SMART</small><strong>Salice</strong></div><button className="mobile-close" aria-label="Close menu" onClick={() => setSidebarOpen(false)}><X size={19}/></button></div>
         <div className="sidebar-scroll">
           <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection("operations")}><span>Operations Center</span>{sidebarSections.operations ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</button>
           {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
