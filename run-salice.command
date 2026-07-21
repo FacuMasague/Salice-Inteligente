@@ -4,8 +4,30 @@ set -e
 PROJECT_DIR="${0:A:h}"
 cd "$PROJECT_DIR"
 
+# Finder launches .command files with a minimal PATH. Add the usual macOS
+# locations plus Codex's bundled runtime when it is available on this machine.
+typeset -a RUNTIME_PATHS=(
+  "/opt/homebrew/bin"
+  "/usr/local/bin"
+  "$HOME/.volta/bin"
+  "$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+  "$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback"
+)
+for RUNTIME_PATH in $RUNTIME_PATHS; do
+  if [[ -d "$RUNTIME_PATH" ]]; then
+    export PATH="$RUNTIME_PATH:$PATH"
+  fi
+done
+
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js was not found. Install Node.js 22 or newer, then try again."
+  read -k 1 "?Press any key to close."
+  exit 1
+fi
+
+NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+if (( NODE_MAJOR < 22 )); then
+  echo "SMART Salice requires Node.js 22 or newer. Found Node.js $(node --version)."
   read -k 1 "?Press any key to close."
   exit 1
 fi
