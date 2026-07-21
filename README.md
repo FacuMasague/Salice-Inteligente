@@ -88,6 +88,17 @@ Then open [http://127.0.0.1:8787](http://127.0.0.1:8787).
 
 No `.env` file is needed. Generated JSON and SQLite files live under `data/` and are intentionally ignored by Git.
 
+## Deploy on Render
+
+The repository includes a `render.yaml` Blueprint for the complete React, Express, and SQLite demo. In Render:
+
+1. Create a new Blueprint and connect this GitHub repository.
+2. Select the `Hackaton` branch and confirm the `smart-salice-demo` web service.
+3. Deploy without adding environment variables or credentials.
+4. After the health check passes, open the generated `onrender.com` URL.
+
+Render runs the production build and serves the UI and API from the same Express service. The free instance uses an ephemeral filesystem: all records remain fictional, but notes, promises, goals, and other judge-entered workflow changes can reset after a restart or redeploy. This is intentional for the evaluation demo and is not presented as production persistence.
+
 ## Verify the submission
 
 ```bash
@@ -106,6 +117,7 @@ The audit chain checks deterministic generation, database integrity, metric inva
 ## Main implementation decisions
 
 - Local-only hackathon runtime: no live ERP, authentication, external service, or secret is required.
+- Render-ready web demo: one Node service hosts the compiled UI and synthetic API, with `/api/health` as its deployment health check.
 - Fully fictional demo pack: safe to screen-record, publish, reset, and reproduce.
 - Signed movements: invoices are positive and credit notes are negative in every report universe.
 - Centralized metric rules: report filters, ratios, shares, and comparison periods have named reusable definitions.

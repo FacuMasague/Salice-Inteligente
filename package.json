@@ -2,6 +2,11 @@
   "name": "smart-salice",
   "private": true,
   "version": "1.0.0",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22 <25",
+    "pnpm": ">=10 <12"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,blue \"pnpm run dev:api\" \"pnpm run dev:web\"",

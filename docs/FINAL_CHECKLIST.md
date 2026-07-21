@@ -17,6 +17,8 @@
 - [ ] `pnpm run build` passes.
 - [ ] Data, commercial, vector, operations, and platform audits pass.
 - [ ] Development and production startup paths work.
+- [ ] Render production smoke test passes with `HOST=0.0.0.0` and a Render-style `PORT`.
+- [ ] Public `onrender.com` URL and `/api/health` work in a signed-out browser.
 - [ ] Main browser path has no console errors or broken interactions.
 - [ ] Map-offline fallback is usable.
 - [ ] CSV/XLSX/PDF exports use only fictional content.
@@ -48,6 +50,7 @@
 - [ ] Codex Session ID obtained through `/feedback` and entered.
 - [ ] Human decisions and Codex contributions described clearly.
 - [ ] Working-project access instructions included.
+- [ ] Render demo URL is entered under **Try it out** and its ephemeral demo-state limitation is disclosed.
 - [ ] All required team and eligibility fields completed.
 - [ ] Preview reviewed for broken links and formatting.
 - [ ] Submission sent before July 21, 2026, 5:00 PM Pacific / 9:00 PM Argentina.

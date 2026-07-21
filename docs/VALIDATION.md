@@ -15,7 +15,7 @@ Validation was performed on 21 July 2026 against the isolated `Hackaton` worktre
 | Gate | Command | Result |
 | --- | --- | --- |
 | TypeScript | `pnpm exec tsc --noEmit` | Passed |
-| Tests | `pnpm test` | Passed: 22 files, 71 tests |
+| Tests | `pnpm test` | Passed: 22 files, 72 tests |
 | Production build | `pnpm run build` | Passed: 1,729 modules transformed |
 | Demo generation | `pnpm run prepare:demo` | Passed: all four local data layers regenerated |
 | Snapshot audit | `pnpm run audit:data` | Passed: 16 customers, 16 products, 11 open documents |
@@ -24,6 +24,7 @@ Validation was performed on 21 July 2026 against the isolated `Hackaton` worktre
 | Operations audit | `pnpm run audit:operations` | Passed: SQLite integrity `ok`, 11 tables |
 | Platform audit | `pnpm run audit:platform` | Passed: 15/15 checks, 0 failures, 0 warnings |
 | Production startup | `pnpm start` plus HTTP smoke checks | Passed: application shell and `/api/dashboard` served locally |
+| Render startup | `HOST=0.0.0.0 PORT=10000 pnpm start` | Passed: application shell, `/api/health`, and `/api/dashboard` served on the Render network contract |
 | Administrative exports | CSV, XLSX, and PDF endpoint smoke checks | Passed: sales, receivables, goals, and invoice artifacts generated |
 | Browser walkthrough | Main demo path and console | Passed: no warnings or errors in a clean browser session |
 | Responsive browser check | 390 × 844 viewport | Passed: mobile menu works and no horizontal body overflow |

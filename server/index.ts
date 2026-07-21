@@ -65,6 +65,7 @@ import {
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const activityTypes = new Set<CommercialActivityType>(['visit', 'call', 'collection', 'offer']);
 const activityOutcomes = new Set<CommercialActivityOutcome>(['completed', 'sale', 'promise', 'no_contact', 'rescheduled', 'no_interest']);
 const promiseStatuses = new Set<PaymentPromiseStatus>(['pending', 'kept', 'broken', 'cancelled']);
@@ -666,8 +667,8 @@ for (const workflow of listReceivableCases()) {
   syncReceivablePaymentPromise(workflow.clientId, startupClients.get(workflow.clientId)?.seller ?? workflow.responsible);
 }
 acquireServerLock();
-app.listen(port, '127.0.0.1', () => {
-  console.log(`SMART Salice v${APP_VERSION} is running at http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+  console.log(`SMART Salice v${APP_VERSION} is running at http://${host}:${port}`);
   console.log(`Synthetic snapshot: ${getSnapshotPath()}`);
   console.log(`Local operational data: ${getOperationalDatabasePath()}`);
 });
