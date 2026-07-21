@@ -18,9 +18,7 @@ import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.nutripet;
 const COMPANIES = [...UNIVERSE.companies];
@@ -29,15 +27,12 @@ const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
 const PRODUCT_GROUP = UNIVERSE.includedProductGroups[0];
 const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
 const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
-const SPECIALIZED_CHANNELS = [
-  'COSTA-RUTA2', 'Especial', 'Distribuidor', 'Freelance', 'Especializado',
-  'Especializado Z2', 'Partido de la Costa', 'Refugios', 'Reventa', 'Reventa2',
-];
-const MASS_CHANNELS = ['On Line', 'Tienda', 'Gastronomico', 'Masivo', 'Premium', 'Saludable', 'Small Retail'];
+const SPECIALIZED_CHANNELS = ['Coastal Route', 'Specialty', 'Distributor'];
+const MASS_CHANNELS = ['Mass Retail', 'Small Retail'];
 
 const channelExpression = `CASE
-  WHEN channel IN (${sqlList(SPECIALIZED_CHANNELS)}) THEN 'Especializado'
-  WHEN channel IN (${sqlList(MASS_CHANNELS)}) THEN 'Masivo'
+  WHEN channel IN (${sqlList(SPECIALIZED_CHANNELS)}) THEN 'Specialty'
+  WHEN channel IN (${sqlList(MASS_CHANNELS)}) THEN 'Mass Retail'
   ELSE channel END`;
 
 const FILTER_EXPRESSIONS: Record<NutriPetFilterKey, string> = {
@@ -106,7 +101,7 @@ function normalizeFilters(input: Partial<Record<string, unknown>>, meta: NutriPe
   const filters = {
     year: /^\d{4}$/.test(String(input.year ?? '')) ? String(input.year) : meta.latestYear,
     month: /^(0[1-9]|1[0-2])$/.test(String(input.month ?? '')) ? String(input.month) : latestMonth,
-    channelGroup: String(input.channelGroup ?? 'Especializado').trim().slice(0, 120),
+    channelGroup: String(input.channelGroup ?? 'Specialty').trim().slice(0, 120),
     brand: '', product: '', line: '', client: '', grouping: '', category: '',
   } as NutriPetFilters;
   for (const key of ['brand', 'product', 'line', 'client', 'grouping', 'category'] as NutriPetFilterKey[]) {
@@ -151,13 +146,13 @@ function brandRows(value: DatabaseSync, filters: NutriPetFilters, start: string,
   const currentWhere = buildWhere(filters, start, end);
   const previousWhere = buildWhere(filters, previousStart, previousEnd);
   const current = rows<{ brand: string; kilos: number; clients: number; units: number; netAmount: number }>(value.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos, COUNT(DISTINCT client_id) AS clients,
            COALESCE(SUM(units), 0) AS units, COALESCE(SUM(net_amount), 0) AS netAmount
     FROM movements WHERE ${currentWhere.sql} GROUP BY brand
   `), currentWhere.parameters);
   const previous = rows<{ brand: string; kilos: number }>(value.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos
     FROM movements WHERE ${previousWhere.sql} GROUP BY brand
   `), previousWhere.parameters);
@@ -183,7 +178,7 @@ function productRows(value: DatabaseSync, filters: NutriPetFilters, start: strin
   const where = buildWhere(filters, start, end);
   const current = rows<{ productId: string; product: string; brand: string; kilos: number; clients: number; units: number; netAmount: number }>(value.prepare(`
     SELECT product_id AS productId, product_name AS product,
-           CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+           CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos, COUNT(DISTINCT client_id) AS clients,
            COALESCE(SUM(units), 0) AS units, COALESCE(SUM(net_amount), 0) AS netAmount
     FROM movements WHERE ${where.sql}
@@ -211,7 +206,7 @@ export function getNutriPetReportMeta(): NutriPetReportMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: NutriPetReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     rowCount: 0, coverageFrom: '', minDate: '', maxDate: '', capturedAt: '', latestYear: '', latestMonth: '',
     years: [], monthsByYear: {}, sourceDocumentCount: 0, unavailableDocumentCount: 0,
     options: { channelGroup: [], brand: [], product: [], line: [], client: [], grouping: [], category: [] },

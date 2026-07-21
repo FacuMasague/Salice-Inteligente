@@ -35,12 +35,6 @@ export interface DataHealthPayload {
   };
   limitations: string[];
   quality: PlatformAuditSummary | null;
-  refresh: {
-    current: RefreshRunSummary | null;
-    lastAttempt: RefreshRunSummary | null;
-    lastSuccess: RefreshRunSummary | null;
-    recent: RefreshRunSummary[];
-  };
 }
 
 export interface PlatformAuditSummary {
@@ -53,22 +47,6 @@ export interface PlatformAuditSummary {
   warnings: number;
 }
 
-export interface RefreshRunSummary {
-  id: string;
-  startedAt: string;
-  completedAt: string | null;
-  trigger: string;
-  status: 'running' | 'success' | 'failed';
-  stage: string;
-  snapshotAt: string | null;
-  qualityStatus: string | null;
-  clients: number | null;
-  products: number | null;
-  warnings: number;
-  durationMs: number | null;
-  error: string | null;
-}
-
 export function evaluateFreshness(
   generatedAt: string,
   now = new Date(),
@@ -77,14 +55,14 @@ export function evaluateFreshness(
 ): FreshnessStatus {
   const timestamp = new Date(generatedAt).getTime();
   if (!generatedAt || !Number.isFinite(timestamp)) {
-    return { level: 'unknown', generatedAt, ageHours: null, warningAfterHours, staleAfterHours, label: 'Fecha de actualización desconocida' };
+    return { level: 'unknown', generatedAt, ageHours: null, warningAfterHours, staleAfterHours, label: 'Unknown snapshot date' };
   }
   const ageHours = Math.max(0, (now.getTime() - timestamp) / 3_600_000);
   if (ageHours > staleAfterHours) {
-    return { level: 'stale', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: `Datos desactualizados · ${Math.floor(ageHours)} h` };
+    return { level: 'stale', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: `Snapshot is stale · ${Math.floor(ageHours)} h` };
   }
   if (ageHours > warningAfterHours) {
-    return { level: 'attention', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: `Revisar actualización · ${Math.floor(ageHours)} h` };
+    return { level: 'attention', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: `Review snapshot · ${Math.floor(ageHours)} h` };
   }
-  return { level: 'current', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: ageHours < 1 ? 'Datos actualizados hace menos de 1 h' : `Datos actualizados hace ${Math.floor(ageHours)} h` };
+  return { level: 'current', generatedAt, ageHours, warningAfterHours, staleAfterHours, label: ageHours < 1 ? 'Snapshot updated less than 1 h ago' : `Snapshot updated ${Math.floor(ageHours)} h ago` };
 }

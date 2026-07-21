@@ -15,9 +15,7 @@ import { resolveActiveDataPaths } from './data-bundle.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.nonBuyers;
 const COMPANIES = [...UNIVERSE.companies];
@@ -122,8 +120,8 @@ function entityRows(
   const details = brandView
     ? `stats.entity_id AS id, NULL AS clientId, stats.entity_id AS name, '' AS seller`
     : `stats.entity_id AS id, CAST(stats.entity_id AS INTEGER) AS clientId,
-       COALESCE(latest.client_name, 'Cliente sin nombre') AS name,
-       COALESCE(NULLIF(TRIM(latest.branch_seller), ''), 'Sin vendedor') AS seller`;
+       COALESCE(latest.client_name, 'Unnamed customer') AS name,
+       COALESCE(NULLIF(TRIM(latest.branch_seller), ''), 'No seller') AS seller`;
   const latestCte = brandView ? '' : `, ranked AS (
       SELECT client_id, client_name, branch_seller,
              ROW_NUMBER() OVER (PARTITION BY client_id ORDER BY sale_date DESC, source_entered_at DESC) AS position
@@ -246,7 +244,7 @@ function sellerRows(
     windows.from30, windows.through,
   ];
   return rows<{ seller: string; universe90: number; nonBuyers30: number }>(statement, parameters).map((row) => ({
-    seller: row.seller || 'Sin vendedor',
+    seller: row.seller || 'No seller',
     universe90: Number(row.universe90),
     nonBuyers30: Number(row.nonBuyers30),
     rate: Number(row.universe90) ? Number(row.nonBuyers30) / Number(row.universe90) * 100 : null,
@@ -262,7 +260,7 @@ export function getNonBuyerReportMeta(): NonBuyerReportMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: NonBuyerReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     rowCount: 0,
     coverageFrom: '',
     minDate: '',
@@ -272,7 +270,7 @@ export function getNonBuyerReportMeta(): NonBuyerReportMeta {
     unavailableDocumentCount: 0,
     options: { productGroup: [], category: [], brand: [], seller: [] },
     agreementsAvailable: false,
-    agreementsNote: 'La API de GESI no expone el maestro AcuerdosComerciales utilizado por la vista SQL del Power BI.',
+    agreementsNote: 'Commercial agreements are not modeled in this synthetic demo.',
     universe: {
       companies: COMPANIES,
       branches: BRANCHES,

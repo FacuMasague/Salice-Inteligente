@@ -14,8 +14,8 @@ const previous = previousPath && previousPath !== snapshotPath
   : null;
 const audit = analyzeProductVectors(current, previous);
 
-// La muestra es determinística y acotada: informa qué productos llegan a una
-// recomendación de baja confianza sin convertir la auditoría en un proceso O(n³).
+// The deterministic bounded sample reports which products reach a
+// low-confidence recommendation without turning the audit into an O(n³) process.
 const sampledClients = current.clients.filter((client) => client.active).sort((a, b) => a.id - b.id).slice(0, 100);
 const insufficient = new Map<string, { productId: string; name: string; clients: number }>();
 for (const client of sampledClients) {

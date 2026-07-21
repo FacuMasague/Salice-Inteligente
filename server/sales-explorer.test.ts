@@ -13,22 +13,22 @@ import {
 const databasePath = resolveActiveDataPaths().commercial;
 const describeWithDatabase = existsSync(databasePath) ? describe : describe.skip;
 
-describeWithDatabase('explorador general de ventas', () => {
-  it('publica el universo y todas las dimensiones administrativas requeridas', () => {
+describeWithDatabase('general sales explorer', () => {
+  it('publishes its universe and every required administrative dimension', () => {
     const meta = getSalesExplorerMeta();
     expect(meta.available).toBe(true);
-    expect(meta.sourceSystem).toContain('GESI');
+    expect(meta.sourceSystem).toBe('Synthetic local demo dataset');
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.options.sellers.length).toBeGreaterThan(0);
-    expect(meta.options.clients.length).toBeGreaterThan(1_000);
-    expect(meta.options.products.length).toBeGreaterThan(1_000);
+    expect(meta.options.clients.length).toBeGreaterThanOrEqual(12);
+    expect(meta.options.products.length).toBeGreaterThanOrEqual(12);
     expect(meta.options.brands.length).toBeGreaterThan(0);
     expect(meta.options.categories.length).toBeGreaterThan(0);
     expect(meta.options.channels.length).toBeGreaterThan(0);
     expect(meta.options.zones.length).toBeGreaterThan(0);
   });
 
-  it('reconcilia sus indicadores con la consulta canónica bajo los mismos filtros', () => {
+  it('reconciles its indicators with the canonical query under the same filters', () => {
     const meta = getSalesExplorerMeta();
     const report = buildSalesExplorer({ from: meta.maxDate, to: meta.maxDate });
     expect(report).not.toBeNull();
@@ -48,7 +48,7 @@ describeWithDatabase('explorador general de ventas', () => {
     expect(report!.summary.averageTicket).toBeCloseTo(canonical.netAmount / documents, 6);
   });
 
-  it('permite recorrer período, cliente o producto y comprobante hasta sus renglones exactos', () => {
+  it('supports period, customer, product, and document drill-down to exact rows', () => {
     const meta = getSalesExplorerMeta();
     const report = buildSalesExplorer({ from: meta.maxDate, to: meta.maxDate, pageSize: 100 });
     expect(report?.timeline).toHaveLength(1);

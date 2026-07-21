@@ -29,7 +29,7 @@ export function matchesMultiFilter(candidate: string, value: unknown) {
   return !selected.length || selected.includes(candidate);
 }
 
-export function multiFilterLabel(value: unknown, allLabel = 'Todos') {
+export function multiFilterLabel(value: unknown, allLabel = 'All') {
   const selected = decodeMultiFilter(value);
   if (!selected.length) return allLabel;
   if (selected.length === 1) return selected[0];

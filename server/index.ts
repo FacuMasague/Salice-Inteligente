@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
 import { resolve } from 'node:path';
@@ -32,7 +31,6 @@ import { buildReceivablesDashboard, getReceivableCaseDetail, RECEIVABLE_STATUSES
 import { exportGoalsPdf, exportGoalsXlsx, exportInvoicePdf, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
 import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
-import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
 import { countOperationalBackups } from './operations-backup.js';
 import {
   createAgendaItem,
@@ -139,150 +137,150 @@ app.get('/api/metrics/catalog', (_req, res) => {
 
 app.get('/api/reports/spt/meta', (_req, res) => {
   const meta = getSptReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local Sales Performance database is unavailable.', path: getSptReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/spt', (req, res) => {
   const report = buildSptReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local Sales Performance database is unavailable.', path: getSptReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/commercial-sales/meta', (_req, res) => {
   const meta = getCommercialSalesReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base comercial de GESI todavía no fue construida.', path: getCommercialSalesReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local commercial database is unavailable.', path: getCommercialSalesReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/commercial-sales', (req, res) => {
   const report = buildCommercialSalesReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base comercial de GESI todavía no fue construida.', path: getCommercialSalesReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local commercial database is unavailable.', path: getCommercialSalesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/general/meta', (_req, res) => {
   const meta = getGeneralReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base del Reporte General todavía no fue construida.', path: getGeneralReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local General Report database is unavailable.', path: getGeneralReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/general', (req, res) => {
   const report = buildGeneralReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base del Reporte General todavía no fue construida.', path: getGeneralReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local General Report database is unavailable.', path: getGeneralReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/mars/meta', (_req, res) => {
   const meta = getMarsReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base Mars de GESI todavía no fue construida.', path: getMarsReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local Orbit Nutrition database is unavailable.', path: getMarsReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/mars', (req, res) => {
   const report = buildMarsReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base Mars de GESI todavía no fue construida.', path: getMarsReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local Orbit Nutrition database is unavailable.', path: getMarsReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/nutripet/meta', (_req, res) => {
   const meta = getNutriPetReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base NutriPet de GESI todavía no fue construida.', path: getNutriPetReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local Nova Pet database is unavailable.', path: getNutriPetReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/nutripet', (req, res) => {
   const report = buildNutriPetReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base NutriPet de GESI todavía no fue construida.', path: getNutriPetReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local Nova Pet database is unavailable.', path: getNutriPetReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/baires/meta', (_req, res) => {
   const meta = getBairesReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base Baires de GESI todavía no fue construida.', path: getBairesReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local Harbor Portfolio database is unavailable.', path: getBairesReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/baires', (req, res) => {
   const report = buildBairesReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base Baires de GESI todavía no fue construida.', path: getBairesReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local Harbor Portfolio database is unavailable.', path: getBairesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/non-buyers/meta', (_req, res) => {
   const meta = getNonBuyerReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base de cuentas no compradoras todavía no fue construida.', path: getNonBuyerReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local dormant-account database is unavailable.', path: getNonBuyerReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/non-buyers', (req, res) => {
   const report = buildNonBuyerReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base de cuentas no compradoras todavía no fue construida.', path: getNonBuyerReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local dormant-account database is unavailable.', path: getNonBuyerReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/reports/pending-balances/meta', (_req, res) => {
   const meta = getPendingBalancesReportMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local pending-balances database is unavailable.', path: getPendingBalancesReportPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/reports/pending-balances', (req, res) => {
   const report = buildPendingBalancesReport(req.query);
-  if (!report) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
+  if (!report) return res.status(503).json({ error: 'The local pending-balances database is unavailable.', path: getPendingBalancesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/admin/sales/meta', (_req, res) => {
   const meta = getSalesExplorerMeta();
-  if (!meta.available) return res.status(503).json({ error: 'La base del explorador de ventas todavía no fue construida.', path: getSalesExplorerPath() });
+  if (!meta.available) return res.status(503).json({ error: 'The local sales-explorer database is unavailable.', path: getSalesExplorerPath() });
   res.setHeader('Cache-Control', 'private, max-age=300');
   return res.json(meta);
 });
 
 app.get('/api/admin/sales', (req, res) => {
   const report = buildSalesExplorer(req.query);
-  if (!report) return res.status(503).json({ error: 'La base del explorador de ventas todavía no fue construida.', path: getSalesExplorerPath() });
+  if (!report) return res.status(503).json({ error: 'The local sales-explorer database is unavailable.', path: getSalesExplorerPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
 });
 
 app.get('/api/admin/sales/document', (req, res) => {
   const key = String(req.query.key ?? '').trim().slice(0, 300);
-  if (!key) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  if (!key) return res.status(400).json({ error: 'A document identifier is required.' });
   const detail = getSalesExplorerDocument(key);
-  return detail ? res.json(detail) : res.status(404).json({ error: 'Comprobante no encontrado dentro del universo comercial.' });
+  return detail ? res.json(detail) : res.status(404).json({ error: 'Document not found in the commercial universe.' });
 });
 
 app.get('/api/invoices/detail', async (req, res) => {
   const id = String(req.query.id ?? '').trim().slice(0, 300);
-  if (!id) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  if (!id) return res.status(400).json({ error: 'A document identifier is required.' });
   const detail = buildInvoiceDetail(await loadSnapshot(), id);
   res.setHeader('Cache-Control', 'no-store');
-  return detail ? res.json(detail) : res.status(404).json({ error: 'Comprobante no encontrado en las fuentes disponibles.' });
+  return detail ? res.json(detail) : res.status(404).json({ error: 'Document not found in the available local sources.' });
 });
 
 app.get('/api/invoices/pdf', async (req, res) => {
   const id = String(req.query.id ?? '').trim().slice(0, 300);
-  if (!id) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  if (!id) return res.status(400).json({ error: 'A document identifier is required.' });
   const detail = buildInvoiceDetail(await loadSnapshot(), id);
-  if (!detail) return res.status(404).json({ error: 'Comprobante no encontrado en las fuentes disponibles.' });
+  if (!detail) return res.status(404).json({ error: 'Document not found in the available local sources.' });
   return sendDownload(res, () => exportInvoicePdf(res, detail));
 });
 
@@ -290,12 +288,12 @@ app.get('/api/admin/sales/export', async (req, res) => {
   const format = String(req.query.format ?? 'csv');
   if (format === 'csv') return sendDownload(res, () => exportSalesCsv(res, req.query));
   if (format === 'xlsx') return sendDownload(res, () => exportSalesXlsx(res, req.query));
-  return res.status(400).json({ error: 'Formato inválido. Usá csv o xlsx.' });
+  return res.status(400).json({ error: 'Invalid format. Use csv or xlsx.' });
 });
 
 app.get('/api/client-trend-reviews', (req, res) => {
   const direction = String(req.query.direction ?? '') as ClientTrendDirection;
-  if (direction && !clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Evolución inválida.' });
+  if (direction && !clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Invalid trend direction.' });
   return res.json({ reviews: listClientTrendReviews(direction || undefined) });
 });
 
@@ -303,15 +301,15 @@ app.put('/api/client-trend-reviews/:clientId/:direction', async (req, res) => {
   const clientId = Number(req.params.clientId);
   const direction = String(req.params.direction) as ClientTrendDirection;
   const data = await loadSnapshot();
-  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
-  if (!clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Evolución inválida.' });
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Customer not found.' });
+  if (!clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Invalid trend direction.' });
   const review = setClientTrendReviewed(clientId, direction, req.body?.reviewed !== false);
   return res.json({ review });
 });
 
 app.get('/api/admin/receivables', (req, res) => {
   const payload = buildReceivablesDashboard(req.query);
-  if (!payload) return res.status(503).json({ error: 'La base consolidada de cuentas por cobrar todavía no fue construida.' });
+  if (!payload) return res.status(503).json({ error: 'The consolidated accounts-receivable database is unavailable.' });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(payload);
 });
@@ -320,13 +318,13 @@ app.get('/api/admin/receivables/export', async (req, res) => {
   const format = String(req.query.format ?? 'csv');
   if (format === 'csv') return sendDownload(res, () => exportReceivablesCsv(res, req.query));
   if (format === 'xlsx') return sendDownload(res, () => exportReceivablesXlsx(res, req.query));
-  return res.status(400).json({ error: 'Formato inválido. Usá csv o xlsx.' });
+  return res.status(400).json({ error: 'Invalid format. Use csv or xlsx.' });
 });
 
 app.get('/api/admin/receivables/:clientId', async (req, res) => {
   const clientId = Number(req.params.clientId);
   const data = await loadSnapshot();
-  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Customer not found.' });
   return res.json(getReceivableCaseDetail(clientId));
 });
 
@@ -334,15 +332,15 @@ app.patch('/api/admin/receivables/:clientId', async (req, res) => {
   const clientId = Number(req.params.clientId);
   const data = await loadSnapshot();
   const client = data.clients.find((value) => value.id === clientId);
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  if (!client) return res.status(404).json({ error: 'Customer not found.' });
   const status = String(req.body?.status ?? '');
-  if (!RECEIVABLE_STATUSES.includes(status as typeof RECEIVABLE_STATUSES[number])) return res.status(400).json({ error: 'Estado interno inválido.' });
+  if (!RECEIVABLE_STATUSES.includes(status as typeof RECEIVABLE_STATUSES[number])) return res.status(400).json({ error: 'Invalid internal status.' });
   const nextFollowUpAt = req.body?.nextFollowUpAt ? validDate(req.body.nextFollowUpAt) : null;
-  if (req.body?.nextFollowUpAt && !nextFollowUpAt) return res.status(400).json({ error: 'La fecha de seguimiento no es válida.' });
+  if (req.body?.nextFollowUpAt && !nextFollowUpAt) return res.status(400).json({ error: 'The follow-up date is invalid.' });
   const promiseAmount = status === 'promise' ? parseLocalizedNumber(req.body?.promiseAmount) : null;
   const promiseDueAt = status === 'promise' ? validDate(req.body?.promiseDueAt) : null;
   if (status === 'promise' && (promiseAmount == null || promiseAmount <= 0 || !promiseDueAt)) {
-    return res.status(400).json({ error: 'Informá un importe y una fecha válidos para la promesa.' });
+    return res.status(400).json({ error: 'Provide a valid amount and date for the promise.' });
   }
   const workflow = saveReceivableCase({
     clientId,
@@ -351,7 +349,7 @@ app.patch('/api/admin/receivables/:clientId', async (req, res) => {
     nextFollowUpAt,
     promiseAmount,
     promiseDueAt,
-    actor: 'Oficina Salice',
+    actor: 'SMART Salice Office',
     comment: String(req.body?.comment ?? '').slice(0, 2000),
   });
   syncReceivablePaymentPromise(clientId, client.seller);
@@ -362,19 +360,19 @@ app.delete('/api/admin/receivables/:clientId/events/:eventId', async (req, res) 
   const clientId = Number(req.params.clientId);
   const data = await loadSnapshot();
   const client = data.clients.find((value) => value.id === clientId);
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
-  const deleted = deleteReceivableCaseEvent(clientId, String(req.params.eventId), 'Oficina Salice');
+  if (!client) return res.status(404).json({ error: 'Customer not found.' });
+  const deleted = deleteReceivableCaseEvent(clientId, String(req.params.eventId), 'SMART Salice Office');
   if (deleted) syncReceivablePaymentPromise(clientId, client.seller);
-  return deleted ? res.json(getReceivableCaseDetail(clientId)) : res.status(404).json({ error: 'Seguimiento no encontrado o ya eliminado.' });
+  return deleted ? res.json(getReceivableCaseDetail(clientId)) : res.status(404).json({ error: 'Follow-up not found or already deleted.' });
 });
 
 app.post('/api/admin/receivables/:clientId/comments', async (req, res) => {
   const clientId = Number(req.params.clientId);
   const data = await loadSnapshot();
-  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Customer not found.' });
   const comment = String(req.body?.comment ?? '').trim().slice(0, 2000);
-  if (!comment) return res.status(400).json({ error: 'Escribí un comentario antes de guardar.' });
-  addReceivableComment(clientId, comment, 'Oficina Salice');
+  if (!comment) return res.status(400).json({ error: 'Write a comment before saving.' });
+  addReceivableComment(clientId, comment, 'SMART Salice Office');
   return res.status(201).json(getReceivableCaseDetail(clientId));
 });
 
@@ -392,18 +390,18 @@ app.get('/api/admin/goals/export', async (req, res) => {
   const month = String(req.query.month ?? '') || undefined;
   if (format === 'xlsx') return sendDownload(res, () => exportGoalsXlsx(res, versionId, month));
   if (format === 'pdf') return sendDownload(res, () => exportGoalsPdf(res, versionId, month));
-  return res.status(400).json({ error: 'Formato inválido. Usá xlsx o pdf.' });
+  return res.status(400).json({ error: 'Invalid format. Use xlsx or pdf.' });
 });
 
 app.post('/api/admin/goals/versions', (req, res) => {
   const name = String(req.body?.name ?? '').trim().slice(0, 120);
-  if (!name) return res.status(400).json({ error: 'Indicá un nombre para la nueva versión.' });
+  if (!name) return res.status(400).json({ error: 'Provide a name for the new version.' });
   try {
     const version = createCommercialGoalVersion({
       name,
       notes: String(req.body?.notes ?? '').slice(0, 1000),
       cloneFromId: String(req.body?.cloneFromId ?? '') || undefined,
-      actor: 'Oficina Salice',
+      actor: 'SMART Salice Office',
     });
     return res.status(201).json({ version });
   } catch (error) {
@@ -416,9 +414,9 @@ app.post('/api/admin/goals/versions/:versionId/rows', (req, res) => {
   const kilos = optionalNonNegativeNumber(req.body?.kilos);
   const accounts = optionalNonNegativeNumber(req.body?.accounts);
   const invoicing = optionalNonNegativeNumber(req.body?.invoicing);
-  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'El mes no es válido.' });
-  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Los valores deben ser números positivos o quedar vacíos.' });
-  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Indicá al menos un objetivo.' });
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'The month is invalid.' });
+  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Values must be positive numbers or blank.' });
+  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Provide at least one goal.' });
   try {
     const row = createCommercialGoalRow(String(req.params.versionId), {
       month,
@@ -427,7 +425,7 @@ app.post('/api/admin/goals/versions/:versionId/rows', (req, res) => {
       kilos,
       accounts,
       invoicing,
-      actor: 'Oficina Salice',
+      actor: 'SMART Salice Office',
       comment: String(req.body?.comment ?? '').slice(0, 1000),
     });
     return res.status(201).json({ row });
@@ -441,9 +439,9 @@ app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
   const kilos = optionalNonNegativeNumber(req.body?.kilos);
   const accounts = optionalNonNegativeNumber(req.body?.accounts);
   const invoicing = optionalNonNegativeNumber(req.body?.invoicing);
-  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'El mes no es válido.' });
-  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Los valores deben ser números positivos o quedar vacíos.' });
-  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Indicá al menos un objetivo.' });
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'The month is invalid.' });
+  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Values must be positive numbers or blank.' });
+  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Provide at least one goal.' });
   try {
     const row = updateCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), {
       month,
@@ -452,10 +450,10 @@ app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
       kilos,
       accounts,
       invoicing,
-      actor: 'Oficina Salice',
+      actor: 'SMART Salice Office',
       comment: String(req.body?.comment ?? '').slice(0, 1000),
     });
-    return row ? res.json({ row }) : res.status(404).json({ error: 'Objetivo no encontrado.' });
+    return row ? res.json({ row }) : res.status(404).json({ error: 'Goal not found.' });
   } catch (error) {
     return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
   }
@@ -463,8 +461,8 @@ app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
 
 app.delete('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
   try {
-    const deleted = deleteCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), 'Oficina Salice');
-    return deleted ? res.status(204).end() : res.status(404).json({ error: 'Objetivo no encontrado.' });
+    const deleted = deleteCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), 'SMART Salice Office');
+    return deleted ? res.status(204).end() : res.status(404).json({ error: 'Goal not found.' });
   } catch (error) {
     return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
   }
@@ -473,7 +471,7 @@ app.delete('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
 app.post('/api/admin/goals/versions/:versionId/activate', (req, res) => {
   try {
     const version = activateCommercialGoalVersion(
-      String(req.params.versionId), 'Oficina Salice', String(req.body?.comment ?? '').slice(0, 1000),
+      String(req.params.versionId), 'SMART Salice Office', String(req.body?.comment ?? '').slice(0, 1000),
     );
     return res.json({ version });
   } catch (error) {
@@ -483,7 +481,7 @@ app.post('/api/admin/goals/versions/:versionId/activate', (req, res) => {
 
 app.get('/api/saved-views', (req, res) => {
   const viewKey = String(req.query.viewKey ?? '');
-  if (viewKey && !savedViewKeys.has(viewKey as SavedViewKey)) return res.status(400).json({ error: 'Vista inválida.' });
+  if (viewKey && !savedViewKeys.has(viewKey as SavedViewKey)) return res.status(400).json({ error: 'Invalid view.' });
   const normalizedViewKey = viewKey ? viewKey as SavedViewKey : undefined;
   return res.json({ views: listSavedViews(normalizedViewKey) });
 });
@@ -492,25 +490,25 @@ app.post('/api/saved-views', (req, res) => {
   const viewKey = String(req.body?.viewKey ?? '') as SavedViewKey;
   const name = String(req.body?.name ?? '').trim().slice(0, 80);
   const filters = stringRecord(req.body?.filters);
-  if (!savedViewKeys.has(viewKey) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista o filtros inválidos.' });
+  if (!savedViewKeys.has(viewKey) || !name || !filters) return res.status(400).json({ error: 'Invalid name, view, or filters.' });
   return res.status(201).json({ view: createSavedView({ viewKey, name, filters, favorite: Boolean(req.body?.favorite) }) });
 });
 
 app.patch('/api/saved-views/:id', (req, res) => {
   const filters = req.body?.filters == null ? undefined : stringRecord(req.body.filters);
-  if (req.body?.filters != null && !filters) return res.status(400).json({ error: 'Filtros inválidos.' });
+  if (req.body?.filters != null && !filters) return res.status(400).json({ error: 'Invalid filters.' });
   const name = req.body?.name == null ? undefined : String(req.body.name).trim().slice(0, 80);
-  if (req.body?.name != null && !name) return res.status(400).json({ error: 'El nombre de la vista no puede quedar vacío.' });
+  if (req.body?.name != null && !name) return res.status(400).json({ error: 'The view name cannot be blank.' });
   const view = updateSavedView(String(req.params.id), {
     name,
     filters: filters ?? undefined,
     favorite: req.body?.favorite == null ? undefined : Boolean(req.body.favorite),
   });
-  return view ? res.json({ view }) : res.status(404).json({ error: 'Vista guardada no encontrada.' });
+  return view ? res.json({ view }) : res.status(404).json({ error: 'Saved view not found.' });
 });
 
 app.delete('/api/saved-views/:id', (req, res) => (
-  deleteSavedView(String(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Vista guardada no encontrada.' })
+  deleteSavedView(String(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Saved view not found.' })
 ));
 
 app.get('/api/system/status', async (_req, res) => {
@@ -521,26 +519,6 @@ app.get('/api/system/data-health', async (_req, res) => {
   const data = await loadSnapshot();
   res.setHeader('Cache-Control', 'no-store');
   res.json(buildDataHealth(data, getSptReportMeta(), getPendingBalancesReportMeta(), operationalStatus(), new Date(), loadPlatformAuditSummary()));
-});
-
-app.get('/api/system/refresh', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.json(manualRefreshProcessStatus());
-});
-
-app.post('/api/system/refresh', (_req, res) => {
-  const operational = operationalStatus();
-  if (operational.refresh.current || manualRefreshProcessStatus().running) {
-    return res.status(409).json({
-      error: 'Ya hay una actualización de GESI en curso.',
-      ...manualRefreshProcessStatus(),
-      refresh: operational.refresh.current,
-    });
-  }
-  const result = startManualRefresh();
-  return result.started
-    ? res.status(202).json(result)
-    : res.status(409).json({ error: 'No se pudo iniciar porque ya existe una actualización en curso.', ...result });
 });
 
 app.get('/api/agenda', async (req, res) => {
@@ -564,7 +542,7 @@ app.get('/api/notifications', async (_req, res) => {
 app.get('/api/clients/:id/operations', async (req, res) => {
   const clientId = Number(req.params.id);
   const data = await loadSnapshot();
-  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado' });
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Customer not found' });
   return res.json({
     activities: listActivities({ clientId, limit: 50 }),
     promises: listPromises({ clientId, limit: 50 }),
@@ -577,21 +555,21 @@ app.post('/api/activities', async (req, res) => {
   const data = await loadSnapshot();
   const clientId = Number(req.body?.clientId);
   const client = data.clients.find((item) => item.id === clientId);
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.active) return res.status(409).json({ error: 'El cliente está inactivo en GESI; la gestión comercial no se puede agregar a la agenda activa.' });
+  if (!client) return res.status(404).json({ error: 'Customer not found' });
+  if (!client.active) return res.status(409).json({ error: 'The customer is inactive; commercial activity cannot enter the active agenda.' });
   const type = String(req.body?.type || '') as CommercialActivityType;
   const outcome = String(req.body?.outcome || '') as CommercialActivityOutcome;
-  if (!activityTypes.has(type)) return res.status(400).json({ error: 'Tipo de gestión inválido' });
-  if (!activityOutcomes.has(outcome)) return res.status(400).json({ error: 'Resultado de gestión inválido' });
+  if (!activityTypes.has(type)) return res.status(400).json({ error: 'Invalid activity type' });
+  if (!activityOutcomes.has(outcome)) return res.status(400).json({ error: 'Invalid activity outcome' });
   const occurredAt = req.body?.occurredAt ? validDateTime(req.body.occurredAt) : new Date().toISOString();
-  if (!occurredAt) return res.status(400).json({ error: 'La fecha y hora de la gestión no son válidas' });
+  if (!occurredAt) return res.status(400).json({ error: 'Invalid activity date and time' });
   const occurredDate = localDate(new Date(occurredAt));
   const nextActionAt = req.body?.nextActionAt ? validDate(req.body.nextActionAt) : null;
-  if (req.body?.nextActionAt && !nextActionAt) return res.status(400).json({ error: 'La fecha de próxima acción no es válida' });
-  if (nextActionAt && nextActionAt < occurredDate) return res.status(400).json({ error: 'La próxima acción no puede quedar antes de la gestión' });
-  if (outcome === 'rescheduled' && !nextActionAt) return res.status(400).json({ error: 'Indicá la nueva fecha para una gestión reprogramada' });
+  if (req.body?.nextActionAt && !nextActionAt) return res.status(400).json({ error: 'Invalid next-action date' });
+  if (nextActionAt && nextActionAt < occurredDate) return res.status(400).json({ error: 'The next action cannot be earlier than the activity' });
+  if (outcome === 'rescheduled' && !nextActionAt) return res.status(400).json({ error: 'Provide the new date for a rescheduled activity' });
   const rawAmount = req.body?.amount == null || req.body.amount === '' ? null : parseLocalizedNumber(req.body.amount);
-  if (rawAmount != null && (!Number.isFinite(rawAmount) || rawAmount < 0)) return res.status(400).json({ error: 'El importe no es válido' });
+  if (rawAmount != null && (!Number.isFinite(rawAmount) || rawAmount < 0)) return res.status(400).json({ error: 'Invalid amount' });
   const amount = rawAmount === 0 ? null : rawAmount;
   const knownProducts = new Set(data.products.map((product) => product.id));
   const requestedProductIds: string[] = Array.isArray(req.body?.productIds)
@@ -602,11 +580,11 @@ app.post('/api/activities', async (req, res) => {
   if (outcome === 'promise') {
     const dueAt = validDate(req.body?.promise?.dueAt);
     const amount = parseLocalizedNumber(req.body?.promise?.amount);
-    if (!dueAt || amount == null || amount <= 0) return res.status(400).json({ error: 'Indicá fecha e importe válidos para la promesa' });
-    if (dueAt < occurredDate) return res.status(400).json({ error: 'La promesa no puede vencer antes de la gestión' });
+    if (!dueAt || amount == null || amount <= 0) return res.status(400).json({ error: 'Provide a valid date and amount for the promise' });
+    if (dueAt < occurredDate) return res.status(400).json({ error: 'The promise cannot be due before the activity' });
     promise = { dueAt, amount, note: String(req.body?.promise?.note || '').trim().slice(0, 500) };
   } else if (req.body?.promise) {
-    return res.status(400).json({ error: 'Elegí “Promesa de pago” como resultado para guardar una promesa' });
+    return res.status(400).json({ error: 'Choose “Payment promise” as the outcome to save a promise' });
   }
   const result = createCommercialActivity({
     clientId,
@@ -628,34 +606,34 @@ app.post('/api/agenda', async (req, res) => {
   const data = await loadSnapshot();
   const clientId = Number(req.body?.clientId);
   const client = data.clients.find((item) => item.id === clientId);
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.active) return res.status(409).json({ error: 'El cliente está inactivo en GESI' });
+  if (!client) return res.status(404).json({ error: 'Customer not found' });
+  if (!client.active) return res.status(409).json({ error: 'The customer is inactive' });
   const scheduledFor = validDate(req.body?.scheduledFor);
   const actionType = String(req.body?.actionType || '') as CommercialActivityType;
-  if (!scheduledFor || !activityTypes.has(actionType)) return res.status(400).json({ error: 'Fecha o tipo de acción inválidos' });
+  if (!scheduledFor || !activityTypes.has(actionType)) return res.status(400).json({ error: 'Invalid date or action type' });
   const reason = String(req.body?.reason || '').trim().slice(0, 500);
-  if (!reason) return res.status(400).json({ error: 'Indicá el motivo de la tarea' });
+  if (!reason) return res.status(400).json({ error: 'Provide a task reason' });
   return res.status(201).json(createAgendaItem({ clientId, seller: client.seller, scheduledFor, actionType, reason }));
 });
 
 app.patch('/api/promises/:id', (req, res) => {
   const status = String(req.body?.status || '') as PaymentPromiseStatus;
-  if (!promiseStatuses.has(status)) return res.status(400).json({ error: 'Estado de promesa inválido' });
+  if (!promiseStatuses.has(status)) return res.status(400).json({ error: 'Invalid promise status' });
   const promise = updatePromiseStatus(String(req.params.id), status);
-  if (!promise) return res.status(404).json({ error: 'Promesa no encontrada' });
+  if (!promise) return res.status(404).json({ error: 'Promise not found' });
   return res.json({ promise });
 });
 
 app.get('/api/clients/:id/recommendations', async (req, res) => {
   const data = await loadSnapshot();
   const client = data.clients.find((item) => item.id === Number(req.params.id));
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  if (!client) return res.status(404).json({ error: 'Customer not found' });
   return res.json({ recommendations: recommendProducts(client, data.clients, data.products) });
 });
 
 app.post('/api/routes/optimize', async (req, res) => {
   const selectedIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds.map(Number) : [];
-  if (!selectedIds.length) return res.status(400).json({ error: 'Elegí al menos un cliente' });
+  if (!selectedIds.length) return res.status(400).json({ error: 'Choose at least one customer' });
   const data = await loadSnapshot();
   const visitMinutes = Number(req.body?.visitMinutes);
   const maxWorkMinutes = Number(req.body?.maxWorkMinutes);
@@ -669,7 +647,7 @@ app.patch('/api/clients/:id/note', async (req, res) => {
   const note = String(req.body?.note || '').trim().slice(0, 500);
   const data = await loadSnapshot();
   const client = data.clients.find((item) => item.id === Number(req.params.id));
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  if (!client) return res.status(404).json({ error: 'Customer not found' });
   saveClientNote(client.id, note);
   return res.json({ ok: true, note });
 });
@@ -689,7 +667,7 @@ for (const workflow of listReceivableCases()) {
 }
 acquireServerLock();
 app.listen(port, '127.0.0.1', () => {
-  console.log(`Salice API v${APP_VERSION} en http://127.0.0.1:${port}`);
-  console.log(`Snapshot persistente: ${getSnapshotPath()}`);
-  console.log(`Datos operativos: ${getOperationalDatabasePath()}`);
+  console.log(`SMART Salice v${APP_VERSION} is running at http://127.0.0.1:${port}`);
+  console.log(`Synthetic snapshot: ${getSnapshotPath()}`);
+  console.log(`Local operational data: ${getOperationalDatabasePath()}`);
 });

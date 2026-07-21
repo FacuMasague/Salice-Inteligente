@@ -18,9 +18,7 @@ import { metricRatio as ratio, metricShare, metricVariation } from './report-met
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.mars;
 const COMPANIES = [...UNIVERSE.companies];
@@ -28,53 +26,23 @@ const BRANCHES = [...UNIVERSE.branches];
 const ISSUERS = [...UNIVERSE.allowedIssuers];
 const PRODUCT_GROUP = UNIVERSE.includedProductGroups[0];
 const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
-const MARS_BRANDS = ['Iams', 'Optimum', 'Pedigree', 'Pedigree High Pro', 'Whiskas'];
-const MARS_SUBCATEGORIES = ['C&T', 'DRY', 'MUSE', 'SiSe'];
-const MARS_CHANNELS = ['Especializado', 'Masivo'];
+const MARS_BRANDS = ['EverPaw', 'Northstar', 'WildTail'];
+const MARS_SUBCATEGORIES = ['Treats', 'Large Bags', 'Small Bags'];
+const MARS_CHANNELS = ['Specialty', 'Mass Retail'];
 
-const SPECIALIZED_CHANNELS = [
-  'Consumidor Final', 'COSTA-RUTA2', 'Especial', 'Criadores', 'Distribuidor',
-  'Freelance', 'Empleados', 'Especializado', 'Especializado Z2',
-  'Especializado Z3', 'Partido de la Costa', 'Refugios', 'Reventa', 'Reventa2',
-];
-const MASS_CHANNELS = ['On Line', 'Tienda', 'Gastronomico', 'Masivo', 'Premium', 'Saludable', 'Small Retail'];
+const SPECIALIZED_CHANNELS = ['Coastal Route', 'Specialty', 'Distributor'];
+const MASS_CHANNELS = ['Mass Retail', 'Small Retail'];
 
 const branchExpression = `CASE
-  WHEN branch_id = 7 THEN 'Bahía Blanca'
-  WHEN branch_id IN (3, 6) THEN 'Mar del Plata'
-  ELSE 'Otros' END`;
+  WHEN branch_id = 7 THEN 'Demo Branch 2'
+  WHEN branch_id IN (3, 6) THEN 'Demo Main Branch'
+  ELSE 'Other' END`;
 const channelExpression = `CASE
-  WHEN channel IN (${sqlList(SPECIALIZED_CHANNELS)}) THEN 'Especializado'
-  WHEN channel IN (${sqlList(MASS_CHANNELS)}) THEN 'Masivo'
+  WHEN channel IN (${sqlList(SPECIALIZED_CHANNELS)}) THEN 'Specialty'
+  WHEN channel IN (${sqlList(MASS_CHANNELS)}) THEN 'Mass Retail'
   ELSE channel END`;
-const subcategoryExpression = `CASE
-  WHEN subcategory = 'C&T' THEN 'C&T'
-  WHEN subcategory IN ('Large Bags', 'Small Bags') THEN 'DRY'
-  WHEN subcategory = 'Latas' THEN 'MUSE'
-  WHEN subcategory = 'Sobrecitos' THEN 'SiSe'
-  ELSE subcategory END`;
-const clientTypeExpression = `CASE
-  WHEN client_type = 'Agro Pet' THEN 'Agro Pet'
-  WHEN client_type IN ('Agrostore', 'Forrajeria') THEN 'Agrostore & Forrajeria'
-  WHEN client_type = 'AgroVet' THEN 'AgroVet'
-  WHEN client_type IN ('Autoservicio', 'Autoservicio (Self Service)') THEN 'Autoservicio Self Service'
-  WHEN client_type = 'Breeder' THEN 'Breeder'
-  WHEN client_type = 'Cadenas/Mayoristas Regionales' THEN 'Cadenas/Mayoristas Regionales'
-  WHEN client_type = 'Canal Exclusivo' THEN 'Canal Exclusivo'
-  WHEN client_type = 'Clinic' THEN 'Clinic'
-  WHEN client_type = 'Directa' THEN 'Directa'
-  WHEN client_type = 'Donaciones' THEN 'Donaciones'
-  WHEN client_type = 'Empleados' THEN 'Empleados'
-  WHEN client_type = 'Kioscos' THEN 'Kioscos'
-  WHEN client_type = 'Mayorista' THEN 'Mayorista'
-  WHEN client_type = 'Pet Shop' THEN 'Pet Shop'
-  WHEN client_type = 'Ramos Generales' THEN 'Ramos Generales'
-  WHEN client_type = 'Refugios' THEN 'Refugios'
-  WHEN client_type IN ('Almacenes', 'Colegio', 'Dieteticas', 'Gastronómicos', 'Granjas y Carnicerias', 'Tradicionales (Despensas)') THEN 'Tradicionales (Despensas)'
-  WHEN client_type = 'Venta On Line' THEN 'Venta On Line'
-  WHEN client_type = 'Vet Shop' THEN 'Vet Shop'
-  WHEN client_type = 'Veterinaria' THEN 'Veterinaria'
-  ELSE client_type END`;
+const subcategoryExpression = 'subcategory';
+const clientTypeExpression = 'client_type';
 
 const FILTER_EXPRESSIONS: Record<MarsFilterKey, string> = {
   branch: branchExpression,
@@ -148,7 +116,7 @@ function marsPeriodForDate(value: string) {
     const match = marsPeriodsForYear(year).find((period) => value >= period.start && value <= period.end);
     if (match) return match;
   }
-  throw new Error(`No se pudo ubicar ${value} en el calendario Mars.`);
+  throw new Error(`Could not locate ${value} in the Orbit calendar.`);
 }
 
 function previousPeriod(period: MarsPeriodDefinition) {
@@ -255,19 +223,19 @@ function brandRows(database: DatabaseSync, filters: MarsFilters, current: MarsPe
     ? `CAST(client_id AS TEXT) || ':' || CAST(client_branch_id AS TEXT)`
     : 'client_id';
   const currentRows = rows<{ brand: string; kilos: number; accounts: number; clientBranches: number; clients: number }>(database.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos,
            COUNT(DISTINCT client_id) AS accounts,
            COUNT(DISTINCT CAST(client_id AS TEXT) || ':' || CAST(client_branch_id AS TEXT)) AS clientBranches,
            COUNT(DISTINCT ${clientExpression}) AS clients
     FROM movements WHERE ${currentWhere.sql}
-    GROUP BY CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END
+    GROUP BY CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END
   `), currentWhere.parameters);
   const previousRows = rows<{ brand: string; kilos: number }>(database.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos
     FROM movements WHERE ${previousWhere.sql}
-    GROUP BY CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END
+    GROUP BY CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END
   `), previousWhere.parameters);
   const previousMap = new Map(previousRows.map((row) => [row.brand, Number(row.kilos)]));
   const total = currentRows.reduce((sum, row) => sum + Number(row.kilos), 0);
@@ -296,7 +264,7 @@ export function getMarsReportMeta(): MarsReportMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: MarsReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     clientTypeCatalogSource: 'unavailable',
     rowCount: 0,
     coverageFrom: '', minDate: '', maxDate: '', capturedAt: '', latestYear: '', latestPeriod: '',
@@ -333,7 +301,7 @@ export function getMarsReportMeta(): MarsReportMeta {
   cachedMeta = {
     available: true,
     sourceSystem: meta.get('source_system') ?? unavailable.sourceSystem,
-    clientTypeCatalogSource: meta.get('client_type_catalog_source') ?? 'gesi_api',
+    clientTypeCatalogSource: meta.get('client_type_catalog_source') ?? 'synthetic_catalog',
     rowCount: Number(profile.rowCount ?? 0),
     coverageFrom: meta.get('coverage_from') ?? minDate,
     minDate,

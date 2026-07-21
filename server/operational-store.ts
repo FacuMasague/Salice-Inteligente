@@ -47,13 +47,13 @@ function seedCommercialGoals(store: DatabaseSync) {
       ) VALUES (?, 1, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       versionId,
-      'Plan histórico inicial',
+      'Synthetic demo plan',
       STATUS_TARGET_SOURCE.label,
       STATUS_TARGET_SOURCE.coverageFrom,
       STATUS_TARGET_SOURCE.coverageThrough,
-      'Importación inicial reconstruida desde la fuente externa del Reporte Status Salice.',
+      'Deterministic planning targets generated locally for the demo.',
       createdAt,
-      'Migración v0.4.0',
+      'SMART Salice demo generator',
       createdAt,
     );
     for (const row of STATUS_TARGETS) {
@@ -64,8 +64,8 @@ function seedCommercialGoals(store: DatabaseSync) {
         id, version_id, event_type, entity_key, actor, comment, before_json, after_json, created_at
       ) VALUES (?, ?, 'created', '', ?, ?, NULL, ?, ?)
     `).run(
-      randomUUID(), versionId, 'Migración v0.4.0',
-      'Importación inicial del plan histórico; los resultados reales permanecen en GESI.',
+      randomUUID(), versionId, 'SMART Salice demo generator',
+      'Created the synthetic versioned plan; targets remain separate from synthetic actuals.',
       JSON.stringify({ rows: STATUS_TARGETS.length, source: STATUS_TARGET_SOURCE.label }), createdAt,
     );
     store.exec('COMMIT');
@@ -88,31 +88,6 @@ function db() {
       note TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS sync_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      completed_at TEXT NOT NULL,
-      snapshot_at TEXT NOT NULL,
-      status TEXT NOT NULL,
-      clients INTEGER NOT NULL,
-      products INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS refresh_runs (
-      id TEXT PRIMARY KEY,
-      started_at TEXT NOT NULL,
-      completed_at TEXT,
-      trigger_kind TEXT NOT NULL,
-      status TEXT NOT NULL,
-      stage TEXT NOT NULL,
-      snapshot_at TEXT,
-      quality_status TEXT,
-      clients INTEGER,
-      products INTEGER,
-      warnings INTEGER NOT NULL DEFAULT 0,
-      duration_ms INTEGER,
-      error TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_refresh_runs_started ON refresh_runs(started_at DESC);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_runs_single_running ON refresh_runs(status) WHERE status = 'running';
     CREATE TABLE IF NOT EXISTS commercial_activities (
       id TEXT PRIMARY KEY,
       client_id INTEGER NOT NULL,
@@ -242,13 +217,13 @@ function db() {
     CREATE INDEX IF NOT EXISTS idx_goal_changes_version ON commercial_goal_changes(version_id, created_at DESC);
     CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_delete
       BEFORE DELETE ON receivable_case_events
-      BEGIN SELECT RAISE(ABORT, 'El historial de cobranzas es append-only'); END;
+      BEGIN SELECT RAISE(ABORT, 'The collections history is append-only'); END;
     CREATE TRIGGER IF NOT EXISTS prevent_goal_change_update
       BEFORE UPDATE ON commercial_goal_changes
-      BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+      BEGIN SELECT RAISE(ABORT, 'The goals history is append-only'); END;
     CREATE TRIGGER IF NOT EXISTS prevent_goal_change_delete
       BEFORE DELETE ON commercial_goal_changes
-      BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+      BEGIN SELECT RAISE(ABORT, 'The goals history is append-only'); END;
   `);
   const caseColumns = new Set(database.prepare('PRAGMA table_info(receivable_cases)').all().map((row) => String(row.name)));
   if (!caseColumns.has('promise_amount')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_amount REAL');
@@ -261,7 +236,7 @@ function db() {
     DROP TRIGGER IF EXISTS prevent_receivable_event_update;
     CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_core_update
       BEFORE UPDATE OF id, client_id, event_type, actor, comment, before_json, after_json, batch_id, created_at ON receivable_case_events
-      BEGIN SELECT RAISE(ABORT, 'El contenido del historial de cobranzas es inmutable'); END;
+      BEGIN SELECT RAISE(ABORT, 'Collections history content is immutable'); END;
   `);
   seedCommercialGoals(database);
   return database;
@@ -573,7 +548,7 @@ export function createCommercialActivity(input: CreateActivityInput) {
         seller: activity.seller,
         scheduledFor: activity.nextActionAt.slice(0, 10),
         actionType: activity.type === 'collection' ? 'collection' : 'visit',
-        reason: `Seguimiento programado después de ${activity.type === 'visit' ? 'la visita' : 'la gestión'}`,
+        reason: `Follow-up scheduled after ${activity.type === 'visit' ? 'the visit' : 'the activity'}`,
         source: 'manual',
         status: 'pending',
         createdAt,
@@ -698,7 +673,7 @@ export function syncReceivablePaymentPromise(clientId: number, seller: string) {
     return null;
   }
   const now = new Date().toISOString();
-  const cleanSeller = seller.trim().slice(0, 120) || workflow.responsible || 'Sin vendedor';
+  const cleanSeller = seller.trim().slice(0, 120) || workflow.responsible || 'No seller';
   store.prepare(`
     INSERT INTO payment_promises (id, client_id, activity_id, seller, due_at, amount, status, note, created_at, resolved_at)
     VALUES (?, ?, NULL, ?, ?, ?, 'pending', ?, ?, NULL)
@@ -709,7 +684,7 @@ export function syncReceivablePaymentPromise(clientId: number, seller: string) {
       status = 'pending',
       note = excluded.note,
       resolved_at = NULL
-  `).run(id, clientId, cleanSeller, workflow.promiseDueAt, workflow.promiseAmount, 'Promesa registrada desde Cuentas por cobrar.', now);
+  `).run(id, clientId, cleanSeller, workflow.promiseDueAt, workflow.promiseAmount, 'Promise recorded from Accounts Receivable.', now);
   return promiseFromRow(store.prepare('SELECT * FROM payment_promises WHERE id = ?').get(id)!);
 }
 
@@ -778,7 +753,7 @@ export function saveReceivableCase(input: {
   const before = current ?? emptyReceivableCase(input.clientId);
   const createdAt = new Date().toISOString();
   const responsible = input.responsible.trim().slice(0, 120);
-  const actor = input.actor.trim().slice(0, 120) || 'Oficina Salice';
+  const actor = input.actor.trim().slice(0, 120) || 'SMART Salice Office';
   const comment = String(input.comment ?? '').trim().slice(0, 2000);
   const promiseAmount = input.status === 'promise' && input.promiseAmount != null ? Number(input.promiseAmount) : null;
   const promiseDueAt = input.status === 'promise' ? input.promiseDueAt ?? null : null;
@@ -827,7 +802,7 @@ export function saveReceivableCase(input: {
   return getReceivableCase(input.clientId)!;
 }
 
-export function addReceivableComment(clientId: number, comment: string, actor = 'Oficina Salice') {
+export function addReceivableComment(clientId: number, comment: string, actor = 'SMART Salice Office') {
   const current = getReceivableCase(clientId) ?? saveReceivableCase({
     clientId, responsible: '', status: 'unmanaged', nextFollowUpAt: null, actor,
   });
@@ -838,11 +813,11 @@ export function addReceivableComment(clientId: number, comment: string, actor = 
   store.exec('BEGIN IMMEDIATE');
   try {
     addReceivableEvent(store, {
-      clientId, eventType: 'comment', actor: actor.trim().slice(0, 120) || 'Oficina Salice',
+      clientId, eventType: 'comment', actor: actor.trim().slice(0, 120) || 'SMART Salice Office',
       comment: cleanComment, before: null, after: null, createdAt,
     });
     store.prepare('UPDATE receivable_cases SET updated_at = ?, updated_by = ? WHERE client_id = ?')
-      .run(createdAt, actor.trim().slice(0, 120) || 'Oficina Salice', clientId);
+      .run(createdAt, actor.trim().slice(0, 120) || 'SMART Salice Office', clientId);
     store.exec('COMMIT');
   } catch (error) {
     store.exec('ROLLBACK');
@@ -902,8 +877,8 @@ export function rebuildAllReceivableCasesFromEvents() {
   store.exec('BEGIN IMMEDIATE');
   try {
     for (const clientId of clientIds) rebuildReceivableCaseFromEvents(store, clientId);
-    // Estas filas son una proyección de los seguimientos, no un segundo origen.
-    // Se recrean desde los casos válidos al iniciar el servidor.
+    // These rows project follow-up state; they are not a second source of truth.
+    // They are rebuilt from valid cases on server startup.
     store.prepare("DELETE FROM payment_promises WHERE id LIKE 'receivable-case:%'").run();
     store.exec('COMMIT');
   } catch (error) {
@@ -912,17 +887,15 @@ export function rebuildAllReceivableCasesFromEvents() {
   }
 }
 
-export function deleteReceivableCaseEvent(clientId: number, eventId: string, actor = 'Oficina Salice') {
+export function deleteReceivableCaseEvent(clientId: number, eventId: string, actor = 'SMART Salice Office') {
   const store = db();
   const current = store.prepare('SELECT * FROM receivable_case_events WHERE id = ? AND client_id = ?').get(eventId, clientId);
   if (!current || current.deleted_at) return false;
   const deletedAt = new Date().toISOString();
-  const deletedBy = actor.trim().slice(0, 120) || 'Oficina Salice';
+  const deletedBy = actor.trim().slice(0, 120) || 'SMART Salice Office';
   store.exec('BEGIN IMMEDIATE');
   try {
-    // Las versiones anteriores guardaban una misma acción humana como varios
-    // eventos con el mismo timestamp. Se eliminan juntos para no dejar activo
-    // un estado o una promesa huérfanos.
+    // Events created by one human action share a batch and are deleted together.
     if (current.batch_id) {
       store.prepare(`
         UPDATE receivable_case_events SET deleted_at = ?, deleted_by = ?
@@ -1025,7 +998,7 @@ export function listCommercialGoalChanges(versionId: string, limit = 100) {
 
 export function getActiveCommercialGoalPlan() {
   const version = getCommercialGoalVersion();
-  if (!version) throw new Error('No existe un plan comercial activo.');
+  if (!version) throw new Error('No active commercial plan exists.');
   return {
     version,
     source: {
@@ -1041,7 +1014,7 @@ export function getActiveCommercialGoalPlan() {
 export function getCommercialGoalsPayload(versionId?: string, month?: string): CommercialGoalsPayload {
   const versions = listCommercialGoalVersions();
   const selectedVersion = versions.find((item) => item.id === versionId) ?? versions.find((item) => item.status === 'active') ?? versions[0];
-  if (!selectedVersion) throw new Error('No existe un plan comercial disponible.');
+  if (!selectedVersion) throw new Error('No commercial plan is available.');
   const allRows = listCommercialGoals(selectedVersion.id);
   const months = [...new Set(allRows.map((row) => row.month))].sort();
   const selectedMonth = months.includes(month ?? '') ? month! : (months.at(-1) ?? '');
@@ -1082,12 +1055,12 @@ function addGoalChange(store: DatabaseSync, input: {
 export function createCommercialGoalVersion(input: { name: string; notes?: string; cloneFromId?: string; actor?: string }) {
   const store = db();
   const source = input.cloneFromId ? getCommercialGoalVersion(input.cloneFromId) : getCommercialGoalVersion();
-  if (!source) throw new Error('No existe un plan base para clonar.');
+  if (!source) throw new Error('No base plan is available to clone.');
   const versionNumber = Number(store.prepare('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM commercial_goal_versions').get()?.next ?? 1);
   const id = randomUUID();
   const createdAt = new Date().toISOString();
-  const actor = input.actor?.trim().slice(0, 120) || 'Oficina Salice';
-  const name = input.name.trim().slice(0, 120) || `Plan comercial v${versionNumber}`;
+  const actor = input.actor?.trim().slice(0, 120) || 'SMART Salice Office';
+  const name = input.name.trim().slice(0, 120) || `Commercial plan v${versionNumber}`;
   const sourceRows = listCommercialGoals(source.id);
   const insertGoal = store.prepare(`
     INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
@@ -1101,7 +1074,7 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
         notes, created_at, created_by, activated_at
       ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, NULL)
     `).run(
-      id, versionNumber, name, `Clonado de ${source.name} · v${source.version}`,
+      id, versionNumber, name, `Cloned from ${source.name} · v${source.version}`,
       source.coverageFrom, source.coverageThrough, String(input.notes ?? '').trim().slice(0, 1000), createdAt, actor,
     );
     for (const row of sourceRows) {
@@ -1109,7 +1082,7 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
     }
     addGoalChange(store, {
       versionId: id, eventType: 'created', actor,
-      comment: `Versión creada desde ${source.name} · v${source.version}.`,
+      comment: `Version created from ${source.name} · v${source.version}.`,
       after: { rows: sourceRows.length, sourceVersionId: source.id }, createdAt,
     });
     store.exec('COMMIT');
@@ -1122,8 +1095,8 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
 
 function requireDraftGoalVersion(versionId: string) {
   const version = getCommercialGoalVersion(versionId);
-  if (!version) throw new Error('La versión de objetivos no existe.');
-  if (version.status !== 'draft') throw new Error('Sólo se pueden modificar versiones en borrador. Creá una nueva versión para conservar la trazabilidad.');
+  if (!version) throw new Error('The goal version does not exist.');
+  if (version.status !== 'draft') throw new Error('Only draft versions can be edited. Create a new version to preserve the audit trail.');
   return version;
 }
 
@@ -1151,7 +1124,7 @@ export function updateCommercialGoalRow(versionId: string, rowId: string, input:
     accounts: input.accounts,
     invoicing: input.invoicing,
   };
-  const actor = input.actor?.trim().slice(0, 120) || 'Oficina Salice';
+  const actor = input.actor?.trim().slice(0, 120) || 'SMART Salice Office';
   const createdAt = new Date().toISOString();
   store.exec('BEGIN IMMEDIATE');
   try {
@@ -1189,8 +1162,8 @@ export function createCommercialGoalRow(versionId: string, input: Omit<Commercia
     `).run(row.id, versionId, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
     addGoalChange(store, {
       versionId, eventType: 'row_created', entityKey: row.id,
-      actor: input.actor?.trim().slice(0, 120) || 'Oficina Salice',
-      comment: String(input.comment ?? 'Objetivo agregado').trim().slice(0, 1000), before: null, after: { ...row },
+      actor: input.actor?.trim().slice(0, 120) || 'SMART Salice Office',
+      comment: String(input.comment ?? 'Goal added').trim().slice(0, 1000), before: null, after: { ...row },
     });
     store.exec('COMMIT');
   } catch (error) {
@@ -1200,7 +1173,7 @@ export function createCommercialGoalRow(versionId: string, input: Omit<Commercia
   return row;
 }
 
-export function deleteCommercialGoalRow(versionId: string, rowId: string, actor = 'Oficina Salice') {
+export function deleteCommercialGoalRow(versionId: string, rowId: string, actor = 'SMART Salice Office') {
   requireDraftGoalVersion(versionId);
   const store = db();
   const currentRow = store.prepare('SELECT * FROM commercial_goals WHERE id = ? AND version_id = ?').get(rowId, versionId);
@@ -1210,8 +1183,8 @@ export function deleteCommercialGoalRow(versionId: string, rowId: string, actor 
   try {
     store.prepare('DELETE FROM commercial_goals WHERE id = ? AND version_id = ?').run(rowId, versionId);
     addGoalChange(store, {
-      versionId, eventType: 'row_deleted', entityKey: rowId, actor: actor.trim().slice(0, 120) || 'Oficina Salice',
-      comment: 'Objetivo eliminado del borrador.', before: { ...before }, after: null,
+      versionId, eventType: 'row_deleted', entityKey: rowId, actor: actor.trim().slice(0, 120) || 'SMART Salice Office',
+      comment: 'Goal removed from draft.', before: { ...before }, after: null,
     });
     store.exec('COMMIT');
   } catch (error) {
@@ -1221,13 +1194,13 @@ export function deleteCommercialGoalRow(versionId: string, rowId: string, actor 
   return true;
 }
 
-export function activateCommercialGoalVersion(versionId: string, actor = 'Oficina Salice', comment = '') {
+export function activateCommercialGoalVersion(versionId: string, actor = 'SMART Salice Office', comment = '') {
   const version = requireDraftGoalVersion(versionId);
   const store = db();
   const coverage = store.prepare('SELECT MIN(month) AS first, MAX(month) AS last, COUNT(*) AS total FROM commercial_goals WHERE version_id = ?').get(versionId) as { first?: string; last?: string; total?: number };
-  if (!coverage.total || !coverage.first || !coverage.last) throw new Error('El borrador no contiene objetivos y no puede activarse.');
+  if (!coverage.total || !coverage.first || !coverage.last) throw new Error('The draft has no goals and cannot be activated.');
   const activatedAt = new Date().toISOString();
-  const cleanActor = actor.trim().slice(0, 120) || 'Oficina Salice';
+  const cleanActor = actor.trim().slice(0, 120) || 'SMART Salice Office';
   store.exec('BEGIN IMMEDIATE');
   try {
     store.prepare("UPDATE commercial_goal_versions SET status = 'archived' WHERE status = 'active'").run();
@@ -1236,7 +1209,7 @@ export function activateCommercialGoalVersion(versionId: string, actor = 'Oficin
     `).run(coverage.first, coverage.last, activatedAt, versionId);
     addGoalChange(store, {
       versionId, eventType: 'activated', actor: cleanActor,
-      comment: comment.trim().slice(0, 1000) || `Plan ${version.name} activado para Reporte General.`,
+      comment: comment.trim().slice(0, 1000) || `Plan ${version.name} activated for General Report.`,
       after: { coverageFrom: coverage.first, coverageThrough: coverage.last, rows: Number(coverage.total) }, createdAt: activatedAt,
     });
     store.exec('COMMIT');
@@ -1245,120 +1218,6 @@ export function activateCommercialGoalVersion(versionId: string, actor = 'Oficin
     throw error;
   }
   return getCommercialGoalVersion(versionId)!;
-}
-
-export function recordSuccessfulSync(snapshot: DashboardData) {
-  db().prepare(`
-    INSERT INTO sync_runs (completed_at, snapshot_at, status, clients, products)
-    VALUES (?, ?, 'success', ?, ?)
-  `).run(new Date().toISOString(), snapshot.meta.generatedAt, snapshot.clients.length, snapshot.products.length);
-}
-
-export type RefreshRunStatus = 'running' | 'success' | 'failed';
-
-export interface RefreshRun {
-  id: string;
-  startedAt: string;
-  completedAt: string | null;
-  trigger: string;
-  status: RefreshRunStatus;
-  stage: string;
-  snapshotAt: string | null;
-  qualityStatus: string | null;
-  clients: number | null;
-  products: number | null;
-  warnings: number;
-  durationMs: number | null;
-  error: string | null;
-}
-
-function refreshRunFromRow(row: Record<string, unknown>): RefreshRun {
-  return {
-    id: textValue(row.id),
-    startedAt: textValue(row.started_at),
-    completedAt: nullableText(row.completed_at),
-    trigger: textValue(row.trigger_kind),
-    status: textValue(row.status) as RefreshRunStatus,
-    stage: textValue(row.stage),
-    snapshotAt: nullableText(row.snapshot_at),
-    qualityStatus: nullableText(row.quality_status),
-    clients: row.clients == null ? null : Number(row.clients),
-    products: row.products == null ? null : Number(row.products),
-    warnings: Number(row.warnings ?? 0),
-    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
-    error: nullableText(row.error),
-  };
-}
-
-export function beginRefreshRun(trigger = 'manual') {
-  const store = db();
-  const existing = store.prepare("SELECT id, started_at, stage FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1").get();
-  if (existing) {
-    const ageMs = Date.now() - new Date(String(existing.started_at)).getTime();
-    if (Number.isFinite(ageMs) && ageMs < 12 * 60 * 60 * 1000) {
-      throw new Error(`Ya existe una actualización en curso desde ${existing.started_at} (etapa ${existing.stage}).`);
-    }
-    store.prepare("UPDATE refresh_runs SET status = 'failed', completed_at = ?, quality_status = 'failed', error = ? WHERE id = ?")
-      .run(new Date().toISOString(), 'Ejecución interrumpida sin cierre; se liberó al iniciar un nuevo proceso.', existing.id);
-  }
-  const run: RefreshRun = {
-    id: randomUUID(),
-    startedAt: new Date().toISOString(),
-    completedAt: null,
-    trigger,
-    status: 'running',
-    stage: 'preflight',
-    snapshotAt: null,
-    qualityStatus: null,
-    clients: null,
-    products: null,
-    warnings: 0,
-    durationMs: null,
-    error: null,
-  };
-  store.prepare(`INSERT INTO refresh_runs (
-    id, started_at, completed_at, trigger_kind, status, stage, snapshot_at,
-    quality_status, clients, products, warnings, duration_ms, error
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    run.id, run.startedAt, run.completedAt, run.trigger, run.status, run.stage,
-    run.snapshotAt, run.qualityStatus, run.clients, run.products, run.warnings,
-    run.durationMs, run.error,
-  );
-  return run;
-}
-
-export function updateRefreshRunStage(id: string, stage: string) {
-  db().prepare("UPDATE refresh_runs SET stage = ? WHERE id = ? AND status = 'running'").run(stage.slice(0, 120), id);
-}
-
-export function completeRefreshRun(id: string, snapshot: DashboardData, warnings = 0, qualityStatus = warnings ? 'passed_with_warnings' : 'passed') {
-  const completedAt = new Date().toISOString();
-  const current = db().prepare('SELECT started_at FROM refresh_runs WHERE id = ?').get(id);
-  const startedAt = current ? String(current.started_at) : completedAt;
-  const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(startedAt).getTime());
-  db().prepare(`UPDATE refresh_runs SET
-    completed_at = ?, status = 'success', stage = 'complete', snapshot_at = ?,
-    quality_status = ?, clients = ?, products = ?, warnings = ?, duration_ms = ?, error = NULL
-    WHERE id = ?`).run(
-    completedAt, snapshot.meta.generatedAt, qualityStatus, snapshot.clients.length, snapshot.products.length,
-    warnings, durationMs, id,
-  );
-}
-
-export function failRefreshRun(id: string, stage: string, error: unknown) {
-  const completedAt = new Date().toISOString();
-  const current = db().prepare('SELECT started_at FROM refresh_runs WHERE id = ?').get(id);
-  const startedAt = current ? String(current.started_at) : completedAt;
-  const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(startedAt).getTime());
-  const message = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
-  db().prepare(`UPDATE refresh_runs SET
-    completed_at = ?, status = 'failed', stage = ?, quality_status = 'failed', duration_ms = ?, error = ?
-    WHERE id = ?`).run(completedAt, stage.slice(0, 120), durationMs, message, id);
-}
-
-export function listRefreshRuns(limit = 10): RefreshRun[] {
-  return db().prepare('SELECT * FROM refresh_runs ORDER BY started_at DESC LIMIT ?').all(Math.max(1, Math.min(100, limit)))
-    .map((row) => refreshRunFromRow(row));
 }
 
 export function operationalStatus() {
@@ -1370,10 +1229,6 @@ export function operationalStatus() {
   const receivableCaseCount = Number((store.prepare('SELECT COUNT(*) AS total FROM receivable_cases').get()?.total) ?? 0);
   const savedViewCount = Number((store.prepare('SELECT COUNT(*) AS total FROM saved_views').get()?.total) ?? 0);
   const goalVersionCount = Number((store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total) ?? 0);
-  const lastSync = store.prepare('SELECT completed_at, snapshot_at, status FROM sync_runs ORDER BY id DESC LIMIT 1').get();
-  const refreshRuns = listRefreshRuns(6);
-  const lastSuccessRow = store.prepare("SELECT * FROM refresh_runs WHERE status = 'success' ORDER BY started_at DESC LIMIT 1").get();
-  const currentRow = store.prepare("SELECT * FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1").get();
   return {
     storage: 'SQLite local',
     notes: noteCount,
@@ -1383,18 +1238,12 @@ export function operationalStatus() {
     receivableCases: receivableCaseCount,
     savedViews: savedViewCount,
     goalVersions: goalVersionCount,
-    lastSync: lastSync ? {
-      completedAt: String(lastSync.completed_at),
-      snapshotAt: String(lastSync.snapshot_at),
-      status: String(lastSync.status),
-    } : null,
-    refresh: {
-      current: currentRow ? refreshRunFromRow(currentRow) : null,
-      lastAttempt: refreshRuns[0] ?? null,
-      lastSuccess: lastSuccessRow ? refreshRunFromRow(lastSuccessRow) : null,
-      recent: refreshRuns,
-    },
   };
+}
+
+export function ensureOperationalDatabase() {
+  db();
+  return databasePath;
 }
 
 export function getOperationalDatabasePath() {

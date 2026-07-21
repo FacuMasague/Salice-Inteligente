@@ -16,8 +16,7 @@ function clientProfile(client: Client, products: Product[]): Record<VectorKey, n
   const purchased = client.purchases
     .map((purchase) => ({ purchase, product: products.find((item) => item.id === purchase.productId) }))
     .filter((item): item is { purchase: Client['purchases'][number]; product: Product } => Boolean(item.product));
-  // El peso monetario evita sumar como equivalentes unidades incompatibles
-  // (por ejemplo, una pipeta y una bolsa de alimento de 25 kg).
+  // Monetary weighting avoids treating incompatible units as equivalent.
   const totalWeight = purchased.reduce((sum, item) => sum + Math.max(0, item.purchase.total), 0) || 1;
   return Object.fromEntries(keys.map((key) => [
     key,
@@ -72,12 +71,12 @@ export function recommendProducts(client: Client, clients: Client[], products: P
           ? 'exploratory'
           : 'insufficient';
       const reason = confidence === 'insufficient'
-        ? 'Sugerencia exploratoria: todavía hay poco historial comparable'
+        ? 'Exploratory suggestion: comparable history is still limited'
         : peerAdoption >= 35
-          ? `${Math.round(peerAdoption)}% de ${peers.length} clientes comparables ya lo compra`
+          ? `${Math.round(peerAdoption)}% of ${peers.length} comparable customers already buy it`
           : similarity >= 72
-            ? `Afinidad v2.1 de ${Math.round(similarity)}%${sharedTraits.length ? `: ${sharedTraits.join(', ')}` : ' con su mix de compra'}`
-            : `Complementa su mix y tiene rotación en la cartera`;
+            ? `v2.1 affinity of ${Math.round(similarity)}%${sharedTraits.length ? `: ${sharedTraits.join(', ')}` : ' with the customer purchase mix'}`
+            : 'Complements the customer mix and has portfolio turnover';
       return {
         product,
         score,
@@ -162,15 +161,15 @@ export function optimizeRoute(selectedIds: number[], clients: Client[], options:
   if (stops.length) totalKm += returnDistance;
   const totalMinutes = elapsed + (stops.length ? returnMinutes : 0);
   const warnings: string[] = [];
-  if (totalMinutes > maxWorkMinutes) warnings.push(`La jornada supera el máximo configurado por ${totalMinutes - maxWorkMinutes} min.`);
-  if (stops.some((stop) => stop.distanceKm > 60)) warnings.push('Hay al menos un tramo estimado de más de 60 km; conviene separar la ruta por corredor.');
-  if (new Set(stops.map((stop) => stop.locality)).size > 4) warnings.push('La ruta mezcla más de cuatro localidades y puede ser difícil de cumplir.');
+  if (totalMinutes > maxWorkMinutes) warnings.push(`The workday exceeds the configured maximum by ${totalMinutes - maxWorkMinutes} min.`);
+  if (stops.some((stop) => stop.distanceKm > 60)) warnings.push('At least one estimated leg exceeds 60 km; split the route by corridor.');
+  if (new Set(stops.map((stop) => stop.locality)).size > 4) warnings.push('The route mixes more than four localities and may be difficult to complete.');
   return {
     depot: SALICE_DEPOT,
     stops,
     totalKm: Number(totalKm.toFixed(1)),
     totalMinutes,
-    algorithm: 'Vecino más cercano ponderado por prioridad, distancia vial estimada y regreso al depósito',
+    algorithm: 'Nearest neighbor weighted by priority, estimated road distance, and return to depot',
     feasible: warnings.length === 0,
     warnings,
     assumptions: { visitMinutes, maxWorkMinutes, roadFactor },

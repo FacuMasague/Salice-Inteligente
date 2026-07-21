@@ -14,12 +14,12 @@ async function checksum(path: string) {
 }
 
 export function checkOperationalIntegrity(path: string) {
-  if (!existsSync(path)) throw new Error(`No existe la base operativa: ${path}`);
+  if (!existsSync(path)) throw new Error(`The operational database does not exist: ${path}`);
   const database = new DatabaseSync(path);
   try {
     database.exec('PRAGMA busy_timeout = 5000;');
     const result = String(database.prepare('PRAGMA integrity_check').get()?.integrity_check ?? '');
-    if (result !== 'ok') throw new Error(`integrity_check devolvió ${result || 'sin resultado'}`);
+    if (result !== 'ok') throw new Error(`integrity_check returned ${result || 'no result'}`);
     const tables = Number(database.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type = 'table'").get()?.total ?? 0);
     return { integrity: result, tables };
   } finally {
@@ -68,14 +68,14 @@ export async function countOperationalBackups(backupDirectory = resolve(process.
 export async function restoreOperationalDatabase(sourceBackup: string, targetPath: string) {
   checkOperationalIntegrity(sourceBackup);
   const runningPid = activeServerPid(resolve(dirname(targetPath), 'salice-server.lock'));
-  if (runningPid) throw new Error(`Salice Inteligente está ejecutándose (PID ${runningPid}). Cerralo antes de restaurar.`);
+  if (runningPid) throw new Error(`SMART Salice is running (PID ${runningPid}). Close it before restoring.`);
   await mkdir(dirname(targetPath), { recursive: true });
   if (existsSync(targetPath)) {
     const active = new DatabaseSync(targetPath);
     try {
       active.exec('PRAGMA busy_timeout = 1000; PRAGMA wal_checkpoint(TRUNCATE); BEGIN EXCLUSIVE; COMMIT;');
     } catch {
-      throw new Error('La base operativa está en uso. Cerrá Salice Inteligente antes de restaurarla.');
+      throw new Error('The operational database is in use. Close SMART Salice before restoring it.');
     } finally {
       active.close();
     }

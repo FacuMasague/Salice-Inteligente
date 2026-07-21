@@ -7,8 +7,8 @@ import { loadSnapshot } from './store';
 
 const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
-describeWithDatabase('detalle unificado de comprobantes', () => {
-  it('combina el encabezado operativo con los renglones comerciales sin inventar faltantes', async () => {
+describeWithDatabase('unified document detail', () => {
+  it('combines the operational header with commercial rows without inventing missing detail', async () => {
     const meta = getSalesExplorerMeta();
     const report = buildSalesExplorer({ from: meta.maxDate, to: meta.maxDate, pageSize: 10 });
     const row = report?.documents[0];

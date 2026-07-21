@@ -15,9 +15,7 @@ import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio } from './report-metrics.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_PENDING_BALANCES_DB_PATH
-  ? resolve(process.env.SALICE_PENDING_BALANCES_DB_PATH)
-  : resolveActiveDataPaths().pendingBalances;
+const reportPath = () => resolveActiveDataPaths().pendingBalances;
 
 type SqlValue = string | number;
 type RawClientRow = {
@@ -86,7 +84,7 @@ export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: PendingBalanceReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · saldos, comprobantes pendientes y ventas Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     capturedAt: '',
     asOfDate: '',
     salesFrom: '',
@@ -96,9 +94,9 @@ export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
     universe: {
       companies: [3],
       branches: [3],
-      excludedSellerGroup: 'MM',
+      excludedSellerGroup: 'None',
       visibleSellers: PENDING_BALANCE_SELLERS,
-      balanceRule: 'Clientes con comprobantes débito abiertos y vencimiento válido',
+      balanceRule: 'Customers with open debit documents and a valid due date',
     },
   };
   if (!value) return unavailable;
@@ -180,11 +178,11 @@ function agingRows(value: DatabaseSync, filters: PendingBalanceFilters, asOfDate
   `), [asOfDate, asOfDate, asOfDate, asOfDate, ...filter.parameters]);
   const map = new Map(raw.map((row) => [row.key, row]));
   const definitions: { key: PendingBalanceAgingRow['key']; label: string }[] = [
-    { key: 'overdue_90', label: 'Más de 90 días' },
-    { key: 'overdue_61_90', label: '61–90 días' },
-    { key: 'overdue_31_60', label: '31–60 días' },
-    { key: 'overdue_1_30', label: '1–30 días' },
-    { key: 'not_due', label: 'A vencer' },
+    { key: 'overdue_90', label: 'More than 90 days' },
+    { key: 'overdue_61_90', label: '61–90 days' },
+    { key: 'overdue_31_60', label: '31–60 days' },
+    { key: 'overdue_1_30', label: '1–30 days' },
+    { key: 'not_due', label: 'Not yet due' },
   ];
   const total = raw.reduce((sum, row) => sum + Number(row.amount), 0);
   return definitions.map((definition) => {
@@ -250,7 +248,7 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
     dueAt: row.due_at,
     outstanding: Number(row.outstanding),
     creditTermDays: row.credit_term_days == null ? null : Number(row.credit_term_days),
-    paymentMethod: row.payment_method || 'Sin condición informada',
+    paymentMethod: row.payment_method || 'Payment method unavailable',
     status: row.status === 'overdue' ? 'overdue' : 'not_due',
     overdueDays: row.due_at < meta.asOfDate
       ? Math.max(0, Math.round((new Date(`${meta.asOfDate}T12:00:00Z`).getTime() - new Date(`${row.due_at}T12:00:00Z`).getTime()) / 86_400_000))

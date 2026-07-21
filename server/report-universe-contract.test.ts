@@ -12,15 +12,15 @@ import { validateExecutableUniverses } from './report-universes';
 
 function documented(id: string) {
   const value = REPORT_UNIVERSES.find((universe) => universe.id === id);
-  if (!value) throw new Error(`Falta el universo ${id}`);
+  if (!value) throw new Error(`Missing universe ${id}`);
   return value;
 }
 
-describe('contrato central de universos de reporte', () => {
-  it('mantiene los contratos ejecutables alineados con el catálogo', () => {
+describe('central report-universe contract', () => {
+  it('keeps executable contracts aligned with the catalog', () => {
     expect(validateExecutableUniverses()).toEqual([]);
   });
-  it('mantiene empresa y sucursal alineadas con las implementaciones', () => {
+  it('keeps company and branch aligned with implementations', () => {
     const mappings = [
       ['commercial-sales', getCommercialSalesReportMeta().universe],
       ['mars', getMarsReportMeta().universe],
@@ -36,10 +36,10 @@ describe('contrato central de universos de reporte', () => {
     }
   }, 20_000);
 
-  it('conserva el universo histórico propio de SPT', () => {
+  it('preserves the dedicated SPT report universe', () => {
     const runtime = getSptReportMeta().defaultUniverse;
     const catalog = documented('spt-main');
     expect(runtime.companies).toEqual(catalog.companies);
-    expect(runtime.excludedCategories).toEqual(expect.arrayContaining(['POP', 'Promociones']));
+    expect(runtime.excludedCategories).toEqual(['Promotional']);
   });
 });

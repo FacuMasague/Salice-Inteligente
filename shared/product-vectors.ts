@@ -66,15 +66,15 @@ export interface ProductVectorInput {
 type SourceKey = keyof ProductVectorInput;
 
 const SOURCE_LABELS: Record<SourceKey, string> = {
-  name: 'Nombre',
-  description: 'Descripción',
-  category: 'Rubro',
-  subcategory: 'Subrubro',
-  brand: 'Marca',
-  line: 'Línea',
-  commercialFamily: 'Familia comercial',
-  group: 'Grupo',
-  pack: 'Presentación',
+  name: 'Name',
+  description: 'Description',
+  category: 'Category',
+  subcategory: 'Subcategory',
+  brand: 'Brand',
+  line: 'Line',
+  commercialFamily: 'Commercial family',
+  group: 'Group',
+  pack: 'Pack',
 };
 
 const SOURCE_RELIABILITY: Record<SourceKey, number> = {
@@ -152,24 +152,21 @@ export function inferProductVectorV2(input: ProductVectorInput): {
     sourceKeys.includes(source.key) && terms.some((term) => hasTerm(source.normalized, term))
   ));
 
-  // Especie: sólo se asigna cuando existe evidencia explícita. La versión anterior
-  // completaba perro/gato por defecto y generaba afinidades ficticias en farmacia.
+  // Species is assigned only when explicit evidence exists; no default is inferred.
   signal('perros', ['perro', 'perros', 'canino', 'caninos', 'dog', 'puppy']);
   signal('gatos', ['gato', 'gatos', 'gatito', 'gatitos', 'felino', 'felinos', 'cat', 'kitten']);
   signal('otras_especies', ['equino', 'equinos', 'caballo', 'bovino', 'bovinos', 'ave', 'aves', 'roedor', 'roedores', 'conejo', 'conejos', 'pez', 'peces', 'porcino', 'porcinos', 'ovino', 'ovinos']);
   structured('gatos', ['cat'], ['line'], 100);
-  // En el maestro real de GESI, Adulto y Puppy son líneas caninas; Cat es la
-  // línea felina. Se sostiene como regla explícita y auditable del catálogo.
-  structured('perros', ['adulto', 'puppy'], ['line'], 100);
+  // Adult and Puppy are treated as canine lines; Cat is treated as a feline line.
+  structured('perros', ['adulto', 'adult', 'puppy'], ['line'], 100);
 
   signal('cachorros', ['cach', 'cachorro', 'cachorros', 'puppy', 'puppies', 'kitten', 'gatito', 'gatitos', 'junior', 'baby', 'primer ano', 'etapa 1']);
   signal('adultos', ['adulto', 'adultos', 'adult', 'gato ad', 'perro ad', 'ad cat']);
   signal('senior', ['senior', 'mature', 'geriatrico', 'geriatrica', '7+', '7 +']);
-  structured('adultos', ['adulto'], ['line'], 100);
+  structured('adultos', ['adulto', 'adult'], ['line'], 100);
   structured('cachorros', ['puppy', 'cachorro', 'kit'], ['line'], 100);
 
-  // Porte de la mascota. Se evitan términos sueltos como "mini", "small" o
-  // "grande" porque también describen envases, exhibidores y grandes animales.
+  // Pet size requires explicit breed or animal context to avoid pack-size collisions.
   signal('tamano_pequeno', ['raza pequena', 'razas pequenas', 'r pequena', 'small breed', 'mini breed', 'mini small', 'mordida pequena', 'perro pequeno', 'perros pequenos', 'perro chico'], { sources: ['name', 'description', 'line', 'commercialFamily'] });
   signal('tamano_mediano', ['raza mediana', 'razas medianas', 'r mediana', 'medium breed', 'medium large', 'mordida mediana', 'perro mediano', 'perros medianos', 'perro med'], { sources: ['name', 'description', 'line', 'commercialFamily'] });
   signal('tamano_grande', ['raza grande', 'razas grandes', 'r grande', 'large breed', 'large giant', 'medium large', 'mordida grande', 'perro grande', 'perros grandes', 'perro gigante', 'giant breed', 'perro gde', 'perro xl'], { sources: ['name', 'description', 'line', 'commercialFamily'] });
@@ -178,7 +175,7 @@ export function inferProductVectorV2(input: ProductVectorInput): {
   signal('economico', ['economico', 'economica', 'rinde', 'mantenimiento', 'maintenance']);
   structured('economico', ['masivo'], ['commercialFamily'], 62);
 
-  structured('alimento_seco', ['alimentos balanceados', 'alimento balanceado'], ['category'], 100);
+  structured('alimento_seco', ['alimentos balanceados', 'alimento balanceado', 'dry food', 'pet food'], ['category'], 100);
   signal('alimento_seco', ['balanceado', 'croqueta', 'croquetas', 'seco', 'dry']);
   structured('alimento_seco', ['large bags', 'small bags'], ['subcategory'], 92);
   structured('alimento_humedo', ['alimento humedo'], ['category'], 100);
@@ -191,12 +188,12 @@ export function inferProductVectorV2(input: ProductVectorInput): {
   structured('snacks', ['snacks'], ['category'], 100);
   signal('snacks', ['snack', 'snacks', 'golosina', 'golosinas', 'premio', 'premios', 'treat', 'biscrok']);
 
-  structured('farmacia', ['farmacos', 'biologicos'], ['category'], 100);
-  signal('farmacia', ['farmaco', 'farmacos', 'biologico', 'biologicos', 'antibiotico', 'antibioticos', 'antiinflamatorio', 'antiinflamatorios', 'anestesico', 'anestesicos', 'vacuna', 'vacunas', 'oftalmico', 'otico', 'hormonal', 'quirurgico']);
+  structured('farmacia', ['farmacos', 'biologicos', 'pharmaceuticals', 'biologics'], ['category'], 100);
+  signal('farmacia', ['farmaco', 'farmacos', 'biologico', 'biologicos', 'antibiotico', 'antibioticos', 'antiinflamatorio', 'antiinflamatorios', 'anestesico', 'anestesicos', 'vacuna', 'vacunas', 'oftalmico', 'otico', 'hormonal', 'quirurgico', 'vaccine', 'vaccines', 'antibiotic', 'anti inflammatory', 'anesthetic', 'surgical']);
   signal('antiparasitario', ['antiparasitario', 'antiparasitarios', 'pulguicida', 'pulguicidas', 'garrapaticida', 'garrapaticidas', 'mosquicida', 'mosquicidas', 'pipeta', 'pipetas', 'pulga', 'pulgas', 'garrapata', 'garrapatas', 'endectocida']);
   if (vector.antiparasitario > 0 && vector.farmacia === 0) {
     vector.farmacia = 82;
-    evidence.farmacia = [{ label: 'Clasificación antiparasitaria', reliability: 82 }];
+    evidence.farmacia = [{ label: 'Antiparasitic classification', reliability: 82 }];
   }
 
   signal('natural', ['natural', 'holistic', 'organico', 'organica', 'sin conservantes']);
@@ -213,14 +210,14 @@ export function inferProductVectorV2(input: ProductVectorInput): {
   const specificNeedKeys: VectorKey[] = ['esterilizados', 'control_peso', 'piel_pelaje', 'salud_urinaria', 'salud_digestiva', 'salud_dental'];
   if (specificNeedKeys.some((key) => vector[key] > 0) && vector.funcional === 0) {
     vector.funcional = 82;
-    evidence.funcional = [{ label: 'Necesidad específica declarada', reliability: 82 }];
+    evidence.funcional = [{ label: 'Explicit specific need', reliability: 82 }];
   }
   structured('higiene', ['sanitarios', 'higiene'], ['category'], 100);
   signal('higiene', ['higiene', 'sanitario', 'sanitarios', 'shampoo', 'enjuague', 'arena', 'arenas', 'piedra', 'piedras', 'locion', 'desinfectante', 'limpiador']);
-  structured('accesorios', ['accesorios', 'instrumental'], ['category'], 100);
-  signal('accesorios', ['accesorio', 'accesorios', 'instrumental', 'correa', 'correas', 'collar', 'collares', 'juguete', 'juguetes', 'cama', 'camas', 'comedero', 'comederos', 'transportadora']);
+  structured('accesorios', ['accesorios', 'instrumental', 'accessories', 'instruments'], ['category'], 100);
+  signal('accesorios', ['accesorio', 'accesorios', 'instrumental', 'correa', 'correas', 'collar', 'collares', 'juguete', 'juguetes', 'cama', 'camas', 'comedero', 'comederos', 'transportadora', 'accessory', 'accessories', 'instrument', 'instruments', 'leash', 'toy', 'bed', 'bowl', 'carrier']);
   signal('granel', ['granel']);
-  signal('consumo_humano', ['almacen', 'especias', 'condimentos', 'salsas', 'refrigerados', 'congelados', 'infusiones', 'cafe', 'bebidas', 'consumo humano']);
+  signal('consumo_humano', ['almacen', 'especias', 'condimentos', 'salsas', 'refrigerados', 'congelados', 'infusiones', 'cafe', 'bebidas', 'consumo humano', 'grocery', 'spice', 'spices', 'seasoning', 'sauce', 'beverages', 'human consumption']);
   signal('promocional', ['promocion', 'promociones', 'bonificado', 'bonificada', 'bonificados', 'merchandising', 'material pop', 'combo', 'descuento', 'muestra gratis', 'gratis']);
 
   const isPetFood = (vector.perros >= 55 || vector.gatos >= 55)
@@ -250,10 +247,7 @@ export function inferProductVectorV2(input: ProductVectorInput): {
   };
 }
 
-/**
- * Extrae el contenido de una presentación vendible cuando el texto expresa un
- * peso inequívoco. No intenta convertir cajas, dosis, litros ni unidades.
- */
+/** Extracts sellable pack weight only when the source text is unambiguous. */
 export function estimateContentKg(...values: (string | undefined)[]) {
   const source = values.filter(Boolean).join(' ')
     .normalize('NFD')
@@ -278,20 +272,16 @@ export function estimateContentKg(...values: (string | undefined)[]) {
 const priceCohort = (product: Product) => {
   if (!product.contentKg || !product.referencePricePerKg || product.vector.alimento_seco < 75 || product.vector.promocional >= 55 || product.masterStatus !== 'active') return '';
   const species = product.vector.perros >= 75 && product.vector.gatos < 25
-    ? 'perros'
+    ? 'dogs'
     : product.vector.gatos >= 75 && product.vector.perros < 25
-      ? 'gatos'
+      ? 'cats'
       : '';
   if (!species) return '';
-  const packBand = product.contentKg <= 3 ? 'hasta 3 kg' : product.contentKg <= 10 ? '3 a 10 kg' : 'más de 10 kg';
+  const packBand = product.contentKg <= 3 ? 'up to 3 kg' : product.contentKg <= 10 ? '3 to 10 kg' : 'more than 10 kg';
   return `${species} · ${packBand}`;
 };
 
-/**
- * Desarrolla Económico/Premium con precio por kilo relativo. Sólo compara
- * alimentos secos de la misma especie y banda de presentación, con al menos
- * doce artículos válidos; el resto conserva únicamente evidencia descriptiva.
- */
+/** Derives budget/premium positioning from relative price within valid cohorts. */
 export function applyCatalogPricePositioning(products: Product[]): Product[] {
   const cohorts = new Map<string, Product[]>();
   products.forEach((product) => {
@@ -317,15 +307,15 @@ export function applyCatalogPricePositioning(products: Product[]): Product[] {
     const percentile = belowOrEqual / sorted.length;
     const vector = { ...product.vector };
     const evidence = { ...product.vectorMeta.evidence };
-    const priceLabel = `$${Math.round(product.referencePricePerKg).toLocaleString('es-AR')}/kg · percentil ${Math.round(percentile * 100)} entre ${comparable.length} alimentos secos (${cohort})`;
+    const priceLabel = `$${Math.round(product.referencePricePerKg).toLocaleString('es-AR')}/kg · percentile ${Math.round(percentile * 100)} among ${comparable.length} dry foods (${cohort})`;
     let pricePosition: Product['pricePosition'] = 'market';
     if (percentile <= .25) {
       vector.economico = Math.max(vector.economico, Math.round(78 + (.25 - percentile) / .25 * 17));
-      evidence.economico = [...new Set([...(evidence.economico ?? []), `Precio relativo: ${priceLabel}`])].slice(0, 4);
+      evidence.economico = [...new Set([...(evidence.economico ?? []), `Relative price: ${priceLabel}`])].slice(0, 4);
       pricePosition = 'budget';
     } else if (percentile >= .75) {
       vector.premium = Math.max(vector.premium, Math.round(78 + (percentile - .75) / .25 * 17));
-      evidence.premium = [...new Set([...(evidence.premium ?? []), `Precio relativo: ${priceLabel}`])].slice(0, 4);
+      evidence.premium = [...new Set([...(evidence.premium ?? []), `Relative price: ${priceLabel}`])].slice(0, 4);
       pricePosition = 'premium';
     }
     return {
@@ -388,14 +378,14 @@ const usefulValue = (value: string | undefined) => {
 };
 
 export function compareProductsV2(a: Product, b: Product): ProductSimilarity {
-  if (a.id === b.id) return { score: 100, vectorScore: 100, taxonomyScore: 100, confidence: a.vectorMeta.confidence, matches: ['Mismo producto'], differences: [] };
+  if (a.id === b.id) return { score: 100, vectorScore: 100, taxonomyScore: 100, confidence: a.vectorMeta.confidence, matches: ['Same product'], differences: [] };
   const taxonomyFields: { label: string; matchLabel: string; a: string; b: string; weight: number }[] = [
-    { label: 'rubro', matchLabel: 'Mismo rubro', a: a.family, b: b.family, weight: 24 },
-    { label: 'subrubro', matchLabel: 'Mismo subrubro', a: a.subcategory, b: b.subcategory, weight: 12 },
-    { label: 'marca', matchLabel: 'Misma marca', a: a.brand, b: b.brand, weight: 18 },
-    { label: 'línea', matchLabel: 'Misma línea', a: a.line, b: b.line, weight: 20 },
-    { label: 'familia comercial', matchLabel: 'Misma familia comercial', a: a.commercialFamily, b: b.commercialFamily, weight: 12 },
-    { label: 'grupo', matchLabel: 'Mismo grupo', a: a.group, b: b.group, weight: 14 },
+    { label: 'category', matchLabel: 'Same category', a: a.family, b: b.family, weight: 24 },
+    { label: 'subcategory', matchLabel: 'Same subcategory', a: a.subcategory, b: b.subcategory, weight: 12 },
+    { label: 'brand', matchLabel: 'Same brand', a: a.brand, b: b.brand, weight: 18 },
+    { label: 'line', matchLabel: 'Same line', a: a.line, b: b.line, weight: 20 },
+    { label: 'commercial family', matchLabel: 'Same commercial family', a: a.commercialFamily, b: b.commercialFamily, weight: 12 },
+    { label: 'group', matchLabel: 'Same group', a: a.group, b: b.group, weight: 14 },
   ].filter((field) => usefulValue(field.a) && usefulValue(field.b));
   const taxonomyWeight = taxonomyFields.reduce((sum, field) => sum + field.weight, 0);
   const matchingTaxonomy = taxonomyFields.filter((field) => usefulValue(field.a) === usefulValue(field.b));

@@ -17,7 +17,7 @@ export interface ProductVectorAudit {
     largePricePerKgChanges: number;
   };
   coverageByDimension: Record<VectorKey, number>;
-  priceCohorts: Array<{ species: 'perros' | 'gatos'; packBand: string; products: number; budget: number; market: number; premium: number }>;
+  priceCohorts: Array<{ species: 'dogs' | 'cats'; packBand: string; products: number; budget: number; market: number; premium: number }>;
   positioning: Record<'budget' | 'market' | 'premium' | 'unknown', number>;
   review: {
     contradictions: Array<{ productId: string; name: string; reason: string }>;
@@ -34,18 +34,18 @@ function positive(product: Product, key: VectorKey, threshold = 65) {
 
 function contradiction(product: Product) {
   const reasons: string[] = [];
-  if (positive(product, 'perros') && positive(product, 'gatos')) reasons.push('Especie perro y gato simultánea');
-  if (positive(product, 'cachorros') && positive(product, 'senior')) reasons.push('Etapa cachorro y senior simultánea');
-  if (positive(product, 'tamano_pequeno') && positive(product, 'tamano_grande')) reasons.push('Porte pequeño y grande simultáneo');
-  if (positive(product, 'economico') && positive(product, 'premium')) reasons.push('Posicionamiento económico y premium simultáneo');
+  if (positive(product, 'perros') && positive(product, 'gatos')) reasons.push('Dog and cat species simultaneously');
+  if (positive(product, 'cachorros') && positive(product, 'senior')) reasons.push('Puppy/kitten and senior life stages simultaneously');
+  if (positive(product, 'tamano_pequeno') && positive(product, 'tamano_grande')) reasons.push('Small and large pet sizes simultaneously');
+  if (positive(product, 'economico') && positive(product, 'premium')) reasons.push('Budget and premium positioning simultaneously');
   return reasons;
 }
 
 function packBand(contentKg: number | null) {
-  if (contentKg == null) return 'sin peso';
-  if (contentKg <= 3) return 'hasta 3 kg';
-  if (contentKg <= 10) return 'más de 3 a 10 kg';
-  return 'más de 10 kg';
+  if (contentKg == null) return 'no recognized weight';
+  if (contentKg <= 3) return 'up to 3 kg';
+  if (contentKg <= 10) return '3 to 10 kg';
+  return 'more than 10 kg';
 }
 
 export function analyzeProductVectors(current: DashboardData, previous: DashboardData | null = null): ProductVectorAudit {
@@ -74,8 +74,8 @@ export function analyzeProductVectors(current: DashboardData, previous: Dashboar
   }
   const cohortMap = new Map<string, ProductVectorAudit['priceCohorts'][number]>();
   for (const product of current.products.filter((item) => item.referencePricePerKg && item.vector.alimento_seco >= 75)) {
-    const species = product.vector.perros >= 75 && product.vector.gatos < 75 ? 'perros'
-      : product.vector.gatos >= 75 && product.vector.perros < 75 ? 'gatos' : null;
+    const species = product.vector.perros >= 75 && product.vector.gatos < 75 ? 'dogs'
+      : product.vector.gatos >= 75 && product.vector.perros < 75 ? 'cats' : null;
     if (!species) continue;
     const band = packBand(product.contentKg);
     const key = `${species}:${band}`;

@@ -1,16 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { DashboardData, PendingBalanceReportMeta, SptReportMeta } from '../shared/models.js';
-import { evaluateFreshness, type DataHealthLevel, type DataHealthPayload, type PlatformAuditSummary, type RefreshRunSummary } from '../shared/data-health.js';
+import type { DataHealthLevel, DataHealthPayload, PlatformAuditSummary } from '../shared/data-health.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
-
-interface OperationalStatusInput {
-  refresh?: {
-    current: RefreshRunSummary | null;
-    lastAttempt: RefreshRunSummary | null;
-    lastSuccess: RefreshRunSummary | null;
-    recent: RefreshRunSummary[];
-  };
-}
 
 function ratio(value: number, total: number) {
   return total > 0 ? value / total * 100 : 0;
@@ -20,13 +11,18 @@ export function buildDataHealth(
   snapshot: DashboardData,
   spt: SptReportMeta,
   pending: PendingBalanceReportMeta,
-  operations: OperationalStatusInput,
+  _operations: unknown,
   now = new Date(),
   quality: PlatformAuditSummary | null = null,
 ): DataHealthPayload {
-  const warningAfter = Number(process.env.SALICE_FRESHNESS_WARNING_HOURS ?? 24);
-  const staleAfter = Number(process.env.SALICE_FRESHNESS_STALE_HOURS ?? 48);
-  const freshness = evaluateFreshness(snapshot.meta.generatedAt, now, warningAfter, staleAfter);
+  const freshness = {
+    level: 'current' as const,
+    generatedAt: snapshot.meta.generatedAt,
+    ageHours: null,
+    warningAfterHours: 0,
+    staleAfterHours: 0,
+    label: 'Validated synthetic demo',
+  };
   const coverage = snapshot.meta.coverage;
   const activeClients = coverage?.activeClients ?? snapshot.clients.filter((client) => client.active).length;
   const activeGeocoded = coverage?.activeGeocodedClients ?? snapshot.clients.filter((client) => client.active && client.coordinates).length;
@@ -34,19 +30,18 @@ export function buildDataHealth(
   const invoices = coverage?.invoices365d ?? 0;
   const validTerms = coverage?.creditTermInvoices ?? 0;
   const limitations: string[] = [];
-  if (!coverage?.zoneLabelsAvailable) limitations.push('El maestro de zonas de GESI no está disponible; se conservan IDs o rótulos de respaldo.');
-  if ((coverage?.omittedInvoiceDetails ?? 0) > 0) limitations.push(`GESI omitió el detalle de ${coverage?.omittedInvoiceDetails} factura(s) del snapshot operativo.`);
-  if (spt.unavailableDocumentCount > 0) limitations.push(`${spt.unavailableDocumentCount} comprobante(s) no tienen detalle en la base comercial histórica.`);
-  if ((coverage?.activePortfolioReviewClients ?? 0) > 0) limitations.push(`${coverage?.activePortfolioReviewClients} clientes activos requieren confirmar pertenencia a la cartera Salice.`);
+  if ((coverage?.omittedInvoiceDetails ?? 0) > 0) limitations.push(`${coverage?.omittedInvoiceDetails} fictional invoice details are intentionally unavailable.`);
+  if (spt.unavailableDocumentCount > 0) limitations.push(`${spt.unavailableDocumentCount} documents have no detail in the local commercial database.`);
+  if ((coverage?.activePortfolioReviewClients ?? 0) > 0) limitations.push(`${coverage?.activePortfolioReviewClients} active fictional customers require portfolio review.`);
 
-  let overall: DataHealthLevel = freshness.level === 'stale' ? 'stale' : freshness.level === 'unknown' ? 'unavailable' : 'healthy';
+  let overall: DataHealthLevel = 'healthy';
   if (!spt.available || !pending.available) overall = 'unavailable';
   else if (quality?.status === 'failed') overall = 'unavailable';
-  else if (overall === 'healthy' && (freshness.level === 'attention' || limitations.length)) overall = 'attention';
+  else if (limitations.length) overall = 'attention';
 
   const sptLevel: DataHealthLevel = spt.available ? (spt.unavailableDocumentCount ? 'attention' : 'healthy') : 'unavailable';
   const pendingLevel: DataHealthLevel = pending.available ? 'healthy' : 'unavailable';
-  const snapshotLevel: DataHealthLevel = freshness.level === 'stale' ? 'stale' : freshness.level === 'unknown' ? 'unavailable' : freshness.level === 'attention' ? 'attention' : 'healthy';
+  const snapshotLevel: DataHealthLevel = 'healthy';
 
   return {
     generatedAt: now.toISOString(),
@@ -54,29 +49,29 @@ export function buildDataHealth(
     freshness,
     sources: [
       {
-        id: 'snapshot', label: 'Snapshot operativo', level: snapshotLevel,
+        id: 'snapshot', label: 'Operational snapshot', level: snapshotLevel,
         capturedAt: snapshot.meta.generatedAt, coverageFrom: '', coverageThrough: snapshot.meta.generatedAt.slice(0, 10),
         records: snapshot.clients.length + snapshot.products.length,
-        detail: `${snapshot.clients.length} clientes · ${snapshot.products.length} productos`,
+        detail: `${snapshot.clients.length} customers · ${snapshot.products.length} products`,
       },
       {
-        id: 'commercial', label: 'Base comercial', level: sptLevel,
+        id: 'commercial', label: 'Commercial database', level: sptLevel,
         capturedAt: snapshot.meta.generatedAt, coverageFrom: spt.coverageFrom, coverageThrough: spt.maxDate,
         records: spt.rowCount,
-        detail: `${spt.rowCount} movimientos · ${spt.sourceDocumentCount} comprobantes fuente`,
+        detail: `${spt.rowCount} signed movements · ${spt.sourceDocumentCount} source documents`,
       },
       {
-        id: 'pending-balances', label: 'Saldos pendientes', level: pendingLevel,
+        id: 'pending-balances', label: 'Pending balances', level: pendingLevel,
         capturedAt: pending.capturedAt, coverageFrom: pending.salesFrom, coverageThrough: pending.asOfDate,
         records: pending.documentCount,
-        detail: `${pending.clientCount} clientes · ${pending.documentCount} documentos abiertos`,
+        detail: `${pending.clientCount} customers · ${pending.documentCount} open documents`,
       },
       {
-        id: 'platform-audit', label: 'Auditoría cruzada',
+        id: 'platform-audit', label: 'Cross-platform audit',
         level: quality ? (quality.status === 'failed' ? 'unavailable' : quality.status === 'passed_with_warnings' ? 'attention' : 'healthy') : 'unavailable',
         capturedAt: quality?.generatedAt ?? '', coverageFrom: '', coverageThrough: quality?.generatedAt.slice(0, 10) ?? '',
         records: quality?.total ?? 0,
-        detail: quality ? `${quality.passed}/${quality.total} controles aprobados · ${quality.warnings} salvedades` : 'Todavía no se ejecutó audit:platform',
+        detail: quality ? `${quality.passed}/${quality.total} checks passed · ${quality.warnings} warnings` : 'Run pnpm audit:platform to create this summary',
       },
     ],
     coverage: {
@@ -88,7 +83,6 @@ export function buildDataHealth(
     },
     limitations,
     quality,
-    refresh: operations.refresh ?? { current: null, lastAttempt: null, lastSuccess: null, recent: [] },
   };
 }
 

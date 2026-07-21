@@ -3,11 +3,11 @@ import type { CommercialActivity, PaymentPromise } from '../shared/models';
 import { createDemoSnapshot } from './data/demo-snapshot';
 import { buildAgendaPayload, buildNotifications } from './agenda';
 
-describe('agenda operativa', () => {
+describe('operational agenda', () => {
   const snapshot = createDemoSnapshot();
   const date = '2026-07-17';
 
-  it('prioriza promesas vencidas y calcula sólo compromisos pendientes exigibles', () => {
+  it('prioritizes overdue promises and counts only pending enforceable commitments', () => {
     const client = snapshot.clients[0];
     const promises: PaymentPromise[] = [{
       id: 'promise-1',
@@ -17,7 +17,7 @@ describe('agenda operativa', () => {
       dueAt: '2026-07-16',
       amount: 125000,
       status: 'pending',
-      note: 'Transferencia acordada',
+      note: 'Transfer agreed',
       createdAt: '2026-07-15T12:00:00Z',
       resolvedAt: null,
     }, {
@@ -40,7 +40,7 @@ describe('agenda operativa', () => {
     expect(agenda.stats.promiseAmountDue).toBe(125000);
   });
 
-  it('cuenta una gestión como realizada sólo cuando existe un registro local', () => {
+  it('counts an action as completed only when a local record exists', () => {
     const client = snapshot.clients[1];
     const activity: CommercialActivity = {
       id: 'activity-1',
@@ -49,7 +49,7 @@ describe('agenda operativa', () => {
       type: 'call',
       outcome: 'completed',
       occurredAt: '2026-07-17T14:00:00.000Z',
-      note: 'Contacto confirmado',
+      note: 'Contact confirmed',
       amount: null,
       productIds: [],
       nextActionAt: null,
@@ -58,10 +58,10 @@ describe('agenda operativa', () => {
     const agenda = buildAgendaPayload(snapshot, date, client.seller, [], [activity], []);
     expect(agenda.stats.completed).toBe(1);
     expect(agenda.entries.find((entry) => entry.clientId === client.id)?.status).toBe('completed');
-    expect(agenda.definitions.completed).toContain('guardadas localmente');
+    expect(agenda.definitions.completed).toContain('saved locally');
   });
 
-  it('convierte una promesa exigible en alerta sin duplicar el riesgo del mismo cliente', () => {
+  it('turns a due promise into an alert without duplicating the same customer risk', () => {
     const client = snapshot.clients.find((candidate) => candidate.collectionRisk >= 55)!;
     const promises: PaymentPromise[] = [{
       id: 'promise-alert',
@@ -80,7 +80,7 @@ describe('agenda operativa', () => {
     expect(notifications.find((item) => item.clientId === client.id)?.type).toBe('promise_overdue');
   });
 
-  it('conserva un residual menor a $1.000 sin convertirlo en tarea o alerta', () => {
+  it('keeps a residual below $1,000 without turning it into a task or alert', () => {
     const residual = {
       ...snapshot.clients[0],
       balance: 6,

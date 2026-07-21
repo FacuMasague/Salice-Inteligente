@@ -25,7 +25,7 @@ export function buildInvoiceDetail(data: DashboardData, id: string): InvoiceDeta
   const issuedAt = invoice?.issuedAt || sales?.date || pending?.issuedAt || '';
   const amount = invoice?.amount ?? Math.abs(sales?.netAmount ?? pending?.outstanding ?? 0);
   const outstanding = invoice?.outstanding ?? pending?.outstanding ?? 0;
-  const fallbackName = sales?.client || `Cliente ${owner?.id ?? pending?.clientId ?? ''}`.trim();
+  const fallbackName = sales?.client || `Customer ${owner?.id ?? pending?.clientId ?? ''}`.trim();
 
   return {
     id: key,
@@ -39,12 +39,12 @@ export function buildInvoiceDetail(data: DashboardData, id: string): InvoiceDeta
     outstanding,
     status: invoice?.status ?? pending?.status ?? (outstanding > 0 ? 'open' : 'paid'),
     creditTermDays: invoice?.creditTermDays ?? pending?.creditTermDays ?? null,
-    paymentMethod: invoice?.paymentMethod || pending?.paymentMethod || 'Sin forma de pago informada',
+    paymentMethod: invoice?.paymentMethod || pending?.paymentMethod || 'Payment method unavailable',
     client: {
       id: owner?.id ?? sales?.clientId ?? pending?.clientId ?? 0,
       name: owner?.name || fallbackName,
       tradeName: owner?.tradeName || '',
-      seller: owner?.seller || sales?.seller || 'Sin vendedor',
+      seller: owner?.seller || sales?.seller || 'No seller',
       address: owner?.address || sales?.address || '',
       locality: owner?.locality || sales?.locality || '',
     },

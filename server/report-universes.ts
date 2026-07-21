@@ -16,13 +16,13 @@ export interface ExecutableMovementUniverse {
 }
 
 export const EXECUTABLE_UNIVERSES = {
-  spt: { id: 'spt-main', companies: [3, 6], branches: [3, 6], allowedIssuers: [], excludedCategories: ['POP', 'Promociones'] },
-  commercialSales: { id: 'commercial-sales', companies: [3], branches: [3, 6], allowedIssuers: ['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.'], excludedClients: ['Via Salice MDP S.A.', 'Consumidor Final', 'GBA M6 S.A.'] },
-  mars: { id: 'mars', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Pet Nutrition'], excludedClients: ['Via Salice MDP S.A.'] },
-  nutripet: { id: 'nutripet', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Nutri Pet'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },
-  baires: { id: 'baires', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Baires SPT', 'Baires Masivo'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },
-  nonBuyers: { id: 'non-buyers', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], clientStatuses: ['Activo'], excludedClients: ['Consumidor Final', '', '*** ANULADO ***'], excludedProductGroups: ['Drovet', 'Kualcos'], excludedCategories: ['POP', 'Promociones'], excludedSellers: ['Administración', 'Carolina', ''], textComparison: 'exact' },
-  general: { id: 'general-status', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], textComparison: 'exact' },
+  spt: { id: 'spt-main', companies: [3], branches: [3], allowedIssuers: [], excludedCategories: ['Promotional'] },
+  commercialSales: { id: 'commercial-sales', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], excludedClients: [] },
+  mars: { id: 'mars', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], includedProductGroups: ['Orbit Nutrition'], excludedClients: [] },
+  nutripet: { id: 'nutripet', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], includedProductGroups: ['Nova Pet'], excludedCategories: ['Promotional'], excludedClients: [] },
+  baires: { id: 'baires', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], includedProductGroups: ['Harbor SPT', 'Harbor Retail'], excludedCategories: ['Promotional'], excludedClients: [] },
+  nonBuyers: { id: 'non-buyers', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], clientStatuses: ['Active'], excludedClients: [], excludedProductGroups: [], excludedCategories: ['Promotional'], excludedSellers: [], textComparison: 'exact' },
+  general: { id: 'general-status', companies: [3], branches: [3], allowedIssuers: ['SMART Salice Demo Company'], textComparison: 'exact' },
 } as const satisfies Record<string, ExecutableMovementUniverse>;
 
 function placeholders(values: readonly unknown[]) {
@@ -58,11 +58,11 @@ export function compileMovementUniverse(universe: ExecutableMovementUniverse) {
 export function validateExecutableUniverses() {
   return Object.values(EXECUTABLE_UNIVERSES).flatMap((runtime) => {
     const documented = REPORT_UNIVERSES.find((universe) => universe.id === runtime.id);
-    if (!documented) return [`${runtime.id}: no está documentado`];
+    if (!documented) return [`${runtime.id}: universe is not documented`];
     const issues: string[] = [];
-    if (JSON.stringify(runtime.companies) !== JSON.stringify(documented.companies)) issues.push(`${runtime.id}: empresas no coinciden`);
-    if (JSON.stringify(runtime.branches) !== JSON.stringify(documented.branches)) issues.push(`${runtime.id}: sucursales no coinciden`);
-    if (JSON.stringify(runtime.allowedIssuers) !== JSON.stringify(documented.allowedIssuers)) issues.push(`${runtime.id}: emisores no coinciden`);
+    if (JSON.stringify(runtime.companies) !== JSON.stringify(documented.companies)) issues.push(`${runtime.id}: companies do not match`);
+    if (JSON.stringify(runtime.branches) !== JSON.stringify(documented.branches)) issues.push(`${runtime.id}: branches do not match`);
+    if (JSON.stringify(runtime.allowedIssuers) !== JSON.stringify(documented.allowedIssuers)) issues.push(`${runtime.id}: issuers do not match`);
     return issues;
   });
 }

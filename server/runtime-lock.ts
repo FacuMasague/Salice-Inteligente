@@ -13,14 +13,14 @@ export function activeServerPid(path = SERVER_LOCK_PATH) {
   try {
     const pid = Number((JSON.parse(readFileSync(path, 'utf8')) as { pid?: number }).pid);
     if (processIsAlive(pid)) return pid;
-  } catch { /* el lock inválido se reemplaza */ }
+  } catch { /* invalid locks are replaced */ }
   rmSync(path, { force: true });
   return null;
 }
 
 export function acquireServerLock(path = SERVER_LOCK_PATH) {
   const active = activeServerPid(path);
-  if (active) throw new Error(`Salice Inteligente ya está ejecutándose (PID ${active}).`);
+  if (active) throw new Error(`SMART Salice is already running (PID ${active}).`);
   const descriptor = openSync(path, 'wx');
   writeFileSync(descriptor, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
   closeSync(descriptor);

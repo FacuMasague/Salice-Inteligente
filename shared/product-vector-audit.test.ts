@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
 import { analyzeProductVectors } from './product-vector-audit';
 
-describe('auditoría de vectorización', () => {
-  it('informa cobertura, contradicciones y cambios entre snapshots', () => {
+describe('vectorization audit', () => {
+  it('reports coverage, contradictions, and changes between snapshots', () => {
     const previous = createDemoSnapshot();
     const current = structuredClone(previous);
     current.meta.generatedAt = '2026-07-21T10:00:00.000Z';

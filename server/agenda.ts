@@ -47,12 +47,12 @@ function suggestedAction(client: Client): CommercialActivityType {
 
 function suggestedReason(client: Client, date: string) {
   if (client.overdueOutstanding >= MIN_ACTIONABLE_COLLECTION) {
-    return `Cobranza: ${currency.format(client.overdueOutstanding)} vencidos; comprobante más antiguo de ${client.oldestOverdueDays} días.`;
+    return `Collections: ${currency.format(client.overdueOutstanding)} overdue; oldest document is ${client.oldestOverdueDays} days overdue.`;
   }
-  if (client.salesBlocked) return 'Validar con administración el bloqueo de ventas informado por GESI antes de ofrecer.';
-  if (client.salesDelta <= -20) return `Recuperación comercial: las ventas cayeron ${Math.abs(client.salesDelta)}% frente al período anterior.`;
-  if (client.nextVisitAt <= date) return `Seguimiento previsto: oportunidad O${client.commercialOpportunity} y prioridad P${client.visitPriority}.`;
-  return `Desarrollo comercial: oportunidad O${client.commercialOpportunity} con productos complementarios disponibles.`;
+  if (client.salesBlocked) return 'Validate the synthetic sales-block flag with the office before offering products.';
+  if (client.salesDelta <= -20) return `Commercial recovery: sales fell ${Math.abs(client.salesDelta)}% versus the previous period.`;
+  if (client.nextVisitAt <= date) return `Scheduled follow-up: opportunity O${client.commercialOpportunity} and priority P${client.visitPriority}.`;
+  return `Commercial development: opportunity O${client.commercialOpportunity} with complementary products available.`;
 }
 
 function suggestedPriority(client: Client, date: string) {
@@ -117,7 +117,7 @@ export function buildAgendaPayload(
       id: `promise:${promise.id}`,
       scheduledFor: promise.dueAt,
       actionType: 'collection',
-      reason: `${overdue ? 'Promesa vencida' : 'Promesa para hoy'}: ${currency.format(promise.amount)}${promise.note ? ` · ${promise.note}` : ''}`,
+      reason: `${overdue ? 'Overdue promise' : 'Promise due today'}: ${currency.format(promise.amount)}${promise.note ? ` · ${promise.note}` : ''}`,
       source: 'promise',
       status: 'pending',
       priority: overdue ? 100 : 96,
@@ -155,7 +155,7 @@ export function buildAgendaPayload(
       id: `activity:${activity.id}`,
       scheduledFor: date,
       actionType: activity.type,
-      reason: activity.note || 'Gestión registrada fuera de la agenda sugerida.',
+      reason: activity.note || 'Activity recorded outside the suggested agenda.',
       source: 'manual',
       status: 'completed',
       priority: client.visitPriority,
@@ -181,9 +181,9 @@ export function buildAgendaPayload(
       promiseAmountDue: pendingPromises.reduce((sum, promise) => sum + promise.amount, 0),
     },
     definitions: {
-      planned: `Clientes visibles combinando reglas, tareas manuales y promesas. El algoritmo completa una base de hasta ${selectedSellers.length === 1 ? 16 : 24}; tareas y promesas siempre se agregan aunque superen esa base.`,
-      completed: 'Cantidad de gestiones guardadas localmente en la fecha seleccionada; no presume visitas no registradas.',
-      promiseAmountDue: 'Suma de promesas pendientes con fecha igual o anterior a la fecha seleccionada.',
+      planned: `Visible customers combine rules, manual tasks, and promises. The algorithm fills a base of up to ${selectedSellers.length === 1 ? 16 : 24}; tasks and promises are always included even when they exceed that base.`,
+      completed: 'Number of actions saved locally on the selected date; unrecorded visits are never assumed.',
+      promiseAmountDue: 'Sum of pending promises due on or before the selected date.',
     },
   };
 }
@@ -202,7 +202,7 @@ export function buildNotifications(data: DashboardData, date: string, promises: 
         severity: overdue ? 'critical' : 'attention',
         clientId: client.id,
         title: client.name,
-        detail: `${overdue ? 'Promesa vencida' : 'Promesa para hoy'} · ${currency.format(promise.amount)} · ${client.seller}`,
+        detail: `${overdue ? 'Overdue promise' : 'Promise due today'} · ${currency.format(promise.amount)} · ${client.seller}`,
         date: promise.dueAt,
         amount: promise.amount,
       };
@@ -220,7 +220,7 @@ export function buildNotifications(data: DashboardData, date: string, promises: 
       severity: 'critical',
       clientId: client.id,
       title: client.name,
-      detail: `Riesgo C${client.collectionRisk} · ${client.oldestOverdueDays} días máx. · ${client.seller}`,
+      detail: `Risk C${client.collectionRisk} · max ${client.oldestOverdueDays} days · ${client.seller}`,
       date,
       amount: client.overdueOutstanding || null,
     }));

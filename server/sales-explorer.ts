@@ -22,8 +22,7 @@ const reportPath = () => process.env.SALICE_SPT_DB_PATH
   : resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.commercialSales;
-// El universo vigente de Salice queda por debajo de este tope. Así el ranking
-// administrativo no se trunca, pero la API conserva una defensa de tamaño.
+// The limit protects the API while keeping the complete synthetic demo universe.
 const DIMENSION_LIMIT = 2_000;
 const MAX_PAGE_SIZE = 100;
 
@@ -78,7 +77,7 @@ export function getSalesExplorerMeta(): SalesExplorerMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: SalesExplorerMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local commercial database',
     capturedAt: '',
     minDate: '',
     maxDate: '',
@@ -108,12 +107,12 @@ export function getSalesExplorerMeta(): SalesExplorerMeta {
   `), universe.parameters).map((row) => row.value);
   const clients = rows<{ value: string; label: string }>(database.prepare(`
     SELECT CAST(client_id AS TEXT) AS value,
-      CAST(client_id AS TEXT) || ' · ' || COALESCE(MAX(NULLIF(TRIM(client_name), '')), 'Cliente sin nombre') AS label
+      CAST(client_id AS TEXT) || ' · ' || COALESCE(MAX(NULLIF(TRIM(client_name), '')), 'Unnamed customer') AS label
     FROM movements WHERE ${universe.sql}
     GROUP BY client_id ORDER BY MAX(client_name) COLLATE NOCASE
   `), universe.parameters);
   const products = rows<{ value: string; label: string }>(database.prepare(`
-    SELECT product_id AS value, product_id || ' · ' || COALESCE(MAX(NULLIF(TRIM(product_name), '')), 'Producto sin nombre') AS label
+    SELECT product_id AS value, product_id || ' · ' || COALESCE(MAX(NULLIF(TRIM(product_name), '')), 'Unnamed product') AS label
     FROM movements WHERE ${universe.sql}
     GROUP BY product_id ORDER BY MAX(product_name) COLLATE NOCASE
   `), universe.parameters);
@@ -250,9 +249,9 @@ function clientRows(database: DatabaseSync, where: ReturnType<typeof buildSalesE
     GROUP BY client_id ORDER BY netAmount DESC LIMIT ${DIMENSION_LIMIT}
   `), where.parameters).map((row) => ({
     clientId: Number(row.clientId),
-    name: String(row.name || `Cliente ${row.clientId}`),
-    seller: String(row.seller || 'Sin vendedor'),
-    zone: String(row.zone || 'Sin zona'),
+    name: String(row.name || `Customer ${row.clientId}`),
+    seller: String(row.seller || 'No seller'),
+    zone: String(row.zone || 'No zone'),
     products: Number(row.products ?? 0),
     lastSaleAt: String(row.lastSaleAt || ''),
     share: metricShare(Number(row.netAmount ?? 0), total),
@@ -271,8 +270,8 @@ function productRows(database: DatabaseSync, where: ReturnType<typeof buildSales
   `), where.parameters).map((row) => ({
     productId: String(row.productId),
     name: String(row.name || row.productId),
-    brand: String(row.brand || 'Sin marca'),
-    category: String(row.category || 'Sin rubro'),
+    brand: String(row.brand || 'Unbranded'),
+    category: String(row.category || 'No category'),
     lastSaleAt: String(row.lastSaleAt || ''),
     share: metricShare(Number(row.netAmount ?? 0), total),
     ...mapGroupedMetrics(row),
@@ -302,8 +301,8 @@ function documentRows(database: DatabaseSync, where: ReturnType<typeof buildSale
     date: String(row.date),
     kind: String(row.kind) === 'credit_note' ? 'credit_note' : 'invoice',
     clientId: Number(row.clientId),
-    client: String(row.client || `Cliente ${row.clientId}`),
-    seller: String(row.seller || 'Sin vendedor'),
+    client: String(row.client || `Customer ${row.clientId}`),
+    seller: String(row.seller || 'No seller'),
     netAmount: Number(row.netAmount ?? 0),
     kilos: Number(row.kilos ?? 0),
     units: Number(row.units ?? 0),
@@ -359,7 +358,7 @@ export function getSalesExplorerDocument(key: string): SalesExplorerDocumentDeta
     kind: String(first.kind) === 'credit_note' ? 'credit_note' : 'invoice',
     clientId: Number(first.clientId),
     client: String(first.client),
-    seller: String(first.seller || 'Sin vendedor'),
+    seller: String(first.seller || 'No seller'),
     issuer: String(first.issuer || ''),
     branch: String(first.branch || ''),
     address: String(first.address || ''),
@@ -371,8 +370,8 @@ export function getSalesExplorerDocument(key: string): SalesExplorerDocumentDeta
     lineItems: raw.map((row) => ({
       productId: String(row.productId),
       product: String(row.product),
-      brand: String(row.brand || 'Sin marca'),
-      category: String(row.category || 'Sin rubro'),
+      brand: String(row.brand || 'Unbranded'),
+      category: String(row.category || 'No category'),
       units: Number(row.units ?? 0),
       kilos: Number(row.kilos ?? 0),
       netAmount: Number(row.netAmount ?? 0),
@@ -415,9 +414,9 @@ export function forEachSalesExportRow(input: Partial<Record<string, unknown>>, c
   for (const raw of statement.iterate(...where.parameters) as Iterable<Record<string, unknown>>) {
     consume({
       date: String(raw.date), document: String(raw.document), documentType: String(raw.documentType),
-      seller: String(raw.seller || 'Sin vendedor'), clientId: Number(raw.clientId), client: String(raw.client),
-      productId: String(raw.productId), product: String(raw.product), brand: String(raw.brand || 'Sin marca'),
-      category: String(raw.category || 'Sin rubro'), channel: String(raw.channel || 'Sin canal'), zone: String(raw.zone || 'Sin zona'),
+      seller: String(raw.seller || 'No seller'), clientId: Number(raw.clientId), client: String(raw.client),
+      productId: String(raw.productId), product: String(raw.product), brand: String(raw.brand || 'Unbranded'),
+      category: String(raw.category || 'No category'), channel: String(raw.channel || 'No channel'), zone: String(raw.zone || 'No zone'),
       kilos: Number(raw.kilos ?? 0), units: Number(raw.units ?? 0), netAmount: Number(raw.netAmount ?? 0),
     });
     count += 1;

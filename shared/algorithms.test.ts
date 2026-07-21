@@ -3,10 +3,10 @@ import { cosineSimilarity, optimizeRoute, recommendProducts } from './algorithms
 import { SALICE_DEPOT } from './models';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
 
-describe('motor algorítmico', () => {
+describe('algorithm engine', () => {
   const snapshot = createDemoSnapshot();
 
-  it('recomienda productos todavía no comprados y ordenados por puntaje', () => {
+  it('recommends products not yet purchased and orders them by score', () => {
     const client = snapshot.clients[0];
     const owned = new Set(client.purchases.map((purchase) => purchase.productId));
     const recommendations = recommendProducts(client, snapshot.clients, snapshot.products);
@@ -16,12 +16,12 @@ describe('motor algorítmico', () => {
     expect(recommendations.every((item) => ['reliable', 'exploratory', 'insufficient'].includes(item.confidence))).toBe(true);
   });
 
-  it('calcula similitud coseno idéntica como 100%', () => {
+  it('calculates identical cosine similarity as 100%', () => {
     const vector = snapshot.products[0].vector;
     expect(cosineSimilarity(vector, vector)).toBeCloseTo(1, 8);
   });
 
-  it('visita todos los clientes elegidos una sola vez', () => {
+  it('visits every selected customer exactly once', () => {
     const selected = snapshot.clients.slice(0, 5).map((client) => client.id);
     const plan = optimizeRoute(selected, snapshot.clients);
     expect(plan.stops.map((stop) => stop.clientId).sort()).toEqual([...selected].sort());
@@ -29,27 +29,27 @@ describe('motor algorítmico', () => {
     expect(plan.totalKm).toBeGreaterThan(0);
     expect(plan.totalMinutes).toBeGreaterThan(100);
     expect(plan.depot).toEqual(SALICE_DEPOT);
-    expect(plan.depot.address).toBe('Eduardo Bradley 1450');
+    expect(plan.depot.address).toBe('1 Demo Logistics Park');
     expect(plan.assumptions.visitMinutes).toBe(25);
     expect(plan.feasible).toBe(plan.warnings.length === 0);
   });
 
-  it('excluye clientes inactivos de recomendaciones y recorridos', () => {
-    const inactive = { ...snapshot.clients[0], active: false, gesiStateId: 2 };
+  it('excludes inactive customers from recommendations and routes', () => {
+    const inactive = { ...snapshot.clients[0], active: false, sourceStateId: 2 };
     const clients = [inactive, ...snapshot.clients.slice(1)];
     expect(recommendProducts(inactive, clients, snapshot.products)).toEqual([]);
     const plan = optimizeRoute([inactive.id, snapshot.clients[1].id], clients);
     expect(plan.stops.map((stop) => stop.clientId)).toEqual([snapshot.clients[1].id]);
   });
 
-  it('advierte cuando la selección no entra en una jornada corta', () => {
+  it('warns when the selection does not fit into a short workday', () => {
     const selected = snapshot.clients.slice(0, 8).map((client) => client.id);
     const plan = optimizeRoute(selected, snapshot.clients, { maxWorkMinutes: 120, visitMinutes: 45 });
     expect(plan.feasible).toBe(false);
-    expect(plan.warnings.some((warning) => warning.includes('supera'))).toBe(true);
+    expect(plan.warnings.some((warning) => warning.includes('exceeds'))).toBe(true);
   });
 
-  it('usa gasto y compatibilidad de especie para evitar recomendaciones incoherentes', () => {
+  it('uses spend and species compatibility to avoid incoherent recommendations', () => {
     const base = snapshot.clients[0];
     const dogOnly = { ...base, purchases: base.purchases.filter((purchase) => ['P001', 'P002', 'P003', 'P011'].includes(purchase.productId)) };
     const recommendations = recommendProducts(dogOnly, snapshot.clients, snapshot.products, 12);

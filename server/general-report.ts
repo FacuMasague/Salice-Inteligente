@@ -17,29 +17,24 @@ import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universe
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 import { getActiveCommercialGoalPlan } from './operational-store.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.general;
 const COMPANIES = [...UNIVERSE.companies];
 const BRANCHES = [...UNIVERSE.branches];
 const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
-const SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Luciano Payba', 'Reventas'];
-const AUTOSERVICE_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'];
-const CORE_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'C&T'];
-const CORE_SQL_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'Snacks'];
-const CORE_BRANDS = ['Old Prince Equilibrium', 'Old Prince Noveles', 'Criadores High Pro', 'Criadores Maintenance', 'Optimum', 'Pedigree', 'Raza', 'Voraz', 'Whiskas', 'Kongo', 'Iams', 'Old Prince Premium', 'Company y Origen'];
-const CORE_SQL_BRANDS = ['Kongo Gold', 'Old Prince Equilibrium', 'Old Prince Noveles', 'Criadores High Pro', 'Kongo', 'Raza', 'Pedigree', 'Whiskas', 'Voraz', 'Criadores Maintenance', 'Old Prince Premium', 'Optimum', 'Company', 'Origen', 'Iams'];
-const STRATEGIC_BRANDS = ['Fawna', 'Juvenia Nutrition', 'MaxPet', 'Pampa'];
-const STRATEGIC_SQL_BRANDS = ['Fawna', 'Juvenia Nutrition', 'MaxPet', 'PAMPA'];
-const CORE_TARGET_EXCLUSIONS = new Set(['Fawna', 'MaxPet', 'Pampa']);
+const SELLERS = ['Alex Morgan', 'Jordan Lee', 'Casey Rivera', 'Taylor Brooks'];
+const AUTOSERVICE_SELLERS = ['Alex Morgan', 'Jordan Lee'];
+const CORE_CATEGORIES = ['Wet Food', 'Dry Food', 'Treats'];
+const CORE_SQL_CATEGORIES = CORE_CATEGORIES;
+const CORE_BRANDS = ['EverPaw', 'Northstar', 'WildTail', 'MeadowCat'];
+const CORE_SQL_BRANDS = CORE_BRANDS;
+const STRATEGIC_BRANDS = ['Aster', 'Juniper', 'MaxTrail', 'Pampas Pet'];
+const STRATEGIC_SQL_BRANDS = STRATEGIC_BRANDS;
+const CORE_TARGET_EXCLUSIONS = new Set(STRATEGIC_BRANDS);
 
-const brandGroupExpression = `CASE
-  WHEN TRIM(brand) IN ('Company', 'Origen') THEN 'Company y Origen'
-  WHEN UPPER(TRIM(brand)) = 'PAMPA' THEN 'Pampa'
-  ELSE TRIM(brand) END`;
-const categoryGroupExpression = `CASE WHEN TRIM(category) = 'Snacks' THEN 'C&T' ELSE TRIM(category) END`;
+const brandGroupExpression = 'TRIM(brand)';
+const categoryGroupExpression = 'TRIM(category)';
 
 type SqlValue = string | number;
 
@@ -146,9 +141,9 @@ function metric(value: DatabaseSync, filters: GeneralReportFilters, start: strin
 }
 
 function targetCategory(row: CommercialGoalRow) {
-  if (row.product === 'Alimento Húmedo') return 'Alimento Húmedo';
-  if (row.product === 'C&T') return 'C&T';
-  return 'Alimentos Balanceados';
+  if (row.product === 'Wet Food') return 'Wet Food';
+  if (row.product === 'Treats') return 'Treats';
+  return 'Dry Food';
 }
 
 function targetMatches(row: CommercialGoalRow, filters: GeneralReportFilters, month: string) {
@@ -176,7 +171,7 @@ function targetMap(goals: CommercialGoalRow[], filters: GeneralReportFilters, mo
   const grouped = new Map<string, number>();
   for (const row of goals.filter((item) => targetMatches(item, filters, month))) {
     const name = dimension === 'seller' ? row.seller : dimension === 'category' ? targetCategory(row) : row.product;
-    if (!name || (dimension === 'brand' && ['Alimento Húmedo', 'C&T'].includes(name))) continue;
+    if (!name || (dimension === 'brand' && ['Wet Food', 'Treats'].includes(name))) continue;
     const amount = Number(filters.mode === 'autoservice' ? row.invoicing ?? 0 : row.kilos ?? 0);
     grouped.set(name, (grouped.get(name) ?? 0) + amount);
   }
@@ -190,7 +185,7 @@ function actualMap(value: DatabaseSync, filters: GeneralReportFilters, start: st
     SELECT ${expression} AS name, COALESCE(SUM(${measure}), 0) AS actual
     FROM movements WHERE ${where.sql}
     GROUP BY ${expression}
-  `), where.parameters).map((row) => [row.name || 'Sin definir', Number(row.actual)]));
+  `), where.parameters).map((row) => [row.name || 'Undefined', Number(row.actual)]));
 }
 
 function performanceRows(actual: Map<string, number>, target: Map<string, number>, preferred: string[] = []): GeneralPerformanceRow[] {
@@ -243,7 +238,7 @@ export function getGeneralReportMeta(): GeneralReportMeta {
   if (cachedMeta) return enrichTargets(cachedMeta);
   const unavailable: GeneralReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     rowCount: 0,
     coverageFrom: '',
     minDate: '',
@@ -321,7 +316,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>): Gen
     return { month, actual, target: monthTarget, completion: ratio(actual, monthTarget), isPartial: monthPeriodEnd < monthNaturalEnd };
   });
 
-  const sellerActual = actualMap(value, filters, start, end, `COALESCE(NULLIF(TRIM(seller), ''), 'Sin vendedor')`);
+  const sellerActual = actualMap(value, filters, start, end, `COALESCE(NULLIF(TRIM(seller), ''), 'No seller')`);
   const sellerTargets = targetMap(goals, filters, filters.month, 'seller');
   const categoryActual = filters.mode === 'strategic' ? new Map<string, number>() : actualMap(value, filters, start, end, categoryGroupExpression);
   const categoryTargets = filters.mode === 'core' ? targetMap(goals, filters, filters.month, 'category') : new Map<string, number>();

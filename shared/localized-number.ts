@@ -1,7 +1,6 @@
 /**
- * Convierte números escritos con convención argentina (`1.234,56`) a su
- * representación interna. También acepta números JSON y el decimal técnico
- * con punto para mantener compatibles las integraciones existentes.
+ * Converts numbers written with Argentine conventions (`1.234,56`) to their
+ * internal representation. JSON numbers and dot-decimal notation are also accepted.
  */
 export function parseLocalizedNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;

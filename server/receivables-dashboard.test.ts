@@ -7,8 +7,8 @@ import { buildReceivablesDashboard, getReceivableCaseDetail } from './receivable
 const databasePath = resolveActiveDataPaths().pendingBalances;
 const describeWithDatabase = existsSync(databasePath) ? describe : describe.skip;
 
-describeWithDatabase('tablero consolidado de cuentas por cobrar', () => {
-  it('conserva los saldos de GESI al añadir el flujo administrativo local', () => {
+describeWithDatabase('consolidated accounts-receivable dashboard', () => {
+  it('preserves analytical balances when local administrative workflow is added', () => {
     const base = buildPendingBalancesReport({});
     const dashboard = buildReceivablesDashboard({});
     expect(base).not.toBeNull();
@@ -21,7 +21,7 @@ describeWithDatabase('tablero consolidado de cuentas por cobrar', () => {
     expect(dashboard?.rows.every((row) => row.workflow.clientId === row.clientId)).toBe(true);
   });
 
-  it('mantiene opciones estables y recalcula la bandeja completa al filtrar', () => {
+  it('keeps stable options and recalculates the complete queue after filtering', () => {
     const meta = getPendingBalancesReportMeta();
     const seller = meta.options.sellers[0];
     const dashboard = buildReceivablesDashboard({ seller });
@@ -31,7 +31,7 @@ describeWithDatabase('tablero consolidado de cuentas por cobrar', () => {
     expect(dashboard?.aging.reduce((sum, row) => sum + row.amount, 0)).toBeCloseTo(dashboard!.pendingBalance, 6);
   });
 
-  it('abre los comprobantes exactos que componen el saldo de cada cuenta', () => {
+  it('opens the exact documents that compose each account balance', () => {
     const dashboard = buildReceivablesDashboard({});
     const row = dashboard!.rows[0];
     const detail = getReceivableCaseDetail(row.clientId);

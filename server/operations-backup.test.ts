@@ -8,8 +8,8 @@ import { backupOperationalDatabase, checkOperationalIntegrity, restoreOperationa
 const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
-describe('backup de operaciones humanas', () => {
-  it('crea una copia íntegra y permite restaurarla con copia de seguridad previa', async () => {
+describe('human operations backup', () => {
+  it('creates an intact copy and restores it with a prior safety backup', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'salice-operations-'));
     directories.push(directory);
     const source = resolve(directory, 'operations.sqlite');
@@ -29,7 +29,7 @@ describe('backup de operaciones humanas', () => {
     verify.close();
   });
 
-  it('rechaza una restauración mientras el servidor está marcado como activo', async () => {
+  it('rejects a restore while the server is marked as running', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'salice-operations-lock-'));
     directories.push(directory);
     const source = resolve(directory, 'operations.sqlite');
@@ -40,6 +40,6 @@ describe('backup de operaciones humanas', () => {
       database.close();
     }
     await writeFile(resolve(directory, 'salice-server.lock'), JSON.stringify({ pid: process.pid }));
-    await expect(restoreOperationalDatabase(backup, source)).rejects.toThrow(/ejecutándose/);
+    await expect(restoreOperationalDatabase(backup, source)).rejects.toThrow(/running/);
   });
 });

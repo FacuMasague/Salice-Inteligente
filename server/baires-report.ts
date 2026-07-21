@@ -17,9 +17,7 @@ import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.baires;
 const COMPANIES = [...UNIVERSE.companies];
@@ -29,13 +27,13 @@ const PRODUCT_GROUPS = [...UNIVERSE.includedProductGroups];
 const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
 const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
 const segmentExpression = `CASE
-  WHEN UPPER(TRIM(product_group)) = 'BAIRES SPT' THEN 'Especializado'
-  WHEN UPPER(TRIM(product_group)) = 'BAIRES MASIVO' THEN 'Masivo'
+  WHEN UPPER(TRIM(product_group)) = 'HARBOR SPT' THEN 'Specialty'
+  WHEN UPPER(TRIM(product_group)) = 'HARBOR RETAIL' THEN 'Mass Retail'
   ELSE product_group END`;
 const branchExpression = `CASE
-  WHEN branch_id IN (3, 6) THEN 'Mar del Plata'
-  WHEN branch_id = 4 THEN 'Córdoba'
-  ELSE COALESCE(NULLIF(TRIM(branch_name), ''), 'Otros') END`;
+  WHEN branch_id IN (3, 6) THEN 'Demo Main Branch'
+  WHEN branch_id = 4 THEN 'Demo Branch 2'
+  ELSE COALESCE(NULLIF(TRIM(branch_name), ''), 'Other') END`;
 
 const FILTER_EXPRESSIONS: Record<BairesFilterKey, string> = {
   segment: segmentExpression,
@@ -141,7 +139,7 @@ function monthlyPoint(value: DatabaseSync, filters: BairesFilters, year: number,
 function breakdownRows(value: DatabaseSync, filters: BairesFilters, expression: string, start: string, end: string, previousStart: string, previousEnd: string): BairesBreakdownRow[] {
   const currentWhere = buildWhere(filters, start, end);
   const previousWhere = buildWhere(filters, previousStart, previousEnd);
-  const nameExpression = `CASE WHEN TRIM(${expression}) = '' THEN 'Sin definir' ELSE ${expression} END`;
+  const nameExpression = `CASE WHEN TRIM(${expression}) = '' THEN 'Undefined' ELSE ${expression} END`;
   const current = rows<{ name: string; kilos: number; clients: number; units: number; netAmount: number }>(value.prepare(`
     SELECT ${nameExpression} AS name, COALESCE(SUM(kilos), 0) AS kilos,
            COUNT(DISTINCT client_id) AS clients, COALESCE(SUM(units), 0) AS units,
@@ -179,7 +177,7 @@ export function getBairesReportMeta(): BairesReportMeta {
   if (cachedMeta) return cachedMeta;
   const unavailable: BairesReportMeta = {
     available: false,
-    sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: 'Synthetic local demo dataset',
     rowCount: 0, coverageFrom: '', minDate: '', maxDate: '', capturedAt: '', latestYear: '', latestMonth: '',
     years: [], monthsByYear: {}, sourceDocumentCount: 0, unavailableDocumentCount: 0,
     options: { segment: [], brand: [], subcategory: [], branch: [] },

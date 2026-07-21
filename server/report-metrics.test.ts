@@ -9,8 +9,8 @@ import { resolveActiveDataPaths } from './data-bundle';
 const databasePath = resolveActiveDataPaths().commercial;
 const describeWithDatabase = existsSync(databasePath) ? describe : describe.skip;
 
-describe('métricas derivadas canónicas', () => {
-  it('mantiene una sola semántica para cociente, variación y participación', () => {
+describe('canonical derived metrics', () => {
+  it('keeps one semantic definition for ratio, variation, and share', () => {
     expect(metricRatio(75, 100)).toBe(75);
     expect(metricVariation(75, 100)).toBe(-25);
     expect(metricShare(25, 100)).toBe(25);
@@ -20,8 +20,8 @@ describe('métricas derivadas canónicas', () => {
   });
 });
 
-describeWithDatabase('reconciliación ejecutable de métricas', () => {
-  it('iguala el KPI de Ventas Comercial con la consulta canónica bajo el mismo universo y corte', () => {
+describeWithDatabase('executable metric reconciliation', () => {
+  it('matches the commercial sales KPI to the canonical query under the same universe and cutoff', () => {
     const meta = getCommercialSalesReportMeta();
     const report = buildCommercialSalesReport({ frequency: 'month', period: meta.latestMonth });
     expect(report).not.toBeNull();

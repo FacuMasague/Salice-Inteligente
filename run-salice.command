@@ -4,32 +4,27 @@ set -e
 PROJECT_DIR="${0:A:h}"
 cd "$PROJECT_DIR"
 
-NODE_BIN="$(command -v node 2>/dev/null || true)"
-if [[ -z "$NODE_BIN" && -x "/Users/facundomasague/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node" ]]; then
-  NODE_BIN="/Users/facundomasague/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
-fi
-
-if [[ -z "$NODE_BIN" ]]; then
-  echo "No se encontró Node.js. Instalá Node 22 o abrí este proyecto desde Codex."
-  read -k 1 "?Presioná una tecla para cerrar."
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js was not found. Install Node.js 22 or newer, then try again."
+  read -k 1 "?Press any key to close."
   exit 1
 fi
 
 if [[ ! -d node_modules || ! -d dist ]]; then
-  echo "El prototipo todavía no está compilado. Ejecutá la instalación y el build desde Codex."
-  read -k 1 "?Presioná una tecla para cerrar."
+  echo "SMART Salice is not built yet. Run: pnpm install && pnpm run prepare:demo && pnpm run build"
+  read -k 1 "?Press any key to close."
   exit 1
 fi
 
-echo "Verificando y respaldando la información operativa local…"
-NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" "$NODE_BIN" node_modules/tsx/dist/cli.mjs scripts/backup-operations.ts
+echo "Checking and backing up local operational data…"
+node_modules/.bin/tsx scripts/backup-operations.ts
 
-echo "Iniciando Salice Inteligente v0.4.0…"
-NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" NODE_ENV=production "$NODE_BIN" node_modules/tsx/dist/cli.mjs server/index.ts &
+echo "Starting SMART Salice v1.0.0…"
+NODE_ENV=production node_modules/.bin/tsx server/index.ts &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT INT TERM
 sleep 1
 open "http://127.0.0.1:8787"
-echo "\nSalice está disponible en http://127.0.0.1:8787"
-echo "Dejá esta ventana abierta. Para detenerlo, presioná Ctrl+C.\n"
+echo "SMART Salice is available at http://127.0.0.1:8787"
+echo "Keep this window open. Press Ctrl+C to stop."
 wait $SERVER_PID

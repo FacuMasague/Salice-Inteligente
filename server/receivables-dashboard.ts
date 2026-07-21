@@ -34,11 +34,11 @@ function documentBand(document: PendingBalanceDocumentRow): typeof RECEIVABLE_AG
 
 function agingRows(documents: PendingBalanceDocumentRow[]): PendingBalanceAgingRow[] {
   const definitions: Array<{ key: PendingBalanceAgingRow['key']; label: string }> = [
-    { key: 'overdue_90', label: 'Más de 90 días' },
-    { key: 'overdue_61_90', label: '61–90 días' },
-    { key: 'overdue_31_60', label: '31–60 días' },
-    { key: 'overdue_1_30', label: '1–30 días' },
-    { key: 'not_due', label: 'A vencer' },
+    { key: 'overdue_90', label: 'More than 90 days' },
+    { key: 'overdue_61_90', label: '61–90 days' },
+    { key: 'overdue_31_60', label: '31–60 days' },
+    { key: 'overdue_1_30', label: '1–30 days' },
+    { key: 'not_due', label: 'Not yet due' },
   ];
   const total = documents.reduce((sum, document) => sum + document.outstanding, 0);
   return definitions.map((definition) => {
@@ -68,7 +68,7 @@ export function buildReceivablesDashboard(input: Partial<Record<string, unknown>
   const meta = getPendingBalancesReportMeta();
   const caseMap = new Map(listReceivableCases().map((item) => [item.clientId, item]));
   const responsibles = [...new Set([
-    'Administración',
+    'Administration',
     ...meta.options.sellers,
     ...[...caseMap.values()].map((item) => item.responsible).filter(Boolean),
   ])].sort((left, right) => left.localeCompare(right, 'es'));

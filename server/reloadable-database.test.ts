@@ -21,8 +21,8 @@ function writeDatabase(path: string, value: string) {
   renameSync(temporary, path);
 }
 
-describe('base analítica recargable', () => {
-  it('abre el reemplazo atómico sin reiniciar el servidor', () => {
+describe('reloadable analytical database', () => {
+  it('opens an atomic replacement without restarting the server', () => {
     directory = mkdtempSync(join(tmpdir(), 'salice-db-'));
     const path = join(directory, 'report.sqlite');
     writeDatabase(path, 'primera');
@@ -31,14 +31,14 @@ describe('base analítica recargable', () => {
     expect(first?.changed).toBe(true);
     expect(first?.database.prepare('SELECT value FROM meta').get()?.value).toBe('primera');
 
-    writeDatabase(path, 'segunda versión más larga');
+    writeDatabase(path, 'longer second version');
     const second = source.get();
     expect(second?.changed).toBe(true);
-    expect(second?.database.prepare('SELECT value FROM meta').get()?.value).toBe('segunda versión más larga');
+    expect(second?.database.prepare('SELECT value FROM meta').get()?.value).toBe('longer second version');
     source.close();
   });
 
-  it('cambia de archivo cuando el resolvedor apunta a una nueva generación', () => {
+  it('switches files when the resolver points to a new generation', () => {
     directory = mkdtempSync(join(tmpdir(), 'salice-db-generation-'));
     const firstPath = join(directory, 'first.sqlite');
     const secondPath = join(directory, 'second.sqlite');

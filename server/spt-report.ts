@@ -19,21 +19,16 @@ import { readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
-const DEFAULT_SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Reventas'];
-const DEFAULT_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Small Retail', 'Partido de la Costa'];
-// Power BI compara estos textos sin distinguir mayúsculas. SQLite no lo hace en
-// un IN normal, por eso usamos las variantes reales de la tabla para reproducir
-// también las selecciones guardadas como ANDACOLLO y BEDYWOOD.
-const DEFAULT_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'Sanicat', 'Sol Minerales', 'Andacollo', 'BedyWood'];
-const SELLER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Distribuidor', 'Especializado', 'Especializado Z2', 'Reventa', 'Reventa2', 'Small Retail', 'Partido de la Costa'];
-const SELLER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Drovet', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'Sanicat', 'Andacollo', 'BedyWood', 'Sol Minerales'];
-const QUARTER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Partido de la Costa'];
-const QUARTER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition'];
-const QUARTER_PAGE_SELLERS = ['Alejandro Lurbe', 'Andres Dominguez', 'Edgardo Larrea', 'Lucas Morales', 'Pablo Ramires', 'Rutas', 'Hernan Jauregui', 'Male', 'Gonzalo Russian'];
+const DEFAULT_SELLERS = ['Alex Morgan', 'Jordan Lee', 'Casey Rivera', 'Taylor Brooks'];
+const DEFAULT_CHANNELS = ['Coastal Route', 'Specialty', 'Small Retail', 'Distributor'];
+const DEFAULT_PRODUCT_GROUPS = ['Orbit Nutrition', 'Nova Pet', 'Harbor SPT', 'Harbor Retail', 'CleanNest', 'PawPeak'];
+const SELLER_PAGE_CHANNELS = DEFAULT_CHANNELS;
+const SELLER_PAGE_PRODUCT_GROUPS = DEFAULT_PRODUCT_GROUPS;
+const QUARTER_PAGE_CHANNELS = DEFAULT_CHANNELS;
+const QUARTER_PAGE_PRODUCT_GROUPS = DEFAULT_PRODUCT_GROUPS;
+const QUARTER_PAGE_SELLERS = DEFAULT_SELLERS;
 const UNIVERSE = EXECUTABLE_UNIVERSES.spt;
 const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
 const COMPANIES = [...UNIVERSE.companies];
@@ -83,7 +78,7 @@ export function getSptReportMeta(): SptReportMeta {
     return {
       available: false,
       sourceFile: '',
-      sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+      sourceSystem: 'Synthetic local demo dataset',
       rowCount: 0,
       coverageFrom: '',
       sourceDocumentCount: 0,
@@ -101,7 +96,7 @@ export function getSptReportMeta(): SptReportMeta {
   cachedMeta = {
     available: true,
     sourceFile: meta.get('source_file') ?? '',
-    sourceSystem: meta.get('source_system') ?? 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: meta.get('source_system') ?? 'Synthetic local demo dataset',
     rowCount: Number(meta.get('row_count') ?? 0),
     coverageFrom: meta.get('coverage_from') ?? meta.get('min_date') ?? '',
     sourceDocumentCount: Number(meta.get('source_document_count') ?? 0),
@@ -141,7 +136,7 @@ function buildWhere(filters: SptFilters, start?: string, end?: string, page: Spt
         clauses.push(`seller IN (${placeholders(DEFAULT_SELLERS)})`);
         parameters.push(...DEFAULT_SELLERS);
       } else if (page === 'sellers') {
-        clauses.push("TRIM(seller) <> '' AND seller <> 'Administración'");
+        clauses.push("TRIM(seller) <> ''");
       } else {
         clauses.push(`branch_seller IN (${placeholders(QUARTER_PAGE_SELLERS)})`);
         parameters.push(...QUARTER_PAGE_SELLERS);
@@ -166,7 +161,7 @@ function metric(database: DatabaseSync, where: ReturnType<typeof buildWhere>): S
 function breakdown(database: DatabaseSync, filters: SptFilters, start: string, end: string, column: string, page: SptReportPage): SptBreakdownRow[] {
   const where = buildWhere(filters, start, end, page);
   return rows<{ label: string; kilos: number; units: number; netAmount: number; clients: number }>(database.prepare(`
-    SELECT CASE WHEN TRIM(${column}) = '' THEN 'Sin definir' ELSE ${column} END AS label,
+    SELECT CASE WHEN TRIM(${column}) = '' THEN 'Undefined' ELSE ${column} END AS label,
            SUM(kilos) AS kilos, SUM(units) AS units, SUM(net_amount) AS netAmount,
            COUNT(DISTINCT client_id) AS clients
     FROM movements WHERE ${where.sql}

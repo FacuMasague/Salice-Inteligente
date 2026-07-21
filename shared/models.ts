@@ -9,7 +9,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.4.4';
+export const APP_VERSION = '1.0.0';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -17,9 +17,9 @@ export const SALICE_DEPOT: {
   locality: string;
   coordinates: [number, number];
 } = {
-  name: 'Centro de distribución Salice',
-  address: 'Eduardo Bradley 1450',
-  locality: 'Mar del Plata',
+  name: 'SMART Salice Demo Distribution Center',
+  address: '1 Demo Logistics Park',
+  locality: 'Harbor City',
   coordinates: [-37.9457069, -57.5823923],
 };
 
@@ -60,9 +60,9 @@ export type VectorKey =
 
 export interface ProductVectorMeta {
   version: '2.1';
-  /** Calidad de la clasificación, no probabilidad de venta. */
+  /** Classification quality, not purchase probability. */
   confidence: number;
-  /** Cobertura de los campos descriptivos y maestros disponibles en GESI. */
+  /** Coverage of the descriptive fields available in the synthetic catalog. */
   sourceCoverage: number;
   evidence: Partial<Record<VectorKey, string[]>>;
 }
@@ -86,11 +86,11 @@ export interface Product {
   unitsPerCase: number | null;
   masterStatus: ProductMasterStatus;
   price: number;
-  /** Contenido neto estimado sólo cuando la presentación es inequívoca. */
+  /** Estimated net content only when the package is unambiguous. */
   contentKg: number | null;
-  /** Precio de referencia normalizado; no se calcula si la unidad es ambigua. */
+  /** Normalized reference price; omitted when the unit is ambiguous. */
   referencePricePerKg: number | null;
-  /** Posición relativa dentro de alimentos secos comparables. */
+  /** Relative position among comparable dry-food products. */
   pricePosition: ProductPricePosition;
   stock: number;
   units90d: number;
@@ -121,7 +121,7 @@ export interface Invoice {
   outstanding: number;
   status: InvoiceStatus;
   creditTermDays: number | null;
-  /** Forma de pago informada por el comprobante; no debe confundirse con la condición actual del cliente. */
+  /** Payment method recorded on the document; distinct from the customer's current terms. */
   paymentMethod: string;
 }
 
@@ -137,7 +137,7 @@ export interface CreditTermOption {
 export interface Client {
   id: number;
   active: boolean;
-  gesiStateId: number;
+  sourceStateId: number;
   statusUpdatedAt: string;
   portfolioStatus: PortfolioStatus;
   reference: string;
@@ -192,10 +192,9 @@ export interface SnapshotMeta {
   version: string;
   revision: number;
   generatedAt: string;
-  source: 'demo' | 'gesi';
+  source: 'demo';
   sourceLabel: string;
-  syncStatus: 'demo' | 'connected' | 'error';
-  apiBaseConfigured: boolean;
+  syncStatus: 'demo';
   disclaimer?: string;
   productVectorVersion?: '2.1';
   coverage?: {
@@ -1390,82 +1389,82 @@ export interface RoutePlan {
 }
 
 export const VECTOR_LABELS: Record<VectorKey, string> = {
-  perros: 'Perros',
-  gatos: 'Gatos',
-  otras_especies: 'Otras especies',
-  cachorros: 'Cachorros',
-  adultos: 'Adultos',
+  perros: 'Dogs',
+  gatos: 'Cats',
+  otras_especies: 'Other species',
+  cachorros: 'Puppies and kittens',
+  adultos: 'Adults',
   senior: 'Senior',
-  tamano_pequeno: 'Mascota pequeña',
-  tamano_mediano: 'Mascota mediana',
-  tamano_grande: 'Mascota grande',
+  tamano_pequeno: 'Small pet',
+  tamano_mediano: 'Medium pet',
+  tamano_grande: 'Large pet',
   premium: 'Premium',
-  economico: 'Económico',
-  alimento_seco: 'Alimento seco',
-  alimento_humedo: 'Alimento húmedo',
-  snacks: 'Snacks y premios',
-  farmacia: 'Farmacia veterinaria',
-  antiparasitario: 'Antiparasitario',
+  economico: 'Budget',
+  alimento_seco: 'Dry food',
+  alimento_humedo: 'Wet food',
+  snacks: 'Snacks and treats',
+  farmacia: 'Veterinary pharmacy',
+  antiparasitario: 'Antiparasitic',
   natural: 'Natural',
-  funcional: 'Funcional',
-  esterilizados: 'Esterilizados',
-  control_peso: 'Control de peso',
-  piel_pelaje: 'Piel y pelaje',
-  salud_urinaria: 'Salud urinaria',
-  salud_digestiva: 'Salud digestiva',
-  salud_dental: 'Salud dental',
-  higiene: 'Higiene',
-  accesorios: 'Accesorios',
-  granel: 'Granel',
-  consumo_humano: 'Consumo humano',
-  promocional: 'Promocional',
-  sabor_pollo: 'Pollo',
-  sabor_carne: 'Carne vacuna',
-  sabor_pescado: 'Pescado',
-  sabor_cordero: 'Cordero',
+  funcional: 'Functional',
+  esterilizados: 'Sterilized',
+  control_peso: 'Weight control',
+  piel_pelaje: 'Skin and coat',
+  salud_urinaria: 'Urinary health',
+  salud_digestiva: 'Digestive health',
+  salud_dental: 'Dental health',
+  higiene: 'Hygiene',
+  accesorios: 'Accessories',
+  granel: 'Bulk',
+  consumo_humano: 'Human consumption',
+  promocional: 'Promotional',
+  sabor_pollo: 'Chicken',
+  sabor_carne: 'Beef',
+  sabor_pescado: 'Fish',
+  sabor_cordero: 'Lamb',
 };
 
 export const VECTOR_DESCRIPTIONS: Record<VectorKey, string> = {
-  perros: 'Afinidad con productos destinados a perros.',
-  gatos: 'Afinidad con productos destinados a gatos.',
-  otras_especies: 'Productos para aves, equinos, bovinos, roedores y otras especies.',
-  cachorros: 'Productos formulados para primeras etapas de vida.',
-  adultos: 'Productos orientados a animales adultos.',
-  senior: 'Productos para animales mayores o de edad avanzada.',
-  tamano_pequeno: 'Productos formulados, dosificados o dimensionados para mascotas pequeñas.',
-  tamano_mediano: 'Productos formulados, dosificados o dimensionados para mascotas medianas.',
-  tamano_grande: 'Productos formulados, dosificados o dimensionados para mascotas grandes o gigantes.',
-  premium: 'Posicionamiento de calidad, formulación o precio superior.',
-  economico: 'Oferta de mantenimiento, rendimiento o precio accesible.',
-  alimento_seco: 'Alimentos balanceados secos y croquetas.',
-  alimento_humedo: 'Latas, sobres, pouch y otras presentaciones húmedas.',
-  snacks: 'Premios, golosinas y snacks complementarios.',
-  farmacia: 'Medicamentos, biológicos y productos veterinarios.',
-  antiparasitario: 'Pipetas y tratamientos contra pulgas, garrapatas y parásitos.',
-  natural: 'Ingredientes o posicionamiento natural, orgánico o sin conservantes.',
-  funcional: 'Soluciones dietarias, terapéuticas o para necesidades específicas.',
-  esterilizados: 'Alimentos y soluciones destinados explícitamente a animales castrados o esterilizados.',
-  control_peso: 'Productos light, de peso ideal o control de peso para mascotas.',
-  piel_pelaje: 'Cuidado dermatológico, sensibilidad de piel y mantenimiento del pelaje.',
-  salud_urinaria: 'Productos urinarios, renales o de soporte de las vías urinarias.',
-  salud_digestiva: 'Soporte gastrointestinal, digestivo o hepático explícito.',
-  salud_dental: 'Higiene oral, control de sarro y snacks dentales.',
-  higiene: 'Arenas, sanitarios, shampoo y productos de limpieza.',
-  accesorios: 'Correas, collares, juguetes, camas y equipamiento.',
-  granel: 'Productos o formatos adecuados para venta fraccionada o gran volumen.',
-  consumo_humano: 'Almacén, bebidas, congelados y otros alimentos para personas.',
-  promocional: 'Material POP, bonificaciones, merchandising y promociones.',
-  sabor_pollo: 'Alimentos para mascotas con pollo declarado en su descripción.',
-  sabor_carne: 'Alimentos para mascotas con carne vacuna declarada.',
-  sabor_pescado: 'Alimentos para mascotas con pescado, atún o salmón declarado.',
-  sabor_cordero: 'Alimentos para mascotas con cordero declarado.',
+  perros: 'Affinity with products intended for dogs.',
+  gatos: 'Affinity with products intended for cats.',
+  otras_especies: 'Products for birds, horses, cattle, rodents, and other species.',
+  cachorros: 'Products formulated for early life stages.',
+  adultos: 'Products intended for adult animals.',
+  senior: 'Products for older animals.',
+  tamano_pequeno: 'Products formulated, dosed, or sized for small pets.',
+  tamano_mediano: 'Products formulated, dosed, or sized for medium pets.',
+  tamano_grande: 'Products formulated, dosed, or sized for large or giant pets.',
+  premium: 'Higher quality, formulation, or relative price positioning.',
+  economico: 'Maintenance, value, or accessible price positioning.',
+  alimento_seco: 'Dry balanced foods and kibble.',
+  alimento_humedo: 'Cans, pouches, and other wet formats.',
+  snacks: 'Treats and complementary snacks.',
+  farmacia: 'Medicines, biological products, and veterinary supplies.',
+  antiparasitario: 'Pipettes and treatments for fleas, ticks, and parasites.',
+  natural: 'Natural or organic ingredients and preservative-free positioning.',
+  funcional: 'Dietary or therapeutic solutions for specific needs.',
+  esterilizados: 'Food and solutions explicitly intended for sterilized animals.',
+  control_peso: 'Light, ideal-weight, or weight-control products.',
+  piel_pelaje: 'Dermatological care, skin sensitivity, and coat maintenance.',
+  salud_urinaria: 'Urinary, renal, or urinary-tract support products.',
+  salud_digestiva: 'Explicit gastrointestinal, digestive, or hepatic support.',
+  salud_dental: 'Oral hygiene, tartar control, and dental snacks.',
+  higiene: 'Litter, sanitary, shampoo, and cleaning products.',
+  accesorios: 'Leashes, collars, toys, beds, and equipment.',
+  granel: 'Products or formats suited to bulk or portioned sales.',
+  consumo_humano: 'Beverages, frozen goods, and other food for people.',
+  promocional: 'Point-of-sale material, bonuses, merchandising, and promotions.',
+  sabor_pollo: 'Pet foods whose description explicitly mentions chicken.',
+  sabor_carne: 'Pet foods whose description explicitly mentions beef.',
+  sabor_pescado: 'Pet foods whose description explicitly mentions fish, tuna, or salmon.',
+  sabor_cordero: 'Pet foods whose description explicitly mentions lamb.',
 };
 
 export const VECTOR_GROUPS: { id: string; label: string; description: string; keys: VectorKey[] }[] = [
-  { id: 'species', label: 'Especie', description: 'Para quién está destinado el producto.', keys: ['perros', 'gatos', 'otras_especies'] },
-  { id: 'life-stage', label: 'Edad y tamaño', description: 'Etapa de vida y porte explícitos de la mascota.', keys: ['cachorros', 'adultos', 'senior', 'tamano_pequeno', 'tamano_mediano', 'tamano_grande'] },
-  { id: 'positioning', label: 'Posicionamiento', description: 'Calidad, precio relativo y forma de comercialización.', keys: ['premium', 'economico', 'natural', 'granel', 'promocional'] },
-  { id: 'product-type', label: 'Tipo de producto', description: 'Formato y uso principal del artículo.', keys: ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano'] },
-  { id: 'needs', label: 'Necesidades específicas', description: 'Funciones de salud o cuidado declaradas.', keys: ['funcional', 'esterilizados', 'control_peso', 'piel_pelaje', 'salud_urinaria', 'salud_digestiva', 'salud_dental'] },
-  { id: 'flavour', label: 'Proteína o sabor', description: 'Ingredientes principales declarados en alimentos para mascotas.', keys: ['sabor_pollo', 'sabor_carne', 'sabor_pescado', 'sabor_cordero'] },
+  { id: 'species', label: 'Species', description: 'The animal species targeted by the product.', keys: ['perros', 'gatos', 'otras_especies'] },
+  { id: 'life-stage', label: 'Life stage and size', description: 'Explicit life stage and pet size.', keys: ['cachorros', 'adultos', 'senior', 'tamano_pequeno', 'tamano_mediano', 'tamano_grande'] },
+  { id: 'positioning', label: 'Positioning', description: 'Quality, relative price, and selling format.', keys: ['premium', 'economico', 'natural', 'granel', 'promocional'] },
+  { id: 'product-type', label: 'Product type', description: 'Primary product format and use.', keys: ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano'] },
+  { id: 'needs', label: 'Specific needs', description: 'Explicit health or care functions.', keys: ['funcional', 'esterilizados', 'control_peso', 'piel_pelaje', 'salud_urinaria', 'salud_digestiva', 'salud_dental'] },
+  { id: 'flavour', label: 'Protein or flavor', description: 'Primary ingredients explicitly named in pet foods.', keys: ['sabor_pollo', 'sabor_carne', 'sabor_pescado', 'sabor_cordero'] },
 ];

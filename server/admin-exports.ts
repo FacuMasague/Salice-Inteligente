@@ -21,7 +21,7 @@ function csvRow(values: unknown[]) {
 }
 
 function filtersLabel(filters: object) {
-  return Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}=${value}`).join(' · ') || 'Sin filtros adicionales';
+  return Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}=${value}`).join(' · ') || 'No additional filters';
 }
 
 function setDownloadHeaders(response: Response, contentType: string, filename: string) {
@@ -33,16 +33,16 @@ function setDownloadHeaders(response: Response, contentType: string, filename: s
 export function exportSalesCsv(response: Response, input: Partial<Record<string, unknown>>) {
   const meta = getSalesExplorerMeta();
   const filters = normalizeSalesExplorerFilters(input, meta);
-  setDownloadHeaders(response, 'text/csv; charset=utf-8', `ventas-salice-${filters.from}-${filters.to}.csv`);
+  setDownloadHeaders(response, 'text/csv; charset=utf-8', `smart-salice-sales-${filters.from}-${filters.to}.csv`);
   response.write('\ufeff');
-  response.write(csvRow(['Generado', new Date().toISOString()]));
-  response.write(csvRow(['Corte GESI', meta.maxDate]));
-  response.write(csvRow(['Universo', 'Ventas Comercial · empresa 3 · sucursales 3/6 · emisores publicados']));
-  response.write(csvRow(['Filtros', filtersLabel(filters)]));
+  response.write(csvRow(['Generated', new Date().toISOString()]));
+  response.write(csvRow(['Synthetic cutoff', meta.maxDate]));
+  response.write(csvRow(['Universe', 'Synthetic commercial movements']));
+  response.write(csvRow(['Filters', filtersLabel(filters)]));
   response.write('\r\n');
-  response.write(csvRow(['Fecha', 'Comprobante', 'Tipo', 'Vendedor', 'Cliente ID', 'Cliente', 'Producto ID', 'Producto', 'Marca', 'Rubro', 'Canal', 'Zona', 'Kilos', 'Unidades', 'Venta neta']));
+  response.write(csvRow(['Date', 'Document', 'Type', 'Seller', 'Customer ID', 'Customer', 'Product ID', 'Product', 'Brand', 'Category', 'Channel', 'Zone', 'Kilos', 'Units', 'Net sales']));
   forEachSalesExportRow(input, (row) => response.write(csvRow([
-    row.date, row.document, row.documentType === 'credit_note' ? 'Nota de crédito' : 'Factura', row.seller,
+    row.date, row.document, row.documentType === 'credit_note' ? 'Credit note' : 'Invoice', row.seller,
     row.clientId, row.client, row.productId, row.product, row.brand, row.category, row.channel, row.zone,
     row.kilos, row.units, row.netAmount,
   ])));
@@ -56,17 +56,17 @@ function styleHeader(row: ExcelJS.Row) {
 }
 
 function addMetadataSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, title: string, cutoff: string, universe: string, filters: object) {
-  const sheet = workbook.addWorksheet('Metadatos');
+  const sheet = workbook.addWorksheet('Metadata');
   sheet.columns = [{ width: 22 }, { width: 110 }];
   const titleRow = sheet.addRow([title]);
   titleRow.font = { size: 16, bold: true, color: { argb: 'FF214F3F' } };
   titleRow.commit();
   for (const values of [
-    ['Generado', new Date().toISOString()],
-    ['Corte operativo', cutoff],
-    ['Universo', universe],
-    ['Filtros', filtersLabel(filters)],
-    ['Fuente', 'API GESI y bases analíticas propias; Power BI no participa de la exportación'],
+    ['Generated', new Date().toISOString()],
+    ['Operational cutoff', cutoff],
+    ['Universe', universe],
+    ['Filters', filtersLabel(filters)],
+    ['Source', 'Deterministic local synthetic databases'],
   ]) sheet.addRow(values).commit();
   sheet.commit();
 }
@@ -74,27 +74,27 @@ function addMetadataSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, title: s
 export async function exportSalesXlsx(response: Response, input: Partial<Record<string, unknown>>) {
   const meta = getSalesExplorerMeta();
   const filters = normalizeSalesExplorerFilters(input, meta);
-  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `ventas-salice-${filters.from}-${filters.to}.xlsx`);
+  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `smart-salice-sales-${filters.from}-${filters.to}.xlsx`);
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
-  workbook.creator = 'Salice Inteligente';
+  workbook.creator = 'SMART Salice';
   workbook.created = new Date();
-  addMetadataSheet(workbook, 'Explorador general de ventas', meta.maxDate, 'Ventas Comercial · empresa 3 · sucursales 3/6', filters);
-  const sheet = workbook.addWorksheet('Movimientos');
+  addMetadataSheet(workbook, 'Sales explorer', meta.maxDate, 'Synthetic commercial movements', filters);
+  const sheet = workbook.addWorksheet('Movements');
   sheet.columns = [
-    { header: 'Fecha', key: 'date', width: 13 }, { header: 'Comprobante', key: 'document', width: 22 },
-    { header: 'Tipo', key: 'documentType', width: 17 }, { header: 'Vendedor', key: 'seller', width: 23 },
-    { header: 'Cliente ID', key: 'clientId', width: 13 }, { header: 'Cliente', key: 'client', width: 38 },
-    { header: 'Producto ID', key: 'productId', width: 16 }, { header: 'Producto', key: 'product', width: 45 },
-    { header: 'Marca', key: 'brand', width: 24 }, { header: 'Rubro', key: 'category', width: 24 },
-    { header: 'Canal', key: 'channel', width: 22 }, { header: 'Zona', key: 'zone', width: 16 },
+    { header: 'Date', key: 'date', width: 13 }, { header: 'Document', key: 'document', width: 22 },
+    { header: 'Type', key: 'documentType', width: 17 }, { header: 'Seller', key: 'seller', width: 23 },
+    { header: 'Customer ID', key: 'clientId', width: 13 }, { header: 'Customer', key: 'client', width: 38 },
+    { header: 'Product ID', key: 'productId', width: 16 }, { header: 'Product', key: 'product', width: 45 },
+    { header: 'Brand', key: 'brand', width: 24 }, { header: 'Category', key: 'category', width: 24 },
+    { header: 'Channel', key: 'channel', width: 22 }, { header: 'Zone', key: 'zone', width: 16 },
     { header: 'Kilos', key: 'kilos', width: 14, style: { numFmt: '#,##0.000' } },
-    { header: 'Unidades', key: 'units', width: 14, style: { numFmt: '#,##0.00' } },
-    { header: 'Venta neta', key: 'netAmount', width: 18, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
+    { header: 'Units', key: 'units', width: 14, style: { numFmt: '#,##0.00' } },
+    { header: 'Net sales', key: 'netAmount', width: 18, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
   ];
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();
   forEachSalesExportRow(input, (row) => {
-    sheet.addRow({ ...row, documentType: row.documentType === 'credit_note' ? 'Nota de crédito' : 'Factura' }).commit();
+    sheet.addRow({ ...row, documentType: row.documentType === 'credit_note' ? 'Credit note' : 'Invoice' }).commit();
   });
   sheet.autoFilter = 'A1:O1';
   sheet.commit();
@@ -103,9 +103,9 @@ export async function exportSalesXlsx(response: Response, input: Partial<Record<
 
 function receivableColumns() {
   return [
-    'Cliente ID', 'Cliente', 'Nombre comercial', 'Vendedor', 'Forma de pago', 'Responsable interno', 'Estado interno',
-    'Próximo seguimiento', 'Saldo pendiente', 'Saldo vencido', '% vencido', 'Vencimiento más próximo',
-    'Antigüedad máxima', 'Comprobantes abiertos', 'Comprobantes vencidos', 'Venta 30d', 'Último comentario', 'Actualizado',
+    'Customer ID', 'Customer', 'Trade name', 'Seller', 'Payment method', 'Internal owner', 'Internal status',
+    'Next follow-up', 'Pending balance', 'Overdue balance', '% overdue', 'Next due date',
+    'Maximum aging', 'Open documents', 'Overdue documents', '30-day sales', 'Last comment', 'Updated',
   ];
 }
 
@@ -120,13 +120,13 @@ function receivableValues(row: ReceivableDashboardPayload['rows'][number]) {
 
 export function exportReceivablesCsv(response: Response, input: Partial<Record<string, unknown>>) {
   const payload = buildReceivablesDashboard(input);
-  if (!payload) throw new Error('La base de saldos pendientes no está disponible.');
-  setDownloadHeaders(response, 'text/csv; charset=utf-8', `cuentas-por-cobrar-${payload.sourceMaxDate}.csv`);
+  if (!payload) throw new Error('The pending-balances database is unavailable.');
+  setDownloadHeaders(response, 'text/csv; charset=utf-8', `smart-salice-receivables-${payload.sourceMaxDate}.csv`);
   response.write('\ufeff');
-  response.write(csvRow(['Generado', payload.generatedAt]));
-  response.write(csvRow(['Corte GESI', payload.sourceMaxDate]));
-  response.write(csvRow(['Universo', 'Comprobantes débito abiertos con vencimiento válido']));
-  response.write(csvRow(['Filtros', filtersLabel(payload.filters)]));
+  response.write(csvRow(['Generated', payload.generatedAt]));
+  response.write(csvRow(['Synthetic cutoff', payload.sourceMaxDate]));
+  response.write(csvRow(['Universe', 'Open debit documents with valid due dates']));
+  response.write(csvRow(['Filters', filtersLabel(payload.filters)]));
   response.write('\r\n');
   response.write(csvRow(receivableColumns()));
   payload.rows.forEach((row) => response.write(csvRow(receivableValues(row))));
@@ -135,11 +135,11 @@ export function exportReceivablesCsv(response: Response, input: Partial<Record<s
 
 export async function exportReceivablesXlsx(response: Response, input: Partial<Record<string, unknown>>) {
   const payload = buildReceivablesDashboard(input);
-  if (!payload) throw new Error('La base de saldos pendientes no está disponible.');
-  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `cuentas-por-cobrar-${payload.sourceMaxDate}.xlsx`);
+  if (!payload) throw new Error('The pending-balances database is unavailable.');
+  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `smart-salice-receivables-${payload.sourceMaxDate}.xlsx`);
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
-  addMetadataSheet(workbook, 'Cuentas por cobrar', payload.sourceMaxDate, 'Comprobantes débito abiertos con vencimiento válido', payload.filters);
-  const sheet = workbook.addWorksheet('Cartera');
+  addMetadataSheet(workbook, 'Accounts receivable', payload.sourceMaxDate, 'Open debit documents with valid due dates', payload.filters);
+  const sheet = workbook.addWorksheet('Portfolio');
   sheet.addRow(receivableColumns());
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();
@@ -166,21 +166,21 @@ function goalTotals(payload: CommercialGoalsPayload) {
 export async function exportGoalsXlsx(response: Response, versionId?: string, month?: string) {
   const payload = getCommercialGoalsPayload(versionId, month);
   const version = payload.selectedVersion;
-  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `objetivos-${version.version}-${payload.selectedMonth}.xlsx`);
+  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `smart-salice-goals-${version.version}-${payload.selectedMonth}.xlsx`);
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
   addMetadataSheet(
     workbook,
-    `Objetivos comerciales · ${version.name}`,
+    `Commercial goals · ${version.name}`,
     payload.selectedMonth,
-    `${version.sourceLabel} · versión ${version.version} · ${version.status}`,
+    `${version.sourceLabel} · version ${version.version} · ${version.status}`,
     {},
   );
-  const sheet = workbook.addWorksheet('Objetivos');
+  const sheet = workbook.addWorksheet('Goals');
   sheet.columns = [
-    { header: 'Mes', key: 'month', width: 12 }, { header: 'Producto / lectura', key: 'product', width: 32 },
-    { header: 'Vendedor', key: 'seller', width: 24 }, { header: 'Kilos', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
-    { header: 'Cuentas', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
-    { header: 'Facturación', key: 'invoicing', width: 18, style: { numFmt: '$ #,##0.00' } },
+    { header: 'Month', key: 'month', width: 12 }, { header: 'Product / lectura', key: 'product', width: 32 },
+    { header: 'Seller', key: 'seller', width: 24 }, { header: 'Kilos', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
+    { header: 'Accounts', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
+    { header: 'Revenue', key: 'invoicing', width: 18, style: { numFmt: '$ #,##0.00' } },
   ];
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();
@@ -199,52 +199,52 @@ function formatNumber(value: number, unit: 'kg' | 'ars' | 'count') {
 export function exportGoalsPdf(response: Response, versionId?: string, month?: string) {
   const payload = getCommercialGoalsPayload(versionId, month);
   const version = payload.selectedVersion;
-  const versionStatus = version.status === 'active' ? 'activo' : version.status === 'draft' ? 'borrador' : 'archivado';
+  const versionStatus = version.status === 'active' ? 'active' : version.status === 'draft' ? 'draft' : 'archived';
   const generatedAt = new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'short',
     timeStyle: 'short',
     timeZone: 'America/Argentina/Buenos_Aires',
   }).format(new Date());
-  setDownloadHeaders(response, 'application/pdf', `objetivos-${version.version}-${payload.selectedMonth}.pdf`);
-  const document = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `Objetivos comerciales ${payload.selectedMonth}`, Author: 'Salice Inteligente' } });
+  setDownloadHeaders(response, 'application/pdf', `smart-salice-goals-${version.version}-${payload.selectedMonth}.pdf`);
+  const document = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `Commercial goals ${payload.selectedMonth}`, Author: 'SMART Salice' } });
   document.pipe(response);
-  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(20).text('Salice Inteligente');
-  document.fillColor('#1f2d28').fontSize(15).text('Objetivos comerciales y cumplimiento');
+  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(20).text('SMART Salice');
+  document.fillColor('#1f2d28').fontSize(15).text('Commercial goals and attainment');
   document.moveDown(.4).font('Helvetica').fontSize(9).fillColor('#65736d')
-    .text(`Plan: ${version.name} · versión ${version.version} · ${versionStatus}`)
-    .text(`Mes: ${payload.selectedMonth} · generado ${generatedAt}`)
-    .text('Resultados reales: API GESI. Objetivos: configuración versionada de Salice.');
+    .text(`Plan: ${version.name} · version ${version.version} · ${versionStatus}`)
+    .text(`Month: ${payload.selectedMonth} · generated ${generatedAt}`)
+    .text('Actuals: local synthetic commercial database. Goals: versioned local configuration.');
   const totals = goalTotals(payload);
-  document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Plan cargado');
+  document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Loaded plan');
   document.font('Helvetica').fontSize(10)
     .text(`Kilos: ${formatNumber(totals.kilos, 'kg')}`)
-    .text(`Cuentas: ${formatNumber(totals.accounts, 'count')}`)
-    .text(`Facturación: ${formatNumber(totals.invoicing, 'ars')}`);
+    .text(`Accounts: ${formatNumber(totals.accounts, 'count')}`)
+    .text(`Revenue: ${formatNumber(totals.invoicing, 'ars')}`);
   if (version.status === 'active') {
     const reports = [
-      ['Objetivos kilos', buildGeneralReport({ mode: 'core', month: payload.selectedMonth })],
-      ['Marcas estratégicas', buildGeneralReport({ mode: 'strategic', month: payload.selectedMonth })],
-      ['Autoservicio', buildGeneralReport({ mode: 'autoservice', month: payload.selectedMonth })],
+      ['Goals kilos', buildGeneralReport({ mode: 'core', month: payload.selectedMonth })],
+      ['Strategic brands', buildGeneralReport({ mode: 'strategic', month: payload.selectedMonth })],
+      ['Small retail', buildGeneralReport({ mode: 'autoservice', month: payload.selectedMonth })],
     ] as const;
-    document.moveDown(1).font('Helvetica-Bold').fontSize(12).text('Cumplimiento del plan activo');
+    document.moveDown(1).font('Helvetica-Bold').fontSize(12).text('Active-plan attainment');
     for (const [label, report] of reports) {
       if (!report) continue;
       const unit = report.unit === 'currency' ? 'ars' : 'kg';
       document.moveDown(.45).font('Helvetica-Bold').fontSize(10).fillColor('#214f3f').text(label);
       document.font('Helvetica').fillColor('#1f2d28')
-        .text(`Real ${formatNumber(report.actual, unit)} · Objetivo ${formatNumber(report.target, unit)} · Cumplimiento ${report.completion == null ? 'sin base' : `${report.completion.toFixed(1)}%`}`);
+        .text(`Actual ${formatNumber(report.actual, unit)} · Goal ${formatNumber(report.target, unit)} · Attainment ${report.completion == null ? 'no baseline' : `${report.completion.toFixed(1)}%`}`);
     }
   } else {
     document.moveDown(1).fillColor('#8a6a25').font('Helvetica-Bold').fontSize(10)
-      .text('Esta versión está en borrador. El cumplimiento operativo permanece asociado al plan activo hasta su activación.');
+      .text('This version is a draft. Operational attainment remains tied to the active plan until activation.');
   }
-  document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Objetivos por vendedor');
+  document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Goals by seller');
   const sellers = new Map<string, { kilos: number; invoicing: number }>();
   for (const row of payload.rows) {
-    const current = sellers.get(row.seller || 'Sin vendedor') ?? { kilos: 0, invoicing: 0 };
+    const current = sellers.get(row.seller || 'No seller') ?? { kilos: 0, invoicing: 0 };
     current.kilos += Number(row.kilos ?? 0);
     current.invoicing += Number(row.invoicing ?? 0);
-    sellers.set(row.seller || 'Sin vendedor', current);
+    sellers.set(row.seller || 'No seller', current);
   }
   document.font('Helvetica').fontSize(9);
   [...sellers.entries()].sort((left, right) => right[1].kilos - left[1].kilos).forEach(([seller, values]) => {
@@ -252,7 +252,7 @@ export function exportGoalsPdf(response: Response, versionId?: string, month?: s
     document.text(`${seller}: ${formatNumber(values.kilos, 'kg')}${values.invoicing ? ` · ${formatNumber(values.invoicing, 'ars')}` : ''}`);
   });
   document.moveDown(1).fontSize(8).fillColor('#65736d')
-    .text('Documento generado por Salice Inteligente. Power BI no participa de este cálculo ni de esta exportación.');
+    .text('Generated by SMART Salice from deterministic local synthetic data.');
   document.end();
 }
 
@@ -262,19 +262,19 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
   }).format(new Date());
   const date = (value: string | null) => value
     ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value.slice(0, 10)}T12:00:00Z`))
-    : 'Sin dato';
+    : 'No data';
   setDownloadHeaders(response, 'application/pdf', `${invoice.number || invoice.id}.pdf`);
   const document = new PDFDocument({
     size: 'A4', margin: 42,
-    info: { Title: `${invoice.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} ${invoice.number}`, Author: 'Salice Inteligente' },
+    info: { Title: `${invoice.kind === 'credit_note' ? 'Credit note' : 'Invoice'} ${invoice.number}`, Author: 'SMART Salice' },
   });
   document.pipe(response);
 
   document.rect(0, 0, 595, 112).fill('#214f3f');
-  document.fillColor('#f5f0df').font('Helvetica-Bold').fontSize(20).text('Salice Inteligente', 42, 35);
-  document.fillColor('#ffffff').fontSize(12).text(invoice.kind === 'credit_note' ? 'NOTA DE CRÉDITO' : 'COMPROBANTE DE VENTA', 42, 66);
+  document.fillColor('#f5f0df').font('Helvetica-Bold').fontSize(20).text('SMART Salice', 42, 35);
+  document.fillColor('#ffffff').fontSize(12).text(invoice.kind === 'credit_note' ? 'CREDIT NOTE' : 'SALES DOCUMENT', 42, 66);
   document.fillColor('#d8b36a').fontSize(18).text(invoice.number, 325, 42, { width: 228, align: 'right' });
-  document.fillColor('#d8e5df').font('Helvetica').fontSize(8).text(`Corte operativo ${date(invoice.sourceMaxDate)}`, 325, 70, { width: 228, align: 'right' });
+  document.fillColor('#d8e5df').font('Helvetica').fontSize(8).text(`Operational cutoff ${date(invoice.sourceMaxDate)}`, 325, 70, { width: 228, align: 'right' });
 
   document.fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text(invoice.client.name, 42, 137);
   if (invoice.client.tradeName && invoice.client.tradeName !== invoice.client.name) {
@@ -282,8 +282,8 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
   }
   const contactY = invoice.client.tradeName && invoice.client.tradeName !== invoice.client.name ? 171 : 156;
   document.font('Helvetica').fontSize(8.5).fillColor('#65736d')
-    .text([invoice.client.address, invoice.client.locality].filter(Boolean).join(' · ') || 'Domicilio no informado', 42, contactY)
-    .text(`Cliente ${invoice.client.id} · Vendedor: ${invoice.client.seller}`, 42, contactY + 13);
+    .text([invoice.client.address, invoice.client.locality].filter(Boolean).join(' · ') || 'Address unavailable', 42, contactY)
+    .text(`Customer ${invoice.client.id} · Seller: ${invoice.client.seller}`, 42, contactY + 13);
 
   const summaryY = contactY + 42;
   const box = (x: number, title: string, value: string, accent = '#214f3f') => {
@@ -291,26 +291,26 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
     document.fillColor('#75827c').font('Helvetica-Bold').fontSize(7).text(title.toUpperCase(), x + 11, summaryY + 11, { width: 138 });
     document.fillColor(accent).fontSize(11).text(value, x + 11, summaryY + 29, { width: 138 });
   };
-  box(42, 'Emisión / vencimiento', `${date(invoice.issuedAt)} · ${date(invoice.dueAt)}`);
-  box(217, 'Forma de pago', invoice.paymentMethod);
-  box(392, invoice.outstanding > 0 ? 'Saldo pendiente' : 'Importe', formatNumber(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount, 'ars'), invoice.outstanding > 0 ? '#a24b3d' : '#214f3f');
+  box(42, 'Issue / due date', `${date(invoice.issuedAt)} · ${date(invoice.dueAt)}`);
+  box(217, 'Payment method', invoice.paymentMethod);
+  box(392, invoice.outstanding > 0 ? 'Pending balance' : 'Amount', formatNumber(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount, 'ars'), invoice.outstanding > 0 ? '#a24b3d' : '#214f3f');
 
   let y = summaryY + 82;
-  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(11).text('Detalle del comprobante', 42, y);
+  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(11).text('Document detail', 42, y);
   y += 23;
   const tableHeader = () => {
     document.rect(42, y, 511, 24).fill('#e9efe9');
     document.fillColor('#315348').font('Helvetica-Bold').fontSize(7.5)
-      .text('PRODUCTO', 50, y + 8, { width: 248 })
-      .text('UNIDADES', 310, y + 8, { width: 65, align: 'right' })
+      .text('PRODUCT', 50, y + 8, { width: 248 })
+      .text('UNITS', 310, y + 8, { width: 65, align: 'right' })
       .text('KILOS', 384, y + 8, { width: 65, align: 'right' })
-      .text('VENTA NETA', 458, y + 8, { width: 87, align: 'right' });
+      .text('NET SALES', 458, y + 8, { width: 87, align: 'right' });
     y += 24;
   };
   tableHeader();
   if (!invoice.lineItems.length) {
     document.fillColor('#65736d').font('Helvetica').fontSize(9)
-      .text('GESI no entregó detalle de renglones para este comprobante. Se conserva el encabezado y la información financiera disponible.', 50, y + 13, { width: 495 });
+      .text('No line-item detail is available for this synthetic document. Header and financial details remain visible.', 50, y + 13, { width: 495 });
     y += 54;
   } else {
     for (const item of invoice.lineItems) {
@@ -332,11 +332,11 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
 
   if (y > 690) { document.addPage(); y = 42; }
   document.moveTo(360, y + 18).lineTo(553, y + 18).strokeColor('#d8b36a').lineWidth(2).stroke();
-  document.fillColor('#65736d').font('Helvetica').fontSize(8).text('TOTAL DEL COMPROBANTE', 360, y + 29, { width: 193, align: 'right' });
+  document.fillColor('#65736d').font('Helvetica').fontSize(8).text('DOCUMENT TOTAL', 360, y + 29, { width: 193, align: 'right' });
   document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(15).text(formatNumber(invoice.amount, 'ars'), 360, y + 43, { width: 193, align: 'right' });
-  if (invoice.outstanding > 0) document.fillColor('#a24b3d').fontSize(9).text(`Saldo abierto ${formatNumber(invoice.outstanding, 'ars')}`, 360, y + 63, { width: 193, align: 'right' });
+  if (invoice.outstanding > 0) document.fillColor('#a24b3d').fontSize(9).text(`Open balance ${formatNumber(invoice.outstanding, 'ars')}`, 360, y + 63, { width: 193, align: 'right' });
   document.fillColor('#7a867f').font('Helvetica').fontSize(7.5).text(
-    `Generado ${generatedAt}. Fuente: API GESI y bases analíticas propias. ${invoice.detailAvailable ? 'Detalle disponible en la base comercial.' : 'Detalle de productos no disponible en GESI.'} Power BI no participa de este documento.`,
+    `Generated ${generatedAt}. Source: deterministic local synthetic data. ${invoice.detailAvailable ? 'Line-item detail is available.' : 'Product detail is explicitly unavailable.'}`,
     42, y + 92, { width: 511, align: 'left' },
   );
   document.end();

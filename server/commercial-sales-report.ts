@@ -19,19 +19,17 @@ import { metricShare, metricVariation, readMovementMetrics } from './report-metr
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = () => process.env.SALICE_SPT_DB_PATH
-  ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolveActiveDataPaths().commercial;
+const reportPath = () => resolveActiveDataPaths().commercial;
 
 const UNIVERSE = EXECUTABLE_UNIVERSES.commercialSales;
 const COMPANIES = [...UNIVERSE.companies];
 const BRANCHES = [...UNIVERSE.branches];
 const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
 const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
-const FOOD_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'Snacks'];
-const BALANCEADO_GROUPS = ['Baires Masivo', 'Baires SPT', 'Devoluciones', 'Handler', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'SP - Eukanuba + Iams'];
-const DROVET_GROUPS = ['Drovet', 'Kualcos'];
-const SANITARIOS_GROUPS = ['Andacollo', 'BedyWood', 'CanCat', 'Chapas - QR', 'Sanicat', 'Sol Minerales', 'Zootec'];
+const FOOD_CATEGORIES = ['Wet Food', 'Dry Food', 'Treats'];
+const BALANCEADO_GROUPS = ['Orbit Nutrition', 'Nova Pet', 'Harbor SPT', 'PawPeak'];
+const DROVET_GROUPS: string[] = [];
+const SANITARIOS_GROUPS = ['CleanNest', 'Harbor Retail'];
 
 const FILTER_COLUMNS: Record<CommercialSalesFilterKey, string> = {
   seller: 'seller',
@@ -77,7 +75,7 @@ export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
   if (!database) {
     return {
       available: false,
-      sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
+      sourceSystem: 'Synthetic local demo dataset',
       rowCount: 0,
       coverageFrom: '',
       minDate: '',
@@ -111,7 +109,7 @@ export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
 
   cachedMeta = {
     available: true,
-    sourceSystem: meta.get('source_system') ?? 'GESI API · facturas, notas de crédito y maestros Salice',
+    sourceSystem: meta.get('source_system') ?? 'Synthetic local demo dataset',
     rowCount: Number(dateRow.rowCount ?? 0),
     coverageFrom: meta.get('coverage_from') ?? dateRow.minDate ?? '',
     minDate: dateRow.minDate ?? '',
@@ -204,14 +202,14 @@ function brandBreakdown(database: DatabaseSync, filters: CommercialSalesFilters,
   const foodClause = `category IN (${FOOD_CATEGORIES.map((category) => `'${category.replaceAll("'", "''")}'`).join(', ')})`;
   const where = buildWhere(filters, start, end, foodClause);
   const brands = rows<{ brand: string; netAmount: number; kilos: number; units: number; clients: number; averagePricePerKilo: number | null }>(database.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            COALESCE(SUM(net_amount), 0) AS netAmount, COALESCE(SUM(kilos), 0) AS kilos,
            COALESCE(SUM(units), 0) AS units, COUNT(DISTINCT client_id) AS clients,
            AVG(CASE WHEN kilos <> 0 THEN net_amount / kilos END) AS averagePricePerKilo
     FROM movements WHERE ${where.sql} GROUP BY brand ORDER BY netAmount DESC
   `), where.parameters);
   const products = rows<{ brand: string; productId: string; product: string; netAmount: number; kilos: number; units: number; clients: number; averagePricePerKilo: number | null }>(database.prepare(`
-    SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
+    SELECT CASE WHEN TRIM(brand) = '' THEN 'Unbranded' ELSE brand END AS brand,
            product_id AS productId, product_name AS product,
            COALESCE(SUM(net_amount), 0) AS netAmount, COALESCE(SUM(kilos), 0) AS kilos,
            COALESCE(SUM(units), 0) AS units, COUNT(DISTINCT client_id) AS clients,

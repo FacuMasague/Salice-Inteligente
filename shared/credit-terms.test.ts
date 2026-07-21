@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { invoiceCreditTermDays, summarizeCreditTerms } from './credit-terms';
 
-describe('plazos observados de cuenta corriente', () => {
-  it('calcula el plazo exacto entre emisión y vencimiento', () => {
+describe('observed account terms', () => {
+  it('calculates the exact term between issue and due dates', () => {
     expect(invoiceCreditTermDays('2026-07-01', '2026-07-31')).toBe(30);
     expect(invoiceCreditTermDays('2026-07-01', '2026-07-01')).toBe(0);
     expect(invoiceCreditTermDays('2026-07-02', '2026-07-01')).toBeNull();
   });
 
-  it('agrupa corrimientos de calendario sin perder el rango exacto', () => {
+  it('groups calendar shifts without losing the exact range', () => {
     const summary = summarizeCreditTerms([
       { issuedAt: '2026-01-01', dueAt: '2026-01-31' },
       { issuedAt: '2026-02-01', dueAt: '2026-03-05' },
@@ -19,7 +19,7 @@ describe('plazos observados de cuenta corriente', () => {
     expect(summary.options[0]).toMatchObject({ minDays: 30, maxDays: 33, invoiceCount: 3, share: 100 });
   });
 
-  it('informa una condición predominante y conserva las alternativas', () => {
+  it('reports a predominant term and preserves alternatives', () => {
     const summary = summarizeCreditTerms([
       { issuedAt: '2026-01-01', dueAt: '2026-01-31' },
       { issuedAt: '2026-02-01', dueAt: '2026-03-03' },
@@ -32,7 +32,7 @@ describe('plazos observados de cuenta corriente', () => {
     expect(summary.options.map((option) => option.days)).toEqual([30, 15]);
   });
 
-  it('no fuerza un único plazo cuando ninguna condición alcanza mayoría', () => {
+  it('does not force one term when no condition has a majority', () => {
     const summary = summarizeCreditTerms([
       { issuedAt: '2026-01-01', dueAt: '2026-01-31' },
       { issuedAt: '2026-02-01', dueAt: '2026-03-03' },
