@@ -111,3 +111,16 @@ El servidor expone:
 - `GET /api/reports/commercial-sales`
 
 Las pruebas verifican fuente GESI, empresa 3, sucursales 3/6, razones sociales admitidas, exclusiones internas, cobertura, corte equivalente, conciliación entre total y composición, clasificación de negocios y recálculo por vendedor.
+
+## Ampliación administrativa v0.4.0
+
+`Administración → Explorador de ventas` reutiliza el mismo contrato ejecutable de esta ficha y agrega el uso cotidiano que no correspondía a la página analítica original:
+
+- filtro global por fecha, vendedor, cliente, producto, marca, rubro, canal y zona;
+- KPI reconciliados de venta neta, kilos, unidades y clientes, más comprobantes, ticket promedio y venta por kilo definidos en el catálogo central;
+- recorrido indicador → período → cliente o producto → comprobante → renglones exactos;
+- navegación a perfiles de cliente y producto;
+- vistas frecuentes persistidas;
+- exportación CSV/XLSX al grano de renglón de comprobante-producto, con corte, universo y filtros.
+
+El servidor expone `GET /api/admin/sales/meta`, `GET /api/admin/sales`, `GET /api/admin/sales/document` y `GET /api/admin/sales/export`. Las pruebas reconcilian el resumen contra `server/report-metrics.ts` bajo exactamente el mismo WHERE y verifican que los renglones sumen al comprobante abierto.

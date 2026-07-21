@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { resolveActiveDataPaths } from '../server/data-bundle.js';
 
-const operationalPath = resolve(process.cwd(), 'data/spt-gesi.sqlite');
+const operationalPath = resolveActiveDataPaths().commercial;
 const referencePath = resolve(process.cwd(), 'data/reference/spt-pbix.sqlite');
 const outputPath = resolve(process.cwd(), 'data/quality/spt-reconciliation.json');
 
@@ -155,7 +156,7 @@ const result = {
   generatedAt: new Date().toISOString(),
   period: { start, referenceCutoff },
   sources: {
-    operational: { path: 'data/spt-gesi.sqlite', kind: operationalMeta.get('source_kind'), capturedAt: operationalMeta.get('captured_at') },
+    operational: { path: relative(process.cwd(), operationalPath), kind: operationalMeta.get('source_kind'), capturedAt: operationalMeta.get('captured_at') },
     reference: { path: 'data/reference/spt-pbix.sqlite', kind: referenceMeta.get('source_kind') ?? 'pbix_reference', maxDate: referenceCutoff },
   },
   metrics: { operational: operationalMetric, reference: referenceMetric, difference },

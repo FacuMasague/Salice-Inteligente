@@ -1,6 +1,8 @@
-# Catálogo central de métricas y datos · v0.3.0
+# Catálogo central de métricas y datos · v0.4.0
 
 La fuente ejecutable del catálogo es `shared/metrics.ts`. La misma definición se publica en `GET /api/metrics/catalog` y se presenta en Configuración. Este documento explica el contrato de mantenimiento; no reemplaza a las fichas particulares de `docs/powerbi`.
+
+`server/report-metrics.ts` ejecuta las agregaciones compartidas de kilos, unidades, venta neta y clientes, junto con las funciones únicas de cociente, variación y participación. `server/report-universes.ts` mantiene los universos ejecutables y comprueba su alineación con el catálogo. La respuesta del catálogo vincula cada endpoint con sus métricas y cada endpoint publica el mismo vínculo mediante `X-Salice-Metrics`.
 
 ## Contrato de una métrica
 
@@ -28,6 +30,10 @@ Los universos quedan versionados por reporte con empresa, sucursal, emisor, incl
 ## Calidad visible
 
 `GET /api/system/data-health` informa frescura, cobertura y estado de cada artefacto. `pnpm run audit:platform` cruza snapshot, staging, base comercial, saldos pendientes y catálogo. Un control obligatorio fallido impide aprobar una actualización; una limitación conocida de GESI se conserva como advertencia visible.
+
+La auditoría también verifica el manifiesto activo, los contratos ejecutables, la auditoría vectorial y `integrity_check` de la persistencia operativa.
+
+En v0.4.0 el catálogo llega a la versión 1.2.0 con 20 métricas. El Explorador de ventas agrega `sales.documents`, `sales.average_ticket` y `sales.average_price_kg` sobre el mismo universo ejecutable de Ventas · Comercial. `target.monthly` ya no lee una constante en memoria: toma la única versión activa de `operations.sqlite`, mientras resultados, cumplimiento y proyección continúan calculándose desde GESI.
 
 Umbrales predeterminados:
 

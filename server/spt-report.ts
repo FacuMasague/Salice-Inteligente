@@ -14,11 +14,14 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { cutoffDate, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { readMovementMetrics } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
 const DEFAULT_SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Reventas'];
 const DEFAULT_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Small Retail', 'Partido de la Costa'];
@@ -31,8 +34,9 @@ const SELLER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Dr
 const QUARTER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Partido de la Costa'];
 const QUARTER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition'];
 const QUARTER_PAGE_SELLERS = ['Alejandro Lurbe', 'Andres Dominguez', 'Edgardo Larrea', 'Lucas Morales', 'Pablo Ramires', 'Rutas', 'Hernan Jauregui', 'Male', 'Gonzalo Russian'];
-const EXCLUDED_CATEGORIES = ['POP', 'Promociones'];
-const COMPANIES = [3, 6];
+const UNIVERSE = EXECUTABLE_UNIVERSES.spt;
+const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
+const COMPANIES = [...UNIVERSE.companies];
 
 const FILTER_COLUMNS: Record<SptFilterKey, string> = {
   seller: 'seller',
@@ -50,7 +54,6 @@ const FILTER_COLUMNS: Record<SptFilterKey, string> = {
 };
 
 type SqlValue = string | number;
-type MetricRow = { kilos: number | null; units: number | null; netAmount: number | null; clients: number | null };
 
 let cachedMeta: SptReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -70,12 +73,12 @@ function metadata(database: DatabaseSync) {
 }
 
 export function getSptReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getSptReportMeta(): SptReportMeta {
-  if (cachedMeta) return cachedMeta;
   const database = db();
+  if (cachedMeta) return cachedMeta;
   if (!database) {
     return {
       available: false,
@@ -122,8 +125,9 @@ function placeholders(values: unknown[]) {
 
 function buildWhere(filters: SptFilters, start?: string, end?: string, page: SptReportPage = 'main') {
   const excludedCategories = page === 'quarters' ? ['POP'] : EXCLUDED_CATEGORIES;
-  const clauses: string[] = [`company_id IN (${placeholders(COMPANIES)})`, `category NOT IN (${placeholders(excludedCategories)})`];
-  const parameters: SqlValue[] = [...COMPANIES, ...excludedCategories];
+  const base = compileMovementUniverse({ ...UNIVERSE, excludedCategories });
+  const clauses: string[] = [base.sql];
+  const parameters: SqlValue[] = [...base.parameters];
   if (start) { clauses.push('sale_date >= ?'); parameters.push(start); }
   if (end) { clauses.push('sale_date <= ?'); parameters.push(end); }
 
@@ -156,19 +160,7 @@ function buildWhere(filters: SptFilters, start?: string, end?: string, page: Spt
 }
 
 function metric(database: DatabaseSync, where: ReturnType<typeof buildWhere>): SptPeriodMetrics {
-  const row = database.prepare(`
-    SELECT COALESCE(SUM(kilos), 0) AS kilos,
-           COALESCE(SUM(units), 0) AS units,
-           COALESCE(SUM(net_amount), 0) AS netAmount,
-           COUNT(DISTINCT client_id) AS clients
-    FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow;
-  return {
-    kilos: Number(row.kilos ?? 0),
-    units: Number(row.units ?? 0),
-    netAmount: Number(row.netAmount ?? 0),
-    clients: Number(row.clients ?? 0),
-  };
+  return readMovementMetrics(database, where.sql, where.parameters);
 }
 
 function breakdown(database: DatabaseSync, filters: SptFilters, start: string, end: string, column: string, page: SptReportPage): SptBreakdownRow[] {

@@ -13,17 +13,21 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { daysInclusive, shiftDays as addDays } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricRatio as ratio, metricShare, metricVariation } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3];
-const ISSUERS = ['Salice Distribuciones S.A.'];
-const PRODUCT_GROUP = 'Pet Nutrition';
-const EXCLUDED_CLIENTS = ['Via Salice MDP S.A.'];
+const UNIVERSE = EXECUTABLE_UNIVERSES.mars;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ISSUERS = [...UNIVERSE.allowedIssuers];
+const PRODUCT_GROUP = UNIVERSE.includedProductGroups[0];
+const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
 const MARS_BRANDS = ['Iams', 'Optimum', 'Pedigree', 'Pedigree High Pro', 'Whiskas'];
 const MARS_SUBCATEGORIES = ['C&T', 'DRY', 'MUSE', 'SiSe'];
 const MARS_CHANNELS = ['Especializado', 'Masivo'];
@@ -162,20 +166,7 @@ function metadata(database: DatabaseSync) {
 }
 
 function baseUniverse() {
-  return {
-    sql: `company_id IN (${placeholders(COMPANIES)})
-      AND branch_id IN (${placeholders(BRANCHES)})
-      AND UPPER(TRIM(issuer_name)) IN (${placeholders(ISSUERS)})
-      AND UPPER(TRIM(product_group)) = ?
-      AND UPPER(TRIM(client_name)) NOT IN (${placeholders(EXCLUDED_CLIENTS)})`,
-    parameters: [
-      ...COMPANIES,
-      ...BRANCHES,
-      ...ISSUERS.map((value) => value.toUpperCase()),
-      PRODUCT_GROUP.toUpperCase(),
-      ...EXCLUDED_CLIENTS.map((value) => value.toUpperCase()),
-    ] as SqlValue[],
-  };
+  return compileMovementUniverse(UNIVERSE);
 }
 
 function buildWhere(filters: MarsFilters, start?: string, end?: string) {
@@ -209,10 +200,6 @@ function metric(database: DatabaseSync, filters: MarsFilters, start: string, end
     accounts,
     clientBranches,
   };
-}
-
-function ratio(value: number, base: number) {
-  return base ? value / base * 100 : null;
 }
 
 function normalizeFilters(input: Partial<Record<string, unknown>>, meta: MarsReportMeta): MarsFilters {
@@ -293,20 +280,20 @@ function brandRows(database: DatabaseSync, filters: MarsFilters, current: MarsPe
       clients: Number(row.clients),
       accounts: Number(row.accounts),
       clientBranches: Number(row.clientBranches),
-      share: total ? kilos / total * 100 : 0,
+      share: metricShare(kilos, total),
       previousYearKilos,
-      variation: previousYearKilos ? (kilos - previousYearKilos) / previousYearKilos * 100 : null,
+      variation: metricVariation(kilos, previousYearKilos),
     };
   }).filter((row) => Math.abs(row.kilos) > 0.0001).sort((a, b) => b.kilos - a.kilos);
 }
 
 export function getMarsReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getMarsReportMeta(): MarsReportMeta {
-  if (cachedMeta) return cachedMeta;
   const database = db();
+  if (cachedMeta) return cachedMeta;
   const unavailable: MarsReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',

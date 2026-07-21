@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Users, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Target, Users, WalletCards, X } from 'lucide-react';
 import { VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product } from '../shared/models';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
@@ -23,12 +23,16 @@ const BairesReportView = lazy(() => import('./views/BairesReportView').then((mod
 const NonBuyersReportView = lazy(() => import('./views/NonBuyersReportView').then((module) => ({ default: module.NonBuyersReportView })));
 const PendingBalancesReportView = lazy(() => import('./views/PendingBalancesReportView').then((module) => ({ default: module.PendingBalancesReportView })));
 const SellersView = lazy(() => import('./views/SellersView').then((module) => ({ default: module.SellersView })));
+const SalesExplorerView = lazy(() => import('./views/SalesExplorerView').then((module) => ({ default: module.SalesExplorerView })));
+const ReceivablesView = lazy(() => import('./views/ReceivablesView').then((module) => ({ default: module.ReceivablesView })));
+const GoalsView = lazy(() => import('./views/GoalsView').then((module) => ({ default: module.GoalsView })));
 
 type View = TutorialView;
-type SidebarSection = 'operations' | 'reports' | 'system';
+type SidebarSection = 'operations' | 'administration' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
   map: 'operations', agenda: 'operations', clients: 'operations', sellers: 'operations', finance: 'operations', products: 'operations', routes: 'operations',
+  'sales-explorer': 'administration', receivables: 'administration', goals: 'administration',
   reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
   settings: 'system',
 };
@@ -41,6 +45,9 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
   products: { title: 'Inteligencia de producto', subtitle: 'Catálogo vectorizado para comparar y recomendar' },
   routes: { title: 'Planificación de rutas', subtitle: 'Recorridos comerciales priorizados y explicables' },
+  'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
+  receivables: { title: 'Cuentas por cobrar', subtitle: 'Cartera, responsables, estados y seguimiento administrativo' },
+  goals: { title: 'Objetivos comerciales', subtitle: 'Planificación propia, versiones, cambios y cumplimiento' },
   reports: { title: 'Reporte General', subtitle: 'Objetivos, resultados y estado comercial de Salice' },
   spt: { title: 'SPT Vol vs mes anterior', subtitle: 'Volumen en kilos, evolución, vendedores y comparación temporal' },
   'commercial-sales': { title: 'Ventas · Comercial', subtitle: 'Venta neta, evolución, marcas y composición del negocio' },
@@ -72,7 +79,7 @@ export default function App() {
   const [routeClientId, setRouteClientId] = useState<number | null>(null);
   const [clientQuery, setClientQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, reports: true, system: true });
+  const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
   const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v032') === 'completed');
@@ -166,6 +173,7 @@ export default function App() {
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
   const activeClients = useMemo(() => data?.clients.filter((client) => client.active) ?? [], [data]);
   const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
+  const openClientById = (clientId: number) => { const client = data?.clients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
   const openProductCatalog = (product: Product) => { setProductFocusId(product.id); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
   const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
@@ -217,6 +225,8 @@ export default function App() {
           {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
             {nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => selectView(item.id)}><Icon size={19} /><span>{item.label}</span>{item.id === 'finance' && activeClients.some((client) => client.health === 'critical') && <i>{activeClients.filter((client) => client.health === 'critical').length}</i>}</button>; })}
           </nav>}
+          <button className="sidebar-section-label lower" aria-expanded={sidebarSections.administration} aria-controls="sidebar-administration" onClick={() => toggleSidebarSection('administration')}><span>Administración</span>{sidebarSections.administration ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'goals' ? 'active' : ''} onClick={() => selectView('goals')}><Target size={19} /><span>Objetivos comerciales</span></button></nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.reports} aria-controls="sidebar-reports" onClick={() => toggleSidebarSection('reports')}><span>Reportes</span>{sidebarSections.reports ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={view === 'reports' ? 'active' : ''} onClick={() => selectView('reports')}><LayoutDashboard size={19} /><span>Reporte General</span></button><button className={view === 'commercial-sales' ? 'active' : ''} onClick={() => selectView('commercial-sales')}><ShoppingBasket size={19} /><span>Ventas · Comercial</span></button><button className={view === 'spt' ? 'active' : ''} onClick={() => selectView('spt')}><BarChart3 size={19} /><span>SPT Vol vs mes anterior</span></button><button className={view === 'pending-balances' ? 'active' : ''} onClick={() => selectView('pending-balances')}><WalletCards size={19} /><span>Saldos Pendientes</span></button><button className={view === 'non-buyers' ? 'active' : ''} onClick={() => selectView('non-buyers')}><PackageSearch size={19} /><span>Cuentas no compradoras</span></button><button className={view === 'mars' ? 'active' : ''} onClick={() => selectView('mars')}><PawPrint size={19} /><span>Reporte Mars</span></button><button className={view === 'nutripet' ? 'active' : ''} onClick={() => selectView('nutripet')}><ShoppingBag size={19} /><span>Reporte NutriPet</span></button><button className={view === 'baires' ? 'active' : ''} onClick={() => selectView('baires')}><Package size={19} /><span>Reporte Baires</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
@@ -257,6 +267,9 @@ export default function App() {
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
           {view === 'products' && <ProductsView products={data.products} focusProductId={productFocusId} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} />}
           {view === 'routes' && <RoutesView clients={activeClients} initialClientId={routeClientId} onOpenClient={openClient} onOpenSeller={openSeller} />}
+          {view === 'sales-explorer' && <SalesExplorerView onOpenClient={openClientById} onOpenProduct={openProduct} />}
+          {view === 'receivables' && <ReceivablesView dataClients={data.clients} onOpenClient={openClient} />}
+          {view === 'goals' && <GoalsView />}
           {view === 'reports' && <ReportsView data={data} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'spt' && <SptReportView onOpenSeller={openSeller} />}
           {view === 'commercial-sales' && <CommercialSalesReportView onOpenProduct={openProduct} />}

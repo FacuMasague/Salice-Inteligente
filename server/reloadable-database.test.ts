@@ -37,4 +37,20 @@ describe('base analítica recargable', () => {
     expect(second?.database.prepare('SELECT value FROM meta').get()?.value).toBe('segunda versión más larga');
     source.close();
   });
+
+  it('cambia de archivo cuando el resolvedor apunta a una nueva generación', () => {
+    directory = mkdtempSync(join(tmpdir(), 'salice-db-generation-'));
+    const firstPath = join(directory, 'first.sqlite');
+    const secondPath = join(directory, 'second.sqlite');
+    writeDatabase(firstPath, 'primera');
+    writeDatabase(secondPath, 'segunda');
+    let activePath = firstPath;
+    const source = new ReloadableReadonlyDatabase(() => activePath);
+    expect(source.get()?.database.prepare('SELECT value FROM meta').get()?.value).toBe('primera');
+    activePath = secondPath;
+    const second = source.get();
+    expect(second?.changed).toBe(true);
+    expect(second?.database.prepare('SELECT value FROM meta').get()?.value).toBe('segunda');
+    source.close();
+  });
 });

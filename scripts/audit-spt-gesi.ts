@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { resolveActiveDataPaths } from '../server/data-bundle.js';
 
-const databasePath = resolve(process.cwd(), 'data/spt-gesi.sqlite');
-const outputPath = resolve(process.cwd(), 'data/quality/spt-gesi-audit.json');
+const databasePath = resolve(process.env.SALICE_SPT_DB_PATH ?? resolveActiveDataPaths().commercial);
+const outputPath = resolve(process.env.SALICE_SPT_AUDIT_OUTPUT_PATH ?? resolveActiveDataPaths().sptAudit);
 const database = new DatabaseSync(databasePath, { readOnly: true });
 
 const metadata = new Map((database.prepare('SELECT key, value FROM report_meta').all() as { key: string; value: string }[])

@@ -14,16 +14,20 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { cutoffDate, daysInclusive, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3, 6];
-const ALLOWED_ISSUERS = ['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.'];
-const EXCLUDED_CLIENTS = ['Via Salice MDP S.A.', 'Consumidor Final', 'GBA M6 S.A.'];
+const UNIVERSE = EXECUTABLE_UNIVERSES.commercialSales;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
+const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
 const FOOD_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'Snacks'];
 const BALANCEADO_GROUPS = ['Baires Masivo', 'Baires SPT', 'Devoluciones', 'Handler', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'SP - Eukanuba + Iams'];
 const DROVET_GROUPS = ['Drovet', 'Kualcos'];
@@ -37,7 +41,6 @@ const FILTER_COLUMNS: Record<CommercialSalesFilterKey, string> = {
 };
 
 type SqlValue = string | number;
-type MetricRow = { netAmount: number | null; kilos: number | null; units: number | null; clients: number | null };
 
 let cachedMeta: CommercialSalesReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -61,19 +64,16 @@ function reportMetadata(database: DatabaseSync) {
 }
 
 function baseUniverse() {
-  return {
-    sql: `company_id IN (${placeholders(COMPANIES)}) AND branch_id IN (${placeholders(BRANCHES)}) AND UPPER(TRIM(issuer_name)) IN (${placeholders(ALLOWED_ISSUERS)}) AND UPPER(TRIM(client_name)) NOT IN (${placeholders(EXCLUDED_CLIENTS)})`,
-    parameters: [...COMPANIES, ...BRANCHES, ...ALLOWED_ISSUERS.map((issuer) => issuer.toUpperCase()), ...EXCLUDED_CLIENTS.map((client) => client.toUpperCase())] as SqlValue[],
-  };
+  return compileMovementUniverse(UNIVERSE);
 }
 
 export function getCommercialSalesReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
-  if (cachedMeta) return cachedMeta;
   const database = db();
+  if (cachedMeta) return cachedMeta;
   if (!database) {
     return {
       available: false,
@@ -157,19 +157,7 @@ function buildWhere(filters: CommercialSalesFilters, start?: string, end?: strin
 }
 
 function metric(database: DatabaseSync, where: ReturnType<typeof buildWhere>): CommercialSalesMetrics {
-  const row = database.prepare(`
-    SELECT COALESCE(SUM(net_amount), 0) AS netAmount,
-           COALESCE(SUM(kilos), 0) AS kilos,
-           COALESCE(SUM(units), 0) AS units,
-           COUNT(DISTINCT client_id) AS clients
-    FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow;
-  return {
-    netAmount: Number(row.netAmount ?? 0),
-    kilos: Number(row.kilos ?? 0),
-    units: Number(row.units ?? 0),
-    clients: Number(row.clients ?? 0),
-  };
+  return readMovementMetrics(database, where.sql, where.parameters);
 }
 
 function groupClause(groups: string[]) {
@@ -207,7 +195,7 @@ function mix(database: DatabaseSync, filters: CommercialSalesFilters, start: str
       kilos: Number(row?.kilos ?? 0),
       units: Number(row?.units ?? 0),
       clients: Number(row?.clients ?? 0),
-      share: total ? netAmount / total * 100 : 0,
+      share: metricShare(netAmount, total),
     };
   });
 }
@@ -249,7 +237,9 @@ function brandBreakdown(database: DatabaseSync, filters: CommercialSalesFilters,
            COALESCE(SUM(units), 0) AS units, COUNT(DISTINCT client_id) AS clients,
            AVG(CASE WHEN kilos <> 0 THEN net_amount / kilos END) AS averagePricePerKilo
     FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow & { averagePricePerKilo: number | null };
+  `).get(...where.parameters) as unknown as {
+    netAmount: number | null; kilos: number | null; units: number | null; clients: number | null; averagePricePerKilo: number | null;
+  };
   const totalSales = Number(totalRow.netAmount ?? 0);
   const totalKilos = Number(totalRow.kilos ?? 0);
   const mappedRows = brands.map((row) => ({
@@ -353,7 +343,7 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
     current,
     comparison,
     difference: current.netAmount - comparison.netAmount,
-    variation: comparison.netAmount ? (current.netAmount - comparison.netAmount) / comparison.netAmount * 100 : null,
+    variation: metricVariation(current.netAmount, comparison.netAmount),
     segments,
     mix: mix(database, filters, currentStart, currentEnd),
     monthly,

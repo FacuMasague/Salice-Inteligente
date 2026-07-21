@@ -9,7 +9,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.3.2';
+export const APP_VERSION = '0.4.0';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -789,6 +789,133 @@ export interface GeneralReportPayload {
   brands: GeneralPerformanceRow[];
 }
 
+export type SalesExplorerFilterKey = 'seller' | 'client' | 'product' | 'brand' | 'category' | 'channel' | 'zone';
+
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+export interface SalesExplorerFilters {
+  from: string;
+  to: string;
+  seller: string;
+  client: string;
+  product: string;
+  brand: string;
+  category: string;
+  channel: string;
+  zone: string;
+}
+
+export interface SalesExplorerMeta {
+  available: boolean;
+  sourceSystem: string;
+  capturedAt: string;
+  minDate: string;
+  maxDate: string;
+  rowCount: number;
+  sourceDocumentCount: number;
+  unavailableDocumentCount: number;
+  options: {
+    sellers: string[];
+    clients: SelectOption[];
+    products: SelectOption[];
+    brands: string[];
+    categories: string[];
+    channels: string[];
+    zones: string[];
+  };
+  universe: {
+    id: string;
+    companies: number[];
+    branches: number[];
+    allowedIssuers: string[];
+    excludedClients: string[];
+  };
+}
+
+export interface SalesExplorerMetrics {
+  netAmount: number;
+  kilos: number;
+  units: number;
+  clients: number;
+  documents: number;
+  averageTicket: number | null;
+  averagePricePerKilo: number | null;
+}
+
+export interface SalesExplorerPeriodRow extends SalesExplorerMetrics {
+  key: string;
+  label: string;
+  from: string;
+  to: string;
+}
+
+export interface SalesExplorerClientRow extends SalesExplorerMetrics {
+  clientId: number;
+  name: string;
+  seller: string;
+  zone: string;
+  products: number;
+  lastSaleAt: string;
+  share: number;
+}
+
+export interface SalesExplorerProductRow extends SalesExplorerMetrics {
+  productId: string;
+  name: string;
+  brand: string;
+  category: string;
+  clients: number;
+  lastSaleAt: string;
+  share: number;
+}
+
+export interface SalesExplorerDocumentRow {
+  key: string;
+  documentNumber: string;
+  date: string;
+  kind: 'invoice' | 'credit_note';
+  clientId: number;
+  client: string;
+  seller: string;
+  netAmount: number;
+  kilos: number;
+  units: number;
+  items: number;
+}
+
+export interface SalesExplorerPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  filters: SalesExplorerFilters;
+  summary: SalesExplorerMetrics;
+  timelineGrain: 'day' | 'month';
+  timeline: SalesExplorerPeriodRow[];
+  clients: SalesExplorerClientRow[];
+  products: SalesExplorerProductRow[];
+  documents: SalesExplorerDocumentRow[];
+  documentPagination: { page: number; pageSize: number; total: number; pages: number };
+  resultLimits: { clients: number; products: number };
+}
+
+export interface SalesExplorerDocumentDetail extends SalesExplorerDocumentRow {
+  issuer: string;
+  branch: string;
+  address: string;
+  locality: string;
+  lineItems: Array<{
+    productId: string;
+    product: string;
+    brand: string;
+    category: string;
+    units: number;
+    kilos: number;
+    netAmount: number;
+  }>;
+}
+
 export type PendingBalanceStatus = 'all' | 'overdue' | 'not_due';
 
 export interface PendingBalanceFilters {
@@ -874,6 +1001,142 @@ export interface PendingBalanceReportPayload {
   sellers: PendingBalanceSellerRow[];
   clients: PendingBalanceClientRow[];
   aging: PendingBalanceAgingRow[];
+}
+
+export type ReceivableCaseStatus = 'unmanaged' | 'to_contact' | 'in_progress' | 'promise' | 'disputed' | 'resolved';
+
+export interface ReceivableCaseEvent {
+  id: string;
+  clientId: number;
+  eventType: 'created' | 'assignment' | 'status' | 'follow_up' | 'comment';
+  actor: string;
+  comment: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ReceivableCase {
+  clientId: number;
+  responsible: string;
+  status: ReceivableCaseStatus;
+  nextFollowUpAt: string | null;
+  updatedAt: string;
+  updatedBy: string;
+  lastComment: string;
+  eventCount: number;
+}
+
+export interface ReceivableDashboardFilters extends PendingBalanceFilters {
+  responsible: string;
+  internalStatus: string;
+  aging: string;
+  query: string;
+}
+
+export interface ReceivableDashboardRow extends PendingBalanceClientRow {
+  workflow: ReceivableCase;
+}
+
+export interface PendingBalanceDocumentRow {
+  documentId: string;
+  clientId: number;
+  documentNumber: string;
+  issuedAt: string;
+  dueAt: string;
+  outstanding: number;
+  creditTermDays: number | null;
+  status: 'overdue' | 'not_due';
+  overdueDays: number;
+}
+
+export interface ReceivableCaseDetail {
+  workflow: ReceivableCase;
+  events: ReceivableCaseEvent[];
+  documents: PendingBalanceDocumentRow[];
+}
+
+export interface ReceivableDashboardPayload {
+  generatedAt: string;
+  sourceMaxDate: string;
+  filters: ReceivableDashboardFilters;
+  pendingBalance: number;
+  overdueBalance: number;
+  overdueShare: number;
+  clientsWithBalance: number;
+  overdueClients: number;
+  openDocuments: number;
+  overdueDocuments: number;
+  dueFollowUps: number;
+  unmanagedClients: number;
+  aging: PendingBalanceAgingRow[];
+  statusBreakdown: Array<{ status: ReceivableCaseStatus; clients: number; amount: number }>;
+  rows: ReceivableDashboardRow[];
+  options: {
+    sellers: string[];
+    paymentMethods: string[];
+    responsibles: string[];
+  };
+}
+
+export type CommercialGoalVersionStatus = 'draft' | 'active' | 'archived';
+
+export interface CommercialGoalVersion {
+  id: string;
+  version: number;
+  name: string;
+  status: CommercialGoalVersionStatus;
+  sourceLabel: string;
+  coverageFrom: string;
+  coverageThrough: string;
+  notes: string;
+  createdAt: string;
+  createdBy: string;
+  activatedAt: string | null;
+  rowCount: number;
+}
+
+export interface CommercialGoalRow {
+  id: string;
+  month: string;
+  product: string;
+  seller: string;
+  kilos: number | null;
+  accounts: number | null;
+  invoicing: number | null;
+}
+
+export interface CommercialGoalChange {
+  id: string;
+  versionId: string;
+  eventType: 'created' | 'row_created' | 'row_updated' | 'row_deleted' | 'activated';
+  entityKey: string;
+  actor: string;
+  comment: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface CommercialGoalsPayload {
+  versions: CommercialGoalVersion[];
+  selectedVersion: CommercialGoalVersion;
+  selectedMonth: string;
+  months: string[];
+  sellers: string[];
+  products: string[];
+  rows: CommercialGoalRow[];
+  changes: CommercialGoalChange[];
+}
+
+export interface SavedView {
+  id: string;
+  viewKey: 'sales-explorer' | 'receivables';
+  name: string;
+  filters: Record<string, string>;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type NonBuyerFilterKey = 'productGroup' | 'category' | 'brand' | 'seller';

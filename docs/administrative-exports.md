@@ -1,15 +1,15 @@
-# Matriz de exportaciones administrativas
+# Matriz de exportaciones administrativas · v0.4.0
 
-La v0.3.0 define qué exportaciones conviene implementar en el núcleo administrativo. La generación de archivos queda para v0.4.x, junto con el explorador general de ventas y sus drill-downs.
+La v0.4.0 implementa las exportaciones prioritarias del núcleo administrativo y conserva el resto como backlog explícito.
 
-| Prioridad | Vista | Formato inicial | Grano | Campos mínimos | Motivo |
+| Prioridad | Vista | Formato inicial | Grano | Estado v0.4.0 | Motivo |
 |---:|---|---|---|---|---|
-| 1 | Saldos Pendientes | XLSX/CSV | Comprobante abierto | cliente, vendedor, emisión, vencimiento, saldo, antigüedad, forma de pago | Gestión y conciliación administrativa |
-| 1 | Ventas · Comercial | XLSX/CSV | Cliente-producto-período | fecha, comprobante, vendedor, cliente, producto, marca, rubro, kilos, unidades, venta neta | Análisis y control comercial |
-| 1 | Agenda | XLSX/CSV | Tarea o gestión | fecha, responsable, cliente, origen, estado, resultado, importe, próxima acción | Seguimiento operativo |
-| 2 | Cuentas no compradoras | XLSX/CSV | Cliente o marca | última compra, ventanas 30/90/180, promedio, vendedor, filtros aplicados | Campañas de recuperación |
-| 2 | Objetivos y cumplimiento | XLSX/PDF | Lectura-mes-dimensión | versión del plan, objetivo, real, diferencia, cumplimiento, proyección | Reuniones y trazabilidad del plan |
-| 3 | Reportes de proveedor | XLSX/PDF | Marca-producto-período | universo, corte, kilos, clientes, comparación, filtros | Intercambio externo controlado |
+| 1 | Cuentas por cobrar | XLSX/CSV | Cliente con saldo y seguimiento | Implementado | Gestión y conciliación administrativa |
+| 1 | Explorador de ventas | XLSX/CSV | Renglón de comprobante-producto | Implementado | Análisis y control comercial |
+| 1 | Agenda | XLSX/CSV | Tarea o gestión | Pendiente | Seguimiento operativo |
+| 2 | Cuentas no compradoras | XLSX/CSV | Cliente o marca | Pendiente | Campañas de recuperación |
+| 2 | Objetivos y cumplimiento | XLSX/PDF | Lectura-mes-dimensión | Implementado | Reuniones y trazabilidad del plan |
+| 3 | Reportes de proveedor | XLSX/PDF | Marca-producto-período | Pendiente | Intercambio externo controlado |
 
 Reglas para todas las exportaciones:
 
@@ -19,3 +19,11 @@ Reglas para todas las exportaciones:
 - no exportar secretos ni campos personales que la tarea no necesite;
 - CSV/XLSX conserva datos de detalle; PDF se reserva para una presentación estable y resumida;
 - el total exportado debe reconciliar con la vista filtrada antes de habilitar la descarga.
+
+Implementación vigente:
+
+- los CSV usan UTF-8 con BOM y separan metadatos del encabezado de datos;
+- los XLSX poseen hoja `Metadatos`, autofiltro, anchos y formatos numéricos;
+- el porcentaje vencido se escribe como fracción numérica compatible con Excel;
+- el PDF de objetivos usa A4 y distingue plan activo de borrador;
+- las exportaciones fueron abiertas y verificadas como archivos válidos durante el cierre de v0.4.0.

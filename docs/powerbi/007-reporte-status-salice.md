@@ -80,3 +80,16 @@ La diferencia de 20 kg del primer bloque queda dentro de tres comprobantes fuent
 - tablas ordenables por vendedor, marca y rubro;
 - contexto operativo adicional de ventas de 90 días, cartera vencida y prioridad comercial;
 - trazabilidad visible de fuentes y limitaciones de cobertura.
+
+## Gestión versionada v0.4.0
+
+La tabla histórica dejó de ser una constante consumida directamente por el reporte y se importa una sola vez en `operations.sqlite` como versión 1 activa, con 1.085 filas y su fuente original. La pantalla `Administración → Objetivos comerciales` permite:
+
+- consultar versiones activas, borradores y archivadas;
+- clonar cualquier plan disponible como borrador editable;
+- agregar, editar o eliminar filas de un borrador;
+- auditar actor, fecha, comentario y valores anteriores/posteriores;
+- activar explícitamente un borrador, archivando la versión activa anterior;
+- exportar el detalle en XLSX y el resumen/cumplimiento en PDF.
+
+Reporte General consulta siempre la única versión activa y recarga fuente, cobertura y objetivos en cada solicitud. Resultados reales, comparaciones y proyección continúan en GESI; activar un plan nunca altera movimientos. Las pruebas existentes conservan las cifras testigo de julio y las nuevas pruebas demuestran clonación, edición, activación, archivo y bloqueo de ediciones posteriores.

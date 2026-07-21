@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.3.2
+# Salice Inteligente · v0.4.0
 
-Prototipo web operativo y personalizado para Salice Distribuciones S.A. Permite explorar la cartera sobre un mapa, trabajar una agenda diaria por vendedor, registrar gestiones y promesas de pago, revisar cuenta corriente, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
+Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, trabajar una agenda diaria por vendedor, registrar gestiones y promesas de pago, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
 
 ## Abrir el programa
 
@@ -37,6 +37,27 @@ La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda
 
 ## Qué incluye esta versión
 
+### Núcleo administrativo · v0.4.0
+
+- Nueva sección `Administración`, separada del centro operativo y de los reportes históricos, con Explorador de ventas, Cuentas por cobrar y Objetivos comerciales.
+- Explorador general de ventas con el mismo universo ejecutable de `Ventas · Comercial`. Fecha, vendedor, cliente, producto, marca, rubro, canal y zona recalculan KPI, evolución, clientes, productos y comprobantes. El recorrido baja de indicador a período, cliente o producto, comprobante y renglón exacto.
+- Tablero consolidado de cuentas por cobrar: conserva importes, vencimientos y antigüedad de GESI y agrega responsable, estado interno, próxima acción y comentarios en una capa humana separada. Cada cambio genera un evento append-only; cerrar un seguimiento no modifica la deuda GESI.
+- Objetivos comerciales administrables en `operations.sqlite`. El plan histórico se importa como versión inicial; las ediciones sólo ocurren en borradores clonados y una activación explícita archiva el plan anterior y cambia lo que consume Reporte General.
+- Vistas guardadas por superficie para recuperar filtros frecuentes. Pueden marcarse como favoritas, actualizarse con la combinación actual o eliminarse sin alterar datos de GESI.
+- Exportaciones con trazabilidad incluida: Ventas y Cuentas por cobrar en CSV/XLSX; Objetivos en XLSX y PDF A4. Cada archivo declara corte, universo, filtros y fuente.
+- Catálogo central ampliado a 20 métricas. El explorador incorpora comprobantes, ticket promedio y venta neta por kilo sin duplicar definiciones; Reporte General consume el mismo plan versionado que la administración de objetivos.
+- Tutorial ampliado a 25 pasos, interfaz responsive y tres pruebas de contrato específicas para cada módulo administrativo, además de las pruebas de persistencia y reconciliación.
+
+La definición técnica, los estados y las reglas de auditoría están en `docs/administrative-core-v0.4.md`.
+
+### Integridad y trazabilidad · v0.3.3
+
+- Cada actualización manual construye un paquete inmutable con snapshot, staging, base comercial y saldos pendientes. Los cuatro artefactos se auditan antes de publicar un único manifiesto activo mediante reemplazo atómico; una falla deja intacta la generación anterior.
+- El manifiesto registra corte, revisión, tamaño y checksum SHA-256 de cada artefacto. El servidor resuelve todos los módulos desde la misma generación y recarga automáticamente cuando cambia el manifiesto.
+- Las agregaciones canónicas de kilos, unidades, venta neta y clientes, junto con cumplimiento, variación y participación, se ejecutan desde helpers compartidos. Los universos principales poseen un contrato ejecutable alineado con el catálogo documental.
+- `pnpm run audit:vectors` genera cobertura por dimensión, contradicciones, cohortes de precio, cambios frente a la foto anterior, variaciones fuertes de precio por kilo y una muestra de recomendaciones con confianza insuficiente.
+- `operations.sqlite` cuenta con verificación de integridad y backup consistente al abrir el programa. Se retienen diez copias fechadas por defecto; la restauración es explícita y crea una copia de seguridad previa.
+
 ### Productos y vectorización v2.1 · v0.3.2
 
 - Amplía el perfil de 20 a 33 dimensiones, organizadas en seis grupos: especie; edad y tamaño; posicionamiento; tipo de producto; necesidades específicas; proteína o sabor.
@@ -57,18 +78,18 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 
 ### Consolidación v0.3.0
 
-- Catálogo central versionado de 17 métricas canónicas y 9 universos de reporte. Cada definición declara fórmula, fuente, grano, fecha, consumidores y salvedades; puede consultarse en Configuración o mediante `GET /api/metrics/catalog`.
+- El catálogo central comenzó con 17 métricas canónicas y 9 universos de reporte; v0.4.0 lo amplía a 20 métricas. Cada definición declara fórmula, fuente, grano, fecha, consumidores y salvedades; puede consultarse en Configuración o mediante `GET /api/metrics/catalog`.
 - Cortes temporales compartidos para reportes mensuales, anuales, ventanas móviles y comparaciones equivalentes, con pruebas comunes para evitar desvíos entre pantallas.
 - Estado visible de datos y fuentes: frescura del snapshot, cobertura comercial, saldos pendientes, auditoría cruzada y limitaciones conocidas de GESI. El umbral predeterminado avisa a las 24 horas y marca desactualización a las 48 horas.
 - Flujo manual integral y recuperable: captura, auditoría de captura, reconstrucción comercial, auditoría comercial, normalización, activación y auditorías finales. Conserva la última foto válida, evita dos actualizaciones simultáneas y registra etapa, duración, resultado, advertencias y error.
 - Recarga automática de las bases SQLite de reportes cuando sus archivos son reemplazados correctamente; ya no es necesario reiniciar el servidor después de una actualización aprobada.
-- Auditoría de plataforma con 17 controles sobre trazabilidad, fechas de corte, conteos físicos, revisión del snapshot y contratos centrales. Las faltas de GESI quedan como salvedades explícitas y no como ajustes artificiales.
+- Auditoría de plataforma con 21 controles sobre trazabilidad, fechas de corte, conteos físicos, manifiesto, vectores, persistencia operativa y contratos ejecutables. Las faltas de GESI quedan como salvedades explícitas y no como ajustes artificiales.
 - Carga diferida por módulo para reducir el JavaScript inicial y separar mapa, operación y reportes en paquetes independientes.
 - Criterios formales para retirar cada Power BI y matriz de exportaciones administrativas previstas, documentados en `docs/powerbi/replacement-criteria.md` y `docs/administrative-exports.md`.
 
 ### Funcionalidad consolidada de v0.2
 
-- Tutorial interactivo de 22 pasos desde Configuración, con navegación automática, foco visual y progreso persistente en el equipo.
+- Tutorial interactivo de 25 pasos desde Configuración, con navegación automática, foco visual y progreso persistente en el equipo.
 - Nueva ventana `Vendedores`: resume carteras, ventas de 90 días, vencido, riesgo, oportunidades, evolución mensual, conducta de pago, clientes prioritarios y principales localidades a partir del snapshot GESI.
 - Perfil ampliado por cliente con indicadores exactos de cobranza, plazo habitual, vencido, evolución de ventas y conducta contra el vencimiento. En el mapa conserva una ficha compacta con acceso a la vista completa; desde las demás pantallas, el cliente abre directamente su perfil.
 - Navegación contextual por vendedor desde tablas y fichas donde representa una entidad operativa; las interacciones propias de gráficos mantienen su función de análisis o filtrado.
@@ -114,18 +135,7 @@ La IA no interviene en la operación diaria de esta versión. La clasificación 
 
 Las credenciales viven únicamente en `.env`, archivo ignorado por Git. `.env.example` contiene la configuración no sensible y nunca debe recibir la contraseña real.
 
-```bash
-pnpm run capture:gesi
-pnpm run audit:gesi-capture
-pnpm run build:spt-gesi
-pnpm run audit:spt-gesi
-pnpm run sync:gesi
-pnpm run audit:data
-pnpm run audit:platform
-pnpm run audit:client-status
-```
-
-También se puede ejecutar el flujo completo con:
+La única operación aprobada para publicar una generación completa es:
 
 ```bash
 pnpm run refresh:gesi
@@ -142,21 +152,24 @@ GESI (empresa 3 / sucursal 3)
 data/raw/gesi-salice-latest.json       captura cruda
        │
        ▼
-data/staging/snapshot-gesi.json        normalización validada
+data/bundles/<ejecución>/               candidato aislado
        │
-       ▼
-data/snapshot.json                     snapshot activo de la web
-       │
-       ├── data/backups/                últimos 3 snapshots recuperables
-       ├── data/refresh-backups/        respaldo integral temporal del flujo manual
-       ├── data/operations.sqlite       notas, agenda, gestiones y promesas
-       ├── data/spt-gesi.sqlite         movimientos analíticos operativos desde GESI
-       ├── data/pending-balances.sqlite cartera documental del mismo corte
-       ├── data/quality/                 auditorías y conciliaciones reproducibles
-       └── data/reference/spt-pbix.sqlite  referencia opcional de conciliación
+       ├── snapshot.json
+       ├── snapshot-staging.json
+       ├── spt-gesi.sqlite
+       ├── pending-balances.sqlite
+       ├── quality/
+       └── manifest.json
+              │
+              ▼
+data/active-bundle.json                 único puntero activo
+
+data/operations.sqlite                  notas, agenda, seguimientos, vistas y objetivos
+data/operations-backups/                copias consistentes de información humana
+data/reference/spt-pbix.sqlite          referencia opcional de conciliación
 ```
 
-Los archivos de datos están ignorados por Git. La activación ocurre solamente después de validar referencias, totales, fechas, vectores y consistencia financiera. Si cualquier etapa falla, el flujo restaura el snapshot y las bases activas que existían al comenzar; el error queda registrado en `operations.sqlite` y visible en Configuración.
+Los archivos de datos están ignorados por Git. La activación ocurre solamente después de validar referencias, totales, fechas, vectores y consistencia financiera. Si cualquier etapa falla, el manifiesto conserva la generación anterior sin reemplazar ningún archivo activo; el error queda registrado en `operations.sqlite` y visible en Configuración.
 
 La base SPT se actualiza desde GESI. El historial de 2025 se obtiene con un backfill mensual y reanudable: cada mes se guarda antes de avanzar, por lo que una pausa o límite de la API no obliga a comenzar de nuevo.
 
@@ -174,7 +187,7 @@ El `.pbix` no es una dependencia del programa. Sólo si se recibe una nueva vers
 python3 scripts/import-spt-pbix.py "/ruta/al/Reporte SPT Vol vs mes anterior.pbix"
 ```
 
-La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` la compara con `data/spt-gesi.sqlite` y deja evidencia en `data/quality/spt-reconciliation.json`; el servidor sólo abre la base de GESI.
+La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` la compara con la base comercial del paquete activo y deja evidencia en `data/quality/spt-reconciliation.json`; el servidor sólo abre la base de GESI señalada por `data/active-bundle.json`.
 
 ## Criterios de negocio de esta foto
 
@@ -218,6 +231,19 @@ React + Vite
     ├── GET  /api/reports/non-buyers
     ├── GET  /api/reports/pending-balances/meta
     ├── GET  /api/reports/pending-balances
+    ├── GET  /api/admin/sales
+    ├── GET  /api/admin/sales/document
+    ├── GET  /api/admin/sales/export
+    ├── GET  /api/admin/receivables
+    ├── PATCH /api/admin/receivables/:clientId
+    ├── GET  /api/admin/receivables/export
+    ├── GET  /api/admin/goals
+    ├── POST /api/admin/goals/versions
+    ├── PATCH /api/admin/goals/versions/:versionId/rows/:rowId
+    ├── POST /api/admin/goals/versions/:versionId/activate
+    ├── GET  /api/admin/goals/export
+    ├── GET  /api/saved-views
+    ├── POST /api/saved-views
     ├── GET  /api/metrics/catalog
     ├── GET  /api/system/status
     ├── GET  /api/system/data-health
@@ -234,9 +260,9 @@ React + Vite
        Express + TypeScript
         ┌────┴──────────┬───────────────────┐
         │               │                   │
- data/snapshot.json  operations.sqlite  spt-gesi.sqlite
+ paquete activo      operations.sqlite  base comercial del paquete
         │               │                   │
- Captura API GESI   Notas y agenda      Facturas + NC GESI
+ Captura API GESI   Trabajo humano      Facturas + NC GESI
 ```
 
 El snapshot JSON sigue siendo adecuado para la foto analítica monousuario; SQLite evita mezclar datos humanos con cada importación. Esta versión todavía no tiene autenticación ni concurrencia multiusuario: antes de varios vendedores conectados al mismo tiempo conviene migrar la interfaz operativa a PostgreSQL y agregar usuarios y roles.
@@ -249,6 +275,8 @@ pnpm run build
 pnpm run audit:data
 pnpm run audit:spt-gesi
 pnpm run audit:platform
+pnpm run audit:vectors
+pnpm run audit:operations
 ```
 
 Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, promesas vencidas, registro explícito de gestiones, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliación de cifras testigo. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.

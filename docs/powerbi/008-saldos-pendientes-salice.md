@@ -94,3 +94,11 @@ Las filas se reprodujeron desde saldos, comprobantes pendientes, facturas y nota
 - Sin el PBIX no fue posible inspeccionar DAX, relaciones internas ni transformaciones SQL exactas.
 - La cartera documental puede diferir del saldo neto de cuenta corriente si existen créditos, recibos o valores todavía sin aplicar.
 - La pantalla declara la hora de la captura GESI; una comparación con Power BI sólo es válida si ambos cortes son equivalentes.
+
+## Flujo administrativo v0.4.0
+
+`Administración → Cuentas por cobrar` reutiliza esta cartera sin cambiar sus métricas y la convierte en una bandeja de trabajo. A cada cliente con saldo se le puede asignar responsable, estado interno, próxima fecha y comentarios. Creación, asignación, estado, fecha y comentario se guardan como eventos append-only en `operations.sqlite`.
+
+La pantalla agrega filtros por responsable, estado interno y antigüedad, búsqueda operativa, seguimientos exigibles, cuentas sin gestionar, detalle exacto de documentos y acceso al perfil completo. El estado `Cerrado internamente` no modifica ni cancela una deuda en GESI.
+
+La exportación CSV/XLSX incluye saldo, vencido, antigüedad, documentos, venta 30d y campos de seguimiento; corte, universo y filtros se incorporan como metadatos. Las pruebas reconcilian el tablero contra la implementación de esta ficha y verifican que los documentos abiertos sumen exactamente al saldo de la cuenta.

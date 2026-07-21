@@ -22,7 +22,11 @@ interface SystemStatus {
   activities: number;
   pendingPromises: number;
   pendingAgendaItems: number;
+  receivableCases: number;
+  savedViews: number;
+  goalVersions: number;
   backups: number;
+  operationalBackups: number;
   lastSync: { completedAt: string; snapshotAt: string; status: string } | null;
 }
 
@@ -61,7 +65,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado · 22 pasos</span><h2>Aprendé a usar Salice Inteligente v0.3.2</h2><p>El tutorial recorre agenda, clientes, vendedores, cartera, objetivos, saldos pendientes, productos y rutas. Sólo los formularios operativos modifican datos locales.</p></div>
+          <div><span className="section-kicker">Recorrido guiado · 25 pasos</span><h2>Aprendé a usar Salice Inteligente v0.4.0</h2><p>El tutorial recorre operación, administración, objetivos, reportes, productos y rutas. Sólo los formularios operativos modifican datos locales.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
@@ -103,8 +107,8 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
 
         <section className="data-card settings-card" data-tour="storage-rules">
           <div className="data-card-header"><div><span className="section-kicker"><HardDrive size={14} /> Persistencia local</span><h2>Datos humanos separados de GESI</h2></div><span className="algorithm-pill">SQLite</span></div>
-          <p className="settings-card-copy">Notas, gestiones, tareas y promesas se guardan fuera del snapshot importado. Así sobreviven a futuras actualizaciones de GESI.</p>
-          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Gestiones registradas</span><strong>{system ? number(system.activities) : 'Cargando…'}</strong></p><p><span>Promesas pendientes</span><strong>{system ? number(system.pendingPromises) : 'Cargando…'}</strong></p><p><span>Tareas manuales pendientes</span><strong>{system ? number(system.pendingAgendaItems) : 'Cargando…'}</strong></p><p><span>Respaldos del snapshot</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Foto actual migrada'}</strong></p></div>
+          <p className="settings-card-copy">Notas, gestiones, tareas, seguimientos, vistas y objetivos se guardan fuera del snapshot importado. Así sobreviven a futuras actualizaciones de GESI.</p>
+          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Gestiones registradas</span><strong>{system ? number(system.activities) : 'Cargando…'}</strong></p><p><span>Promesas pendientes</span><strong>{system ? number(system.pendingPromises) : 'Cargando…'}</strong></p><p><span>Tareas manuales pendientes</span><strong>{system ? number(system.pendingAgendaItems) : 'Cargando…'}</strong></p><p><span>Cuentas con seguimiento administrativo</span><strong>{system ? number(system.receivableCases) : 'Cargando…'}</strong></p><p><span>Vistas de filtros guardadas</span><strong>{system ? number(system.savedViews) : 'Cargando…'}</strong></p><p><span>Versiones de objetivos</span><strong>{system ? number(system.goalVersions) : 'Cargando…'}</strong></p><p><span>Generaciones de datos recuperables</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Backups de información humana</span><strong>{system ? number(system.operationalBackups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Foto actual migrada'}</strong></p></div>
         </section>
 
         <section className="data-card settings-card settings-wide-card">

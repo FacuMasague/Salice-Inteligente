@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { METRIC_CATALOG, REPORT_UNIVERSES, metricCatalogSummary } from './metrics';
+import { REPORT_ENDPOINT_METRICS } from './metric-links';
 
 describe('catálogo central de métricas y universos', () => {
   it('mantiene identificadores únicos y definiciones auditables', () => {
@@ -15,6 +16,11 @@ describe('catálogo central de métricas y universos', () => {
   });
 
   it('versiona el contrato expuesto por la API', () => {
-    expect(metricCatalogSummary().version).toBe('1.0.0');
+    expect(metricCatalogSummary().version).toBe('1.2.0');
+  });
+
+  it('vincula cada endpoint con identificadores canónicos existentes', () => {
+    const known = new Set(METRIC_CATALOG.map((metric) => metric.id));
+    expect(Object.values(REPORT_ENDPOINT_METRICS).flat().every((id) => known.has(id))).toBe(true);
   });
 });

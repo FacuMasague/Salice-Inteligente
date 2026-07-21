@@ -1,76 +1,74 @@
 import { spawn } from 'node:child_process';
-import { copyFile, mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
-import { basename, dirname, resolve } from 'node:path';
-import { completeRefreshRun, beginRefreshRun, failRefreshRun, listRefreshRuns, updateRefreshRunStage } from '../server/operational-store.js';
+import { mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
+import {
+  beginRefreshRun,
+  completeRefreshRun,
+  failRefreshRun,
+  importSnapshotNotes,
+  listRefreshRuns,
+  recordSuccessfulSync,
+  updateRefreshRunStage,
+} from '../server/operational-store.js';
+import {
+  activateDataBundle,
+  createBundlePaths,
+  createDataBundleManifest,
+  pruneDataBundles,
+  resolveActiveDataPaths,
+} from '../server/data-bundle.js';
 import type { DashboardData } from '../shared/models.js';
-import { ACTIVE_DATA_ARTIFACTS, MANUAL_REFRESH_STAGES } from '../shared/refresh-plan.js';
+import { MANUAL_REFRESH_STAGES } from '../shared/refresh-plan.js';
 
 const workspace = process.cwd();
 const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
-const backupRoot = resolve(workspace, 'data/refresh-backups');
 const rawCapturePath = resolve(workspace, 'data/raw/gesi-salice-latest.json');
 const resumeRequested = process.argv.includes('--resume');
-
-async function exists(path: string) {
-  try { await stat(path); return true; } catch { return false; }
-}
 
 let stages = MANUAL_REFRESH_STAGES;
 if (resumeRequested) {
   const lastAttempt = listRefreshRuns(1)[0];
   const previousFailure = lastAttempt?.status === 'failed' ? lastAttempt : null;
   const failedStageIndex = previousFailure ? MANUAL_REFRESH_STAGES.findIndex((stage) => stage.id === previousFailure.stage) : -1;
+  const failureHappenedAfterCapture = failedStageIndex >= 2 || previousFailure?.stage === 'manifest' || previousFailure?.stage === 'atomic-activation';
   const rawInfo = await stat(rawCapturePath).catch(() => null);
   const rawBelongsToFailure = Boolean(previousFailure && rawInfo && rawInfo.mtimeMs >= new Date(previousFailure.startedAt).getTime());
-  if (!previousFailure || failedStageIndex < 2 || !rawBelongsToFailure) {
+  if (!previousFailure || !failureHappenedAfterCapture || !rawBelongsToFailure) {
     throw new Error('No existe una captura auditada de la última ejecución fallida que pueda reanudarse con seguridad. Ejecutá pnpm run refresh:gesi.');
   }
-  // Repite la auditoría de captura y reconstruye todos los artefactos activos.
-  // La captura de la API es la única etapa que se saltea.
   stages = MANUAL_REFRESH_STAGES.slice(1);
 }
 
 const run = beginRefreshRun(resumeRequested ? 'manual-resume' : 'manual');
-const backupDirectory = resolve(backupRoot, run.id);
+const bundlePaths = createBundlePaths(run.id, workspace);
+const previousSnapshotPath = resolveActiveDataPaths(workspace).snapshot;
 let currentStage = 'preflight';
+let bundleActivated = false;
 
-async function backupActiveArtifacts() {
-  await mkdir(backupDirectory, { recursive: true });
-  for (const relative of ACTIVE_DATA_ARTIFACTS) {
-    const source = resolve(workspace, relative);
-    if (!await exists(source)) continue;
-    const target = resolve(backupDirectory, relative);
-    await mkdir(dirname(target), { recursive: true });
-    await copyFile(source, target);
-  }
-}
+await mkdir(resolve(bundlePaths.directory, 'quality'), { recursive: true });
 
-async function restoreActiveArtifacts() {
-  for (const relative of ACTIVE_DATA_ARTIFACTS) {
-    const source = resolve(backupDirectory, relative);
-    if (!await exists(source)) continue;
-    const target = resolve(workspace, relative);
-    const temporary = `${target}.restore-${run.id}`;
-    await copyFile(source, temporary);
-    await rename(temporary, target);
-  }
-}
-
-async function pruneBackups() {
-  const entries = await readdir(backupRoot, { withFileTypes: true }).catch(() => []);
-  const directories = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => ({
-    name: entry.name,
-    modifiedAt: (await stat(resolve(backupRoot, entry.name))).mtimeMs,
-  })));
-  directories.sort((left, right) => right.modifiedAt - left.modifiedAt);
-  for (const entry of directories.slice(3)) await rm(resolve(backupRoot, entry.name), { recursive: true, force: true });
-}
+const candidateEnvironment: NodeJS.ProcessEnv = {
+  ...process.env,
+  SALICE_CAPTURE_PATH: rawCapturePath,
+  SALICE_SPT_OUTPUT_PATH: bundlePaths.commercial,
+  SALICE_SPT_DB_PATH: bundlePaths.commercial,
+  SALICE_SPT_AUDIT_OUTPUT_PATH: resolve(bundlePaths.directory, 'quality/spt-gesi-audit.json'),
+  SALICE_SNAPSHOT_OUTPUT_PATH: bundlePaths.snapshot,
+  SALICE_SNAPSHOT_PATH: bundlePaths.snapshot,
+  SALICE_STAGING_OUTPUT_PATH: bundlePaths.staging,
+  SALICE_STAGING_PATH: bundlePaths.staging,
+  SALICE_PENDING_BALANCES_OUTPUT_PATH: bundlePaths.pendingBalances,
+  SALICE_PENDING_BALANCES_DB_PATH: bundlePaths.pendingBalances,
+  SALICE_PLATFORM_AUDIT_OUTPUT_PATH: resolve(bundlePaths.directory, 'quality/platform-audit.json'),
+  SALICE_VECTOR_AUDIT_OUTPUT_PATH: resolve(bundlePaths.directory, 'quality/product-vectors.json'),
+  SALICE_PREVIOUS_SNAPSHOT_PATH: previousSnapshotPath,
+};
 
 async function execute(script: string) {
   await new Promise<void>((resolveStage, rejectStage) => {
     const child = spawn(process.execPath, [tsxCli, resolve(workspace, script)], {
       cwd: workspace,
-      env: process.env,
+      env: candidateEnvironment,
       stdio: 'inherit',
     });
     child.once('error', rejectStage);
@@ -83,7 +81,7 @@ async function execute(script: string) {
 
 try {
   console.log(`${resumeRequested ? 'Reanudación' : 'Actualización'} manual Salice · ejecución ${run.id}`);
-  await backupActiveArtifacts();
+  console.log(`Paquete candidato: ${bundlePaths.directory}`);
   for (const stage of stages) {
     currentStage = stage.id;
     updateRefreshRunStage(run.id, currentStage);
@@ -92,21 +90,38 @@ try {
     await execute(stage.script);
     console.log(`[${stage.label}] aprobada en ${Math.round((Date.now() - startedAt) / 1000)} s`);
   }
-  const snapshot = JSON.parse(await readFile(resolve(workspace, 'data/snapshot.json'), 'utf8')) as DashboardData;
-  const platformAudit = JSON.parse(await readFile(resolve(workspace, 'data/quality/platform-audit.json'), 'utf8')) as { status?: string; summary?: { warnings?: number } };
+
+  currentStage = 'manifest';
+  updateRefreshRunStage(run.id, currentStage);
+  const manifest = await createDataBundleManifest(run.id, bundlePaths, workspace);
+  const snapshot = JSON.parse(await readFile(bundlePaths.snapshot, 'utf8')) as DashboardData;
+  const platformAudit = JSON.parse(await readFile(resolve(bundlePaths.directory, 'quality/platform-audit.json'), 'utf8')) as { status?: string; summary?: { warnings?: number } };
+
+  // Las notas históricas se importan antes del único cambio de estado activo.
+  // Todos los artefactos candidatos ya fueron auditados en este punto.
+  try {
+    const current = JSON.parse(await readFile(previousSnapshotPath, 'utf8')) as DashboardData;
+    importSnapshotNotes(current);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  currentStage = 'atomic-activation';
+  updateRefreshRunStage(run.id, currentStage);
+  await activateDataBundle(manifest, workspace);
+  bundleActivated = true;
+  recordSuccessfulSync(snapshot);
   const warnings = Number(platformAudit.summary?.warnings ?? snapshot.meta.coverage?.omittedInvoiceDetails ?? 0);
   completeRefreshRun(run.id, snapshot, warnings, platformAudit.status ?? 'passed');
-  await pruneBackups();
-  console.log('\nActualización manual completada y validada.');
+  await pruneDataBundles(run.id, 3, workspace).catch((error) => console.warn(`No se pudieron depurar paquetes antiguos: ${String(error)}`));
+  console.log('\nActualización manual completada. El manifiesto activo cambió en una única operación atómica.');
 } catch (error) {
-  console.error(`\nLa actualización falló en ${currentStage}. Se restaura la última versión activa válida.`);
-  try {
-    await restoreActiveArtifacts();
-  } catch (restoreError) {
-    const reason = restoreError instanceof Error ? restoreError.message : String(restoreError);
-    failRefreshRun(run.id, `${currentStage}:restore`, `${error instanceof Error ? error.message : String(error)} · La restauración también falló: ${reason}`);
-    throw restoreError;
-  }
+  console.error(bundleActivated
+    ? `\nLa actualización falló en ${currentStage} después de activar el paquete. Los datos permanecen activos, pero falló el registro operativo posterior.`
+    : `\nLa actualización falló en ${currentStage}. El manifiesto activo no fue reemplazado.`);
   failRefreshRun(run.id, currentStage, error);
+  if (!bundleActivated) {
+    await rm(bundlePaths.directory, { recursive: true, force: true }).catch(() => undefined);
+  }
   process.exitCode = 1;
 }

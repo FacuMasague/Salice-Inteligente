@@ -135,3 +135,5 @@ Al cambiar una regla:
 3. ejecutar `pnpm test`, `pnpm run build` y `pnpm run audit:data`;
 4. revisar visualmente edad, porte, precio relativo, alimento seco, húmedo, snacks, farmacia, higiene, accesorios y artículos sin clasificación;
 5. documentar cualquier nueva inferencia y su evidencia.
+
+`pnpm run audit:vectors` guarda `product-vectors.json` en la carpeta de calidad de la generación activa. Informa cobertura de las 33 dimensiones, perfiles vacíos, pesos reconocidos, cohortes de precio, contradicciones para revisión, cambios frente al snapshot anterior, variaciones de precio por kilo superiores al 25% y una muestra determinística de recomendaciones insuficientes. Una contradicción se presenta para revisión —por ejemplo, un producto realmente apto para perros y gatos— y no se corrige automáticamente.

@@ -10,6 +10,7 @@ import {
   type PaymentPromiseStatus,
 } from '../shared/models.js';
 import { decodeMultiFilter } from '../shared/multi-filter.js';
+import { REPORT_ENDPOINT_METRICS } from '../shared/metric-links.js';
 import { metricCatalogSummary } from '../shared/metrics.js';
 import { buildAgendaPayload, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
@@ -22,8 +23,21 @@ import { buildPendingBalancesReport, getPendingBalancesReportMeta, getPendingBal
 import { buildNutriPetReport, getNutriPetReportMeta, getNutriPetReportPath } from './nutripet-report.js';
 import { ensureSnapshot, getBackupCount, getSnapshotPath, loadSnapshot } from './store.js';
 import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report.js';
+import { buildSalesExplorer, getSalesExplorerDocument, getSalesExplorerMeta, getSalesExplorerPath } from './sales-explorer.js';
+import { buildReceivablesDashboard, getReceivableCaseDetail, RECEIVABLE_STATUSES } from './receivables-dashboard.js';
+import { exportGoalsPdf, exportGoalsXlsx, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
+import { acquireServerLock } from './runtime-lock.js';
+import { countOperationalBackups } from './operations-backup.js';
 import {
   createAgendaItem,
+  activateCommercialGoalVersion,
+  addReceivableComment,
+  createCommercialGoalRow,
+  createCommercialGoalVersion,
+  createSavedView,
+  deleteCommercialGoalRow,
+  deleteSavedView,
+  getCommercialGoalsPayload,
   createCommercialActivity,
   getOperationalDatabasePath,
   listActivities,
@@ -31,6 +45,10 @@ import {
   listPromises,
   operationalStatus,
   saveClientNote,
+  saveReceivableCase,
+  listSavedViews,
+  updateCommercialGoalRow,
+  updateSavedView,
   updatePromiseStatus,
 } from './operational-store.js';
 
@@ -57,8 +75,37 @@ function validDateTime(value: unknown) {
   return text && !Number.isNaN(new Date(text).getTime()) ? new Date(text).toISOString() : null;
 }
 
+function stringRecord(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>).slice(0, 50)
+    .map(([key, item]) => [key.slice(0, 80), String(item ?? '').slice(0, 4000)] as const);
+  return Object.fromEntries(entries);
+}
+
+function optionalNonNegativeNumber(value: unknown) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+async function sendDownload(response: express.Response, action: () => void | Promise<void>) {
+  try {
+    await action();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!response.headersSent) response.status(500).json({ error: message });
+    else response.end();
+  }
+}
+
 app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'] }));
 app.use(express.json({ limit: '1mb' }));
+for (const [path, metricIds] of Object.entries(REPORT_ENDPOINT_METRICS)) {
+  app.use(path, (_req, res, next) => {
+    res.setHeader('X-Salice-Metrics', metricIds.join(','));
+    next();
+  });
+}
 
 app.get('/api/health', async (_req, res) => {
   const data = await loadSnapshot();
@@ -186,8 +233,221 @@ app.get('/api/reports/pending-balances', (req, res) => {
   return res.json(report);
 });
 
+app.get('/api/admin/sales/meta', (_req, res) => {
+  const meta = getSalesExplorerMeta();
+  if (!meta.available) return res.status(503).json({ error: 'La base del explorador de ventas todavía no fue construida.', path: getSalesExplorerPath() });
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  return res.json(meta);
+});
+
+app.get('/api/admin/sales', (req, res) => {
+  const report = buildSalesExplorer(req.query);
+  if (!report) return res.status(503).json({ error: 'La base del explorador de ventas todavía no fue construida.', path: getSalesExplorerPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(report);
+});
+
+app.get('/api/admin/sales/document', (req, res) => {
+  const key = String(req.query.key ?? '').trim().slice(0, 300);
+  if (!key) return res.status(400).json({ error: 'Falta identificar el comprobante.' });
+  const detail = getSalesExplorerDocument(key);
+  return detail ? res.json(detail) : res.status(404).json({ error: 'Comprobante no encontrado dentro del universo comercial.' });
+});
+
+app.get('/api/admin/sales/export', async (req, res) => {
+  const format = String(req.query.format ?? 'csv');
+  if (format === 'csv') return sendDownload(res, () => exportSalesCsv(res, req.query));
+  if (format === 'xlsx') return sendDownload(res, () => exportSalesXlsx(res, req.query));
+  return res.status(400).json({ error: 'Formato inválido. Usá csv o xlsx.' });
+});
+
+app.get('/api/admin/receivables', (req, res) => {
+  const payload = buildReceivablesDashboard(req.query);
+  if (!payload) return res.status(503).json({ error: 'La base consolidada de cuentas por cobrar todavía no fue construida.' });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(payload);
+});
+
+app.get('/api/admin/receivables/export', async (req, res) => {
+  const format = String(req.query.format ?? 'csv');
+  if (format === 'csv') return sendDownload(res, () => exportReceivablesCsv(res, req.query));
+  if (format === 'xlsx') return sendDownload(res, () => exportReceivablesXlsx(res, req.query));
+  return res.status(400).json({ error: 'Formato inválido. Usá csv o xlsx.' });
+});
+
+app.get('/api/admin/receivables/:clientId', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  return res.json(getReceivableCaseDetail(clientId));
+});
+
+app.patch('/api/admin/receivables/:clientId', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const status = String(req.body?.status ?? '');
+  if (!RECEIVABLE_STATUSES.includes(status as typeof RECEIVABLE_STATUSES[number])) return res.status(400).json({ error: 'Estado interno inválido.' });
+  const nextFollowUpAt = req.body?.nextFollowUpAt ? validDate(req.body.nextFollowUpAt) : null;
+  if (req.body?.nextFollowUpAt && !nextFollowUpAt) return res.status(400).json({ error: 'La fecha de seguimiento no es válida.' });
+  const workflow = saveReceivableCase({
+    clientId,
+    responsible: String(req.body?.responsible ?? '').slice(0, 120),
+    status: status as typeof RECEIVABLE_STATUSES[number],
+    nextFollowUpAt,
+    actor: 'Oficina Salice',
+    comment: String(req.body?.comment ?? '').slice(0, 2000),
+  });
+  return res.json({ workflow, detail: getReceivableCaseDetail(clientId) });
+});
+
+app.post('/api/admin/receivables/:clientId/comments', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const comment = String(req.body?.comment ?? '').trim().slice(0, 2000);
+  if (!comment) return res.status(400).json({ error: 'Escribí un comentario antes de guardar.' });
+  addReceivableComment(clientId, comment, 'Oficina Salice');
+  return res.status(201).json(getReceivableCaseDetail(clientId));
+});
+
+app.get('/api/admin/goals', (req, res) => {
+  try {
+    return res.json(getCommercialGoalsPayload(String(req.query.versionId ?? ''), String(req.query.month ?? '')));
+  } catch (error) {
+    return res.status(503).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/admin/goals/export', async (req, res) => {
+  const format = String(req.query.format ?? 'xlsx');
+  const versionId = String(req.query.versionId ?? '') || undefined;
+  const month = String(req.query.month ?? '') || undefined;
+  if (format === 'xlsx') return sendDownload(res, () => exportGoalsXlsx(res, versionId, month));
+  if (format === 'pdf') return sendDownload(res, () => exportGoalsPdf(res, versionId, month));
+  return res.status(400).json({ error: 'Formato inválido. Usá xlsx o pdf.' });
+});
+
+app.post('/api/admin/goals/versions', (req, res) => {
+  const name = String(req.body?.name ?? '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ error: 'Indicá un nombre para la nueva versión.' });
+  try {
+    const version = createCommercialGoalVersion({
+      name,
+      notes: String(req.body?.notes ?? '').slice(0, 1000),
+      cloneFromId: String(req.body?.cloneFromId ?? '') || undefined,
+      actor: 'Oficina Salice',
+    });
+    return res.status(201).json({ version });
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/admin/goals/versions/:versionId/rows', (req, res) => {
+  const month = String(req.body?.month ?? '');
+  const kilos = optionalNonNegativeNumber(req.body?.kilos);
+  const accounts = optionalNonNegativeNumber(req.body?.accounts);
+  const invoicing = optionalNonNegativeNumber(req.body?.invoicing);
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'El mes no es válido.' });
+  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Los valores deben ser números positivos o quedar vacíos.' });
+  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Indicá al menos un objetivo.' });
+  try {
+    const row = createCommercialGoalRow(String(req.params.versionId), {
+      month,
+      product: String(req.body?.product ?? '').slice(0, 160),
+      seller: String(req.body?.seller ?? '').slice(0, 120),
+      kilos,
+      accounts,
+      invoicing,
+      actor: 'Oficina Salice',
+      comment: String(req.body?.comment ?? '').slice(0, 1000),
+    });
+    return res.status(201).json({ row });
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
+  const month = String(req.body?.month ?? '');
+  const kilos = optionalNonNegativeNumber(req.body?.kilos);
+  const accounts = optionalNonNegativeNumber(req.body?.accounts);
+  const invoicing = optionalNonNegativeNumber(req.body?.invoicing);
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'El mes no es válido.' });
+  if (kilos === undefined || accounts === undefined || invoicing === undefined) return res.status(400).json({ error: 'Los valores deben ser números positivos o quedar vacíos.' });
+  if (kilos == null && accounts == null && invoicing == null) return res.status(400).json({ error: 'Indicá al menos un objetivo.' });
+  try {
+    const row = updateCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), {
+      month,
+      product: String(req.body?.product ?? '').slice(0, 160),
+      seller: String(req.body?.seller ?? '').slice(0, 120),
+      kilos,
+      accounts,
+      invoicing,
+      actor: 'Oficina Salice',
+      comment: String(req.body?.comment ?? '').slice(0, 1000),
+    });
+    return row ? res.json({ row }) : res.status(404).json({ error: 'Objetivo no encontrado.' });
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
+  try {
+    const deleted = deleteCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), 'Oficina Salice');
+    return deleted ? res.status(204).end() : res.status(404).json({ error: 'Objetivo no encontrado.' });
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/admin/goals/versions/:versionId/activate', (req, res) => {
+  try {
+    const version = activateCommercialGoalVersion(
+      String(req.params.versionId), 'Oficina Salice', String(req.body?.comment ?? '').slice(0, 1000),
+    );
+    return res.json({ version });
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/saved-views', (req, res) => {
+  const viewKey = String(req.query.viewKey ?? '');
+  if (viewKey && !['sales-explorer', 'receivables'].includes(viewKey)) return res.status(400).json({ error: 'Vista inválida.' });
+  const normalizedViewKey = viewKey ? viewKey as 'sales-explorer' | 'receivables' : undefined;
+  return res.json({ views: listSavedViews(normalizedViewKey) });
+});
+
+app.post('/api/saved-views', (req, res) => {
+  const viewKey = String(req.body?.viewKey ?? '') as 'sales-explorer' | 'receivables';
+  const name = String(req.body?.name ?? '').trim().slice(0, 80);
+  const filters = stringRecord(req.body?.filters);
+  if (!['sales-explorer', 'receivables'].includes(viewKey) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista o filtros inválidos.' });
+  return res.status(201).json({ view: createSavedView({ viewKey, name, filters, favorite: Boolean(req.body?.favorite) }) });
+});
+
+app.patch('/api/saved-views/:id', (req, res) => {
+  const filters = req.body?.filters == null ? undefined : stringRecord(req.body.filters);
+  if (req.body?.filters != null && !filters) return res.status(400).json({ error: 'Filtros inválidos.' });
+  const name = req.body?.name == null ? undefined : String(req.body.name).trim().slice(0, 80);
+  if (req.body?.name != null && !name) return res.status(400).json({ error: 'El nombre de la vista no puede quedar vacío.' });
+  const view = updateSavedView(String(req.params.id), {
+    name,
+    filters: filters ?? undefined,
+    favorite: req.body?.favorite == null ? undefined : Boolean(req.body.favorite),
+  });
+  return view ? res.json({ view }) : res.status(404).json({ error: 'Vista guardada no encontrada.' });
+});
+
+app.delete('/api/saved-views/:id', (req, res) => (
+  deleteSavedView(String(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Vista guardada no encontrada.' })
+));
+
 app.get('/api/system/status', async (_req, res) => {
-  res.json({ ...operationalStatus(), backups: await getBackupCount() });
+  res.json({ ...operationalStatus(), backups: await getBackupCount(), operationalBackups: await countOperationalBackups() });
 });
 
 app.get('/api/system/data-health', async (_req, res) => {
@@ -333,6 +593,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 await ensureSnapshot();
+acquireServerLock();
 app.listen(port, '127.0.0.1', () => {
   console.log(`Salice API v${APP_VERSION} en http://127.0.0.1:${port}`);
   console.log(`Snapshot persistente: ${getSnapshotPath()}`);

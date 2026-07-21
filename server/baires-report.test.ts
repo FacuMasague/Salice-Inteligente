@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildBairesReport, getBairesReportMeta } from './baires-report';
+import { resolveActiveDataPaths } from './data-bundle';
 
-const describeWithDatabase = existsSync(resolve(process.cwd(), 'data/spt-gesi.sqlite')) ? describe : describe.skip;
+const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
 describeWithDatabase('Reporte Baires construido desde GESI', () => {
   it('declara el universo Baires de Salice y los filtros publicados', () => {

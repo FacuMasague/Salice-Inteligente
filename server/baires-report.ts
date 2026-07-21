@@ -12,18 +12,22 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { cutoffDate as dateAtCutoff, daysInclusive, isoDate as iso, monthEnd, monthKey, monthStart, shiftedMonth as shiftMonth, utcDate } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3];
-const ALLOWED_ISSUERS = ['Salice Distribuciones S.A.'];
-const PRODUCT_GROUPS = ['Baires SPT', 'Baires Masivo'];
-const EXCLUDED_CATEGORIES = ['POP'];
-const EXCLUDED_CLIENTS = ['Via Salice MDP S.A.'];
+const UNIVERSE = EXECUTABLE_UNIVERSES.baires;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
+const PRODUCT_GROUPS = [...UNIVERSE.includedProductGroups];
+const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
+const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
 const segmentExpression = `CASE
   WHEN UPPER(TRIM(product_group)) = 'BAIRES SPT' THEN 'Especializado'
   WHEN UPPER(TRIM(product_group)) = 'BAIRES MASIVO' THEN 'Masivo'
@@ -41,7 +45,6 @@ const FILTER_EXPRESSIONS: Record<BairesFilterKey, string> = {
 };
 
 type SqlValue = string | number;
-type MetricRow = { kilos: number | null; clients: number | null; units: number | null; netAmount: number | null };
 
 let cachedMeta: BairesReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -65,26 +68,7 @@ function metadata(value: DatabaseSync) {
 }
 
 function baseUniverse() {
-  return {
-    sql: `company_id IN (${placeholders(COMPANIES)})
-      AND branch_id IN (${placeholders(BRANCHES)})
-      AND UPPER(TRIM(issuer_name)) IN (${placeholders(ALLOWED_ISSUERS)})
-      AND UPPER(TRIM(product_group)) IN (${placeholders(PRODUCT_GROUPS)})
-      AND UPPER(TRIM(category)) NOT IN (${placeholders(EXCLUDED_CATEGORIES)})
-      AND UPPER(TRIM(client_name)) NOT IN (${placeholders(EXCLUDED_CLIENTS)})`,
-    parameters: [
-      ...COMPANIES,
-      ...BRANCHES,
-      ...ALLOWED_ISSUERS.map((value) => value.toUpperCase()),
-      ...PRODUCT_GROUPS.map((value) => value.toUpperCase()),
-      ...EXCLUDED_CATEGORIES.map((value) => value.toUpperCase()),
-      ...EXCLUDED_CLIENTS.map((value) => value.toUpperCase()),
-    ] as SqlValue[],
-  };
-}
-
-function ratio(value: number, base: number) {
-  return base ? value / base * 100 : null;
+  return compileMovementUniverse(UNIVERSE);
 }
 
 function buildWhere(filters: BairesFilters, start?: string, end?: string) {
@@ -104,19 +88,7 @@ function buildWhere(filters: BairesFilters, start?: string, end?: string) {
 
 function metric(value: DatabaseSync, filters: BairesFilters, start: string, end: string): BairesMetrics {
   const where = buildWhere(filters, start, end);
-  const row = value.prepare(`
-    SELECT COALESCE(SUM(kilos), 0) AS kilos,
-           COUNT(DISTINCT client_id) AS clients,
-           COALESCE(SUM(units), 0) AS units,
-           COALESCE(SUM(net_amount), 0) AS netAmount
-    FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow;
-  return {
-    kilos: Number(row.kilos ?? 0),
-    clients: Number(row.clients ?? 0),
-    units: Number(row.units ?? 0),
-    netAmount: Number(row.netAmount ?? 0),
-  };
+  return readMovementMetrics(value, where.sql, where.parameters);
 }
 
 function normalizeFilters(input: Partial<Record<string, unknown>>, meta: BairesReportMeta): BairesFilters {
@@ -191,20 +163,20 @@ function breakdownRows(value: DatabaseSync, filters: BairesFilters, expression: 
       clients: Number(row.clients),
       units: Number(row.units),
       netAmount: Number(row.netAmount),
-      share: total ? kilos / total * 100 : 0,
+      share: metricShare(kilos, total),
       previousYearKilos,
-      variation: previousYearKilos ? (kilos - previousYearKilos) / previousYearKilos * 100 : null,
+      variation: metricVariation(kilos, previousYearKilos),
     };
   }).filter((row) => Math.abs(row.kilos) > 0.0001).sort((a, b) => b.kilos - a.kilos);
 }
 
 export function getBairesReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getBairesReportMeta(): BairesReportMeta {
-  if (cachedMeta) return cachedMeta;
   const value = db();
+  if (cachedMeta) return cachedMeta;
   const unavailable: BairesReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',

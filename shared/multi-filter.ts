@@ -19,7 +19,7 @@ export function encodeMultiFilter(values: string[]) {
   return unique.length === 1 ? unique[0] : JSON.stringify(unique);
 }
 
-export function normalizeMultiFilter(value: unknown, allowed: string[]) {
+export function normalizeMultiFilter(value: unknown, allowed: readonly string[]) {
   const allowedSet = new Set(allowed);
   return encodeMultiFilter(decodeMultiFilter(value).filter((item) => allowedSet.has(item)));
 }

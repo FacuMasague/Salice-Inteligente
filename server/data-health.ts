@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { DashboardData, PendingBalanceReportMeta, SptReportMeta } from '../shared/models.js';
 import { evaluateFreshness, type DataHealthLevel, type DataHealthPayload, type PlatformAuditSummary, type RefreshRunSummary } from '../shared/data-health.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
 
 interface OperationalStatusInput {
   refresh?: {
@@ -92,7 +92,7 @@ export function buildDataHealth(
   };
 }
 
-export function loadPlatformAuditSummary(path = resolve(process.cwd(), 'data/quality/platform-audit.json')): PlatformAuditSummary | null {
+export function loadPlatformAuditSummary(path = resolveActiveDataPaths().platformAudit): PlatformAuditSummary | null {
   try {
     const value = JSON.parse(readFileSync(path, 'utf8')) as {
       generatedAt?: string;

@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildMarsReport, getMarsReportMeta, marsPeriodsForYear } from './mars-report';
+import { resolveActiveDataPaths } from './data-bundle';
 
-const describeWithDatabase = existsSync(resolve(process.cwd(), 'data/spt-gesi.sqlite')) ? describe : describe.skip;
+const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
 describeWithDatabase('Reporte Mars construido desde GESI', () => {
   it('reconstruye el calendario comercial de 13 períodos', () => {

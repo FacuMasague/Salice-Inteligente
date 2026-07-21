@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { METRIC_CATALOG, REPORT_UNIVERSES } from '../shared/metrics.js';
 import { SNAPSHOT_REVISION, type DashboardData } from '../shared/models.js';
+import { getActiveBundleManifest, resolveActiveDataPaths, verifyDataBundleManifest } from '../server/data-bundle.js';
+import { checkOperationalIntegrity } from '../server/operations-backup.js';
+import { validateExecutableUniverses } from '../server/report-universes.js';
 
 type CheckLevel = 'required' | 'warning';
 interface AuditCheck {
@@ -14,11 +17,14 @@ interface AuditCheck {
 }
 
 const workspace = process.cwd();
-const snapshotPath = resolve(workspace, 'data/snapshot.json');
-const stagingPath = resolve(workspace, 'data/staging/snapshot-gesi.json');
-const sptPath = resolve(workspace, 'data/spt-gesi.sqlite');
-const pendingPath = resolve(workspace, 'data/pending-balances.sqlite');
-const outputPath = resolve(workspace, 'data/quality/platform-audit.json');
+const activePaths = resolveActiveDataPaths(workspace);
+const snapshotPath = resolve(process.env.SALICE_SNAPSHOT_PATH ?? activePaths.snapshot);
+const stagingPath = resolve(process.env.SALICE_STAGING_PATH ?? activePaths.staging);
+const sptPath = resolve(process.env.SALICE_SPT_DB_PATH ?? activePaths.commercial);
+const pendingPath = resolve(process.env.SALICE_PENDING_BALANCES_DB_PATH ?? activePaths.pendingBalances);
+const outputPath = resolve(process.env.SALICE_PLATFORM_AUDIT_OUTPUT_PATH ?? activePaths.platformAudit);
+const vectorAuditPath = resolve(process.env.SALICE_VECTOR_AUDIT_OUTPUT_PATH ?? activePaths.vectorAudit);
+const operationsPath = resolve(process.env.SALICE_OPERATIONS_DB_PATH ?? resolve(workspace, 'data/operations.sqlite'));
 
 function metadata(database: DatabaseSync) {
   return new Map((database.prepare('SELECT key, value FROM report_meta').all() as { key: string; value: string }[])
@@ -52,6 +58,28 @@ pendingDatabase.close();
 const snapshotDate = snapshot.meta.generatedAt.slice(0, 10);
 const metricIds = METRIC_CATALOG.map((metric) => metric.id);
 const universeIds = REPORT_UNIVERSES.map((universe) => universe.id);
+const executableUniverseIssues = validateExecutableUniverses();
+const vectorAudit = JSON.parse(await readFile(vectorAuditPath, 'utf8')) as { snapshotAt?: string; status?: string };
+const activeManifest = process.env.SALICE_SNAPSHOT_PATH ? null : getActiveBundleManifest(workspace);
+const manifestIssues = activeManifest ? await verifyDataBundleManifest(activeManifest, workspace) : [];
+const operationsIntegrity = (() => {
+  try { return checkOperationalIntegrity(operationsPath).integrity; }
+  catch (error) { return error instanceof Error ? error.message : String(error); }
+})();
+const administrativeStorage = (() => {
+  try {
+    const operations = new DatabaseSync(operationsPath, { readOnly: true });
+    const requiredTables = ['receivable_cases', 'receivable_case_events', 'saved_views', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes'];
+    const tables = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name));
+    const missing = requiredTables.filter((table) => !tables.has(table));
+    const activeVersions = missing.length ? 0 : Number(operations.prepare("SELECT COUNT(*) AS total FROM commercial_goal_versions WHERE status = 'active'").get()?.total ?? 0);
+    const activeRows = missing.length ? 0 : Number(operations.prepare("SELECT COUNT(*) AS total FROM commercial_goals goals JOIN commercial_goal_versions versions ON versions.id = goals.version_id WHERE versions.status = 'active'").get()?.total ?? 0);
+    operations.close();
+    return { missing, activeVersions, activeRows, error: '' };
+  } catch (error) {
+    return { missing: [] as string[], activeVersions: 0, activeRows: 0, error: error instanceof Error ? error.message : String(error) };
+  }
+})();
 
 add('snapshot-source', 'El snapshot activo proviene de GESI', snapshot.meta.source === 'gesi', `Fuente: ${snapshot.meta.source}`);
 add('snapshot-revision', 'La revisión del snapshot coincide con el contrato actual', snapshot.meta.revision === SNAPSHOT_REVISION, `Revisión ${snapshot.meta.revision}; esperada ${SNAPSHOT_REVISION}`);
@@ -66,6 +94,26 @@ add('pending-grain', 'El conteo físico de documentos abiertos coincide con su m
 add('metric-identifiers', 'Los identificadores de métricas son únicos', new Set(metricIds).size === metricIds.length, `${metricIds.length} métricas`);
 add('universe-identifiers', 'Los identificadores de universos son únicos', new Set(universeIds).size === universeIds.length, `${universeIds.length} universos`);
 add('metric-traceability', 'Todas las métricas declaran fuente, fecha, fórmula y consumidores', METRIC_CATALOG.every((metric) => metric.source && metric.dateBasis && metric.formula && metric.consumers.length > 0), 'Contrato central shared/metrics.ts');
+add('executable-universes', 'Los universos ejecutables coinciden con el catálogo', executableUniverseIssues.length === 0, executableUniverseIssues.join('; ') || 'Contratos centralizados');
+add('vector-audit', 'La auditoría vectorial corresponde al snapshot evaluado', vectorAudit.snapshotAt === snapshot.meta.generatedAt, `${vectorAudit.snapshotAt ?? 'sin fecha'} / ${snapshot.meta.generatedAt}`);
+add('operations-integrity', 'La persistencia operativa supera integrity_check', operationsIntegrity === 'ok', operationsIntegrity);
+add(
+  'administrative-storage',
+  'La persistencia administrativa contiene todos los contratos de v0.4.0',
+  !administrativeStorage.error && administrativeStorage.missing.length === 0,
+  administrativeStorage.error || (administrativeStorage.missing.length ? `Faltan: ${administrativeStorage.missing.join(', ')}` : 'Seguimientos, eventos, vistas y objetivos disponibles'),
+);
+add(
+  'active-commercial-plan',
+  'Existe exactamente un plan comercial activo y con objetivos',
+  administrativeStorage.activeVersions === 1 && administrativeStorage.activeRows > 0,
+  `${administrativeStorage.activeVersions} versión activa · ${administrativeStorage.activeRows} objetivos`,
+);
+if (process.env.SALICE_SNAPSHOT_PATH) {
+  add('candidate-isolation', 'Los artefactos evaluados pertenecen al paquete candidato aislado', [snapshotPath, stagingPath, sptPath, pendingPath].every((path) => path.includes(`${resolve(workspace, 'data/bundles')}/`)), 'La auditoría previa no modifica el manifiesto activo');
+} else {
+  add('active-manifest', 'El manifiesto activo verifica tamaños y checksums SHA-256', Boolean(activeManifest) && manifestIssues.length === 0, activeManifest ? manifestIssues.join('; ') || `Paquete ${activeManifest.bundleId}` : 'Todavía se usan rutas heredadas');
+}
 add('zone-catalog', 'El maestro de zonas está disponible', Boolean(snapshot.meta.coverage?.zoneLabelsAvailable), 'GESI no expuso un catálogo de zonas utilizable; se conservan identificadores visibles.', 'warning');
 add('invoice-details', 'Todas las facturas consultadas entregaron detalle', (snapshot.meta.coverage?.omittedInvoiceDetails ?? 0) === 0, `${snapshot.meta.coverage?.omittedInvoiceDetails ?? 0} factura(s) sin detalle`, 'warning');
 add('portfolio-membership', 'Todos los clientes activos tienen pertenencia Salice confirmada', (snapshot.meta.coverage?.activePortfolioReviewClients ?? 0) === 0, `${snapshot.meta.coverage?.activePortfolioReviewClients ?? 0} cliente(s) activos a revisar`, 'warning');
@@ -80,10 +128,10 @@ const result = {
   summary: { total: checks.length, passed: checks.filter((check) => check.passed).length, failed: failed.length, warnings: warnings.length },
   checks,
   artifacts: [
-    { path: 'data/snapshot.json', bytes: snapshotFile.size, modifiedAt: snapshotFile.mtime.toISOString() },
-    { path: 'data/staging/snapshot-gesi.json', bytes: stagingFile.size, modifiedAt: stagingFile.mtime.toISOString() },
-    { path: 'data/spt-gesi.sqlite', bytes: sptFile.size, modifiedAt: sptFile.mtime.toISOString() },
-    { path: 'data/pending-balances.sqlite', bytes: pendingFile.size, modifiedAt: pendingFile.mtime.toISOString() },
+    { path: snapshotPath, bytes: snapshotFile.size, modifiedAt: snapshotFile.mtime.toISOString() },
+    { path: stagingPath, bytes: stagingFile.size, modifiedAt: stagingFile.mtime.toISOString() },
+    { path: sptPath, bytes: sptFile.size, modifiedAt: sptFile.mtime.toISOString() },
+    { path: pendingPath, bytes: pendingFile.size, modifiedAt: pendingFile.mtime.toISOString() },
   ],
 };
 

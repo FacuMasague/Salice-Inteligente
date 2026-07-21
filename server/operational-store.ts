@@ -8,15 +8,70 @@ import type {
   CommercialActivity,
   CommercialActivityOutcome,
   CommercialActivityType,
+  CommercialGoalChange,
+  CommercialGoalsPayload,
+  CommercialGoalRow,
+  CommercialGoalVersion,
   DashboardData,
   PaymentPromise,
   PaymentPromiseStatus,
+  ReceivableCase,
+  ReceivableCaseEvent,
+  ReceivableCaseStatus,
+  SavedView,
 } from '../shared/models.js';
+import { STATUS_TARGET_SOURCE, STATUS_TARGETS } from './data/status-targets.js';
 
 const databasePath = process.env.SALICE_OPERATIONS_DB_PATH
   ? resolve(process.env.SALICE_OPERATIONS_DB_PATH)
   : resolve(process.cwd(), 'data/operations.sqlite');
 let database: DatabaseSync | null = null;
+
+function seedCommercialGoals(store: DatabaseSync) {
+  const existing = Number(store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total ?? 0);
+  if (existing) return;
+  const versionId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const insertGoal = store.prepare(`
+    INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO commercial_goal_versions (
+        id, version_number, name, status, source_label, coverage_from, coverage_through,
+        notes, created_at, created_by, activated_at
+      ) VALUES (?, 1, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      versionId,
+      'Plan histórico inicial',
+      STATUS_TARGET_SOURCE.label,
+      STATUS_TARGET_SOURCE.coverageFrom,
+      STATUS_TARGET_SOURCE.coverageThrough,
+      'Importación inicial reconstruida desde la fuente externa del Reporte Status Salice.',
+      createdAt,
+      'Migración v0.4.0',
+      createdAt,
+    );
+    for (const row of STATUS_TARGETS) {
+      insertGoal.run(randomUUID(), versionId, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
+    }
+    store.prepare(`
+      INSERT INTO commercial_goal_changes (
+        id, version_id, event_type, entity_key, actor, comment, before_json, after_json, created_at
+      ) VALUES (?, ?, 'created', '', ?, ?, NULL, ?, ?)
+    `).run(
+      randomUUID(), versionId, 'Migración v0.4.0',
+      'Importación inicial del plan histórico; los resultados reales permanecen en GESI.',
+      JSON.stringify({ rows: STATUS_TARGETS.length, source: STATUS_TARGET_SOURCE.label }), createdAt,
+    );
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+}
 
 function db() {
   if (database) return database;
@@ -100,7 +155,90 @@ function db() {
       completed_activity_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agenda_seller_date ON agenda_items(seller, scheduled_for, status);
+    CREATE TABLE IF NOT EXISTS receivable_cases (
+      client_id INTEGER PRIMARY KEY,
+      responsible TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'unmanaged',
+      next_follow_up_at TEXT,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_receivable_cases_status ON receivable_cases(status, next_follow_up_at);
+    CREATE INDEX IF NOT EXISTS idx_receivable_cases_responsible ON receivable_cases(responsible, status);
+    CREATE TABLE IF NOT EXISTS receivable_case_events (
+      id TEXT PRIMARY KEY,
+      client_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      comment TEXT NOT NULL DEFAULT '',
+      before_json TEXT,
+      after_json TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_receivable_events_client ON receivable_case_events(client_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS saved_views (
+      id TEXT PRIMARY KEY,
+      view_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      filters_json TEXT NOT NULL,
+      favorite INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_views_key ON saved_views(view_key, favorite DESC, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS commercial_goal_versions (
+      id TEXT PRIMARY KEY,
+      version_number INTEGER NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source_label TEXT NOT NULL,
+      coverage_from TEXT NOT NULL,
+      coverage_through TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      activated_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_goal_versions_active ON commercial_goal_versions(status) WHERE status = 'active';
+    CREATE TABLE IF NOT EXISTS commercial_goals (
+      id TEXT PRIMARY KEY,
+      version_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      product TEXT NOT NULL DEFAULT '',
+      seller TEXT NOT NULL DEFAULT '',
+      kilos REAL,
+      accounts REAL,
+      invoicing REAL,
+      FOREIGN KEY(version_id) REFERENCES commercial_goal_versions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_commercial_goals_version_month ON commercial_goals(version_id, month);
+    CREATE TABLE IF NOT EXISTS commercial_goal_changes (
+      id TEXT PRIMARY KEY,
+      version_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      entity_key TEXT NOT NULL DEFAULT '',
+      actor TEXT NOT NULL,
+      comment TEXT NOT NULL DEFAULT '',
+      before_json TEXT,
+      after_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(version_id) REFERENCES commercial_goal_versions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_goal_changes_version ON commercial_goal_changes(version_id, created_at DESC);
+    CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_update
+      BEFORE UPDATE ON receivable_case_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de cobranzas es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_receivable_event_delete
+      BEFORE DELETE ON receivable_case_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de cobranzas es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_goal_change_update
+      BEFORE UPDATE ON commercial_goal_changes
+      BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_goal_change_delete
+      BEFORE DELETE ON commercial_goal_changes
+      BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
   `);
+  seedCommercialGoals(database);
   return database;
 }
 
@@ -177,6 +315,110 @@ function agendaFromRow(row: Record<string, unknown>): StoredAgendaItem {
     status: textValue(row.status) as AgendaStatus,
     createdAt: textValue(row.created_at),
     completedActivityId: nullableText(row.completed_activity_id),
+  };
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+export function emptyReceivableCase(clientId: number): ReceivableCase {
+  return {
+    clientId,
+    responsible: '',
+    status: 'unmanaged',
+    nextFollowUpAt: null,
+    updatedAt: '',
+    updatedBy: '',
+    lastComment: '',
+    eventCount: 0,
+  };
+}
+
+function receivableCaseFromRow(row: Record<string, unknown>): ReceivableCase {
+  return {
+    clientId: Number(row.client_id),
+    responsible: textValue(row.responsible),
+    status: textValue(row.status) as ReceivableCaseStatus,
+    nextFollowUpAt: nullableText(row.next_follow_up_at),
+    updatedAt: textValue(row.updated_at),
+    updatedBy: textValue(row.updated_by),
+    lastComment: textValue(row.last_comment),
+    eventCount: Number(row.event_count ?? 0),
+  };
+}
+
+function receivableEventFromRow(row: Record<string, unknown>): ReceivableCaseEvent {
+  return {
+    id: textValue(row.id),
+    clientId: Number(row.client_id),
+    eventType: textValue(row.event_type) as ReceivableCaseEvent['eventType'],
+    actor: textValue(row.actor),
+    comment: textValue(row.comment),
+    before: jsonRecord(row.before_json),
+    after: jsonRecord(row.after_json),
+    createdAt: textValue(row.created_at),
+  };
+}
+
+function savedViewFromRow(row: Record<string, unknown>): SavedView {
+  return {
+    id: textValue(row.id),
+    viewKey: textValue(row.view_key) as SavedView['viewKey'],
+    name: textValue(row.name),
+    filters: jsonRecord(row.filters_json) as Record<string, string> ?? {},
+    favorite: Boolean(row.favorite),
+    createdAt: textValue(row.created_at),
+    updatedAt: textValue(row.updated_at),
+  };
+}
+
+function commercialGoalFromRow(row: Record<string, unknown>): CommercialGoalRow {
+  return {
+    id: textValue(row.id),
+    month: textValue(row.month),
+    product: textValue(row.product),
+    seller: textValue(row.seller),
+    kilos: row.kilos == null ? null : Number(row.kilos),
+    accounts: row.accounts == null ? null : Number(row.accounts),
+    invoicing: row.invoicing == null ? null : Number(row.invoicing),
+  };
+}
+
+function commercialGoalVersionFromRow(row: Record<string, unknown>): CommercialGoalVersion {
+  return {
+    id: textValue(row.id),
+    version: Number(row.version_number),
+    name: textValue(row.name),
+    status: textValue(row.status) as CommercialGoalVersion['status'],
+    sourceLabel: textValue(row.source_label),
+    coverageFrom: textValue(row.coverage_from),
+    coverageThrough: textValue(row.coverage_through),
+    notes: textValue(row.notes),
+    createdAt: textValue(row.created_at),
+    createdBy: textValue(row.created_by),
+    activatedAt: nullableText(row.activated_at),
+    rowCount: Number(row.row_count ?? 0),
+  };
+}
+
+function commercialGoalChangeFromRow(row: Record<string, unknown>): CommercialGoalChange {
+  return {
+    id: textValue(row.id),
+    versionId: textValue(row.version_id),
+    eventType: textValue(row.event_type) as CommercialGoalChange['eventType'],
+    entityKey: textValue(row.entity_key),
+    actor: textValue(row.actor),
+    comment: textValue(row.comment),
+    before: jsonRecord(row.before_json),
+    after: jsonRecord(row.after_json),
+    createdAt: textValue(row.created_at),
   };
 }
 
@@ -385,6 +627,450 @@ export function updatePromiseStatus(id: string, status: PaymentPromiseStatus) {
   return promiseFromRow({ ...current, status, resolved_at: resolvedAt });
 }
 
+export function listReceivableCases() {
+  return db().prepare(`
+    SELECT cases.*,
+      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id) AS event_count,
+      COALESCE((
+        SELECT comment FROM receivable_case_events events
+        WHERE events.client_id = cases.client_id AND TRIM(comment) <> ''
+        ORDER BY created_at DESC, rowid DESC LIMIT 1
+      ), '') AS last_comment
+    FROM receivable_cases cases
+    ORDER BY updated_at DESC
+  `).all().map((row) => receivableCaseFromRow(row));
+}
+
+export function getReceivableCase(clientId: number) {
+  const row = db().prepare(`
+    SELECT cases.*,
+      (SELECT COUNT(*) FROM receivable_case_events events WHERE events.client_id = cases.client_id) AS event_count,
+      COALESCE((
+        SELECT comment FROM receivable_case_events events
+        WHERE events.client_id = cases.client_id AND TRIM(comment) <> ''
+        ORDER BY created_at DESC, rowid DESC LIMIT 1
+      ), '') AS last_comment
+    FROM receivable_cases cases WHERE client_id = ?
+  `).get(clientId);
+  return row ? receivableCaseFromRow(row) : null;
+}
+
+function addReceivableEvent(store: DatabaseSync, input: {
+  clientId: number;
+  eventType: ReceivableCaseEvent['eventType'];
+  actor: string;
+  comment?: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  createdAt: string;
+}) {
+  store.prepare(`
+    INSERT INTO receivable_case_events (
+      id, client_id, event_type, actor, comment, before_json, after_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(), input.clientId, input.eventType, input.actor, input.comment ?? '',
+    input.before ? JSON.stringify(input.before) : null,
+    input.after ? JSON.stringify(input.after) : null,
+    input.createdAt,
+  );
+}
+
+export function saveReceivableCase(input: {
+  clientId: number;
+  responsible: string;
+  status: ReceivableCaseStatus;
+  nextFollowUpAt: string | null;
+  actor: string;
+  comment?: string;
+}) {
+  const store = db();
+  const current = getReceivableCase(input.clientId);
+  const before = current ?? emptyReceivableCase(input.clientId);
+  const createdAt = new Date().toISOString();
+  const responsible = input.responsible.trim().slice(0, 120);
+  const actor = input.actor.trim().slice(0, 120) || 'Oficina Salice';
+  const comment = String(input.comment ?? '').trim().slice(0, 2000);
+  const changed = !current
+    || before.responsible !== responsible
+    || before.status !== input.status
+    || before.nextFollowUpAt !== input.nextFollowUpAt;
+  if (!changed && !comment) return current;
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO receivable_cases (client_id, responsible, status, next_follow_up_at, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(client_id) DO UPDATE SET
+        responsible = excluded.responsible,
+        status = excluded.status,
+        next_follow_up_at = excluded.next_follow_up_at,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `).run(input.clientId, responsible, input.status, input.nextFollowUpAt, createdAt, actor);
+    const after = { responsible, status: input.status, nextFollowUpAt: input.nextFollowUpAt };
+    if (!current) {
+      addReceivableEvent(store, { clientId: input.clientId, eventType: 'created', actor, before: null, after, createdAt });
+    } else {
+      if (before.responsible !== responsible) addReceivableEvent(store, {
+        clientId: input.clientId, eventType: 'assignment', actor,
+        before: { responsible: before.responsible }, after: { responsible }, createdAt,
+      });
+      if (before.status !== input.status) addReceivableEvent(store, {
+        clientId: input.clientId, eventType: 'status', actor,
+        before: { status: before.status }, after: { status: input.status }, createdAt,
+      });
+      if (before.nextFollowUpAt !== input.nextFollowUpAt) addReceivableEvent(store, {
+        clientId: input.clientId, eventType: 'follow_up', actor,
+        before: { nextFollowUpAt: before.nextFollowUpAt }, after: { nextFollowUpAt: input.nextFollowUpAt }, createdAt,
+      });
+    }
+    if (comment) addReceivableEvent(store, {
+      clientId: input.clientId, eventType: 'comment', actor, comment, before: null, after: null, createdAt,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return getReceivableCase(input.clientId)!;
+}
+
+export function addReceivableComment(clientId: number, comment: string, actor = 'Oficina Salice') {
+  const current = getReceivableCase(clientId) ?? saveReceivableCase({
+    clientId, responsible: '', status: 'unmanaged', nextFollowUpAt: null, actor,
+  });
+  const createdAt = new Date().toISOString();
+  const cleanComment = comment.trim().slice(0, 2000);
+  if (!cleanComment) return current;
+  const store = db();
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    addReceivableEvent(store, {
+      clientId, eventType: 'comment', actor: actor.trim().slice(0, 120) || 'Oficina Salice',
+      comment: cleanComment, before: null, after: null, createdAt,
+    });
+    store.prepare('UPDATE receivable_cases SET updated_at = ?, updated_by = ? WHERE client_id = ?')
+      .run(createdAt, actor.trim().slice(0, 120) || 'Oficina Salice', clientId);
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return getReceivableCase(clientId)!;
+}
+
+export function listReceivableCaseEvents(clientId: number, limit = 100) {
+  return db().prepare(`
+    SELECT * FROM receivable_case_events WHERE client_id = ?
+    ORDER BY created_at DESC, rowid DESC LIMIT ?
+  `).all(clientId, Math.max(1, Math.min(500, limit))).map((row) => receivableEventFromRow(row));
+}
+
+export function listSavedViews(viewKey?: SavedView['viewKey']) {
+  const rows = viewKey
+    ? db().prepare('SELECT * FROM saved_views WHERE view_key = ? ORDER BY favorite DESC, updated_at DESC').all(viewKey)
+    : db().prepare('SELECT * FROM saved_views ORDER BY view_key, favorite DESC, updated_at DESC').all();
+  return rows.map((row) => savedViewFromRow(row));
+}
+
+export function createSavedView(input: {
+  viewKey: SavedView['viewKey'];
+  name: string;
+  filters: Record<string, string>;
+  favorite?: boolean;
+}) {
+  const now = new Date().toISOString();
+  const view: SavedView = {
+    id: randomUUID(),
+    viewKey: input.viewKey,
+    name: input.name.trim().slice(0, 80),
+    filters: input.filters,
+    favorite: Boolean(input.favorite),
+    createdAt: now,
+    updatedAt: now,
+  };
+  db().prepare(`
+    INSERT INTO saved_views (id, view_key, name, filters_json, favorite, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(view.id, view.viewKey, view.name, JSON.stringify(view.filters), Number(view.favorite), view.createdAt, view.updatedAt);
+  return view;
+}
+
+export function updateSavedView(id: string, input: { name?: string; filters?: Record<string, string>; favorite?: boolean }) {
+  const currentRow = db().prepare('SELECT * FROM saved_views WHERE id = ?').get(id);
+  if (!currentRow) return null;
+  const current = savedViewFromRow(currentRow);
+  const updated: SavedView = {
+    ...current,
+    name: input.name == null ? current.name : input.name.trim().slice(0, 80),
+    filters: input.filters ?? current.filters,
+    favorite: input.favorite ?? current.favorite,
+    updatedAt: new Date().toISOString(),
+  };
+  db().prepare('UPDATE saved_views SET name = ?, filters_json = ?, favorite = ?, updated_at = ? WHERE id = ?')
+    .run(updated.name, JSON.stringify(updated.filters), Number(updated.favorite), updated.updatedAt, id);
+  return updated;
+}
+
+export function deleteSavedView(id: string) {
+  return Number(db().prepare('DELETE FROM saved_views WHERE id = ?').run(id).changes) > 0;
+}
+
+function goalVersionQuery() {
+  return `SELECT versions.*,
+    (SELECT COUNT(*) FROM commercial_goals goals WHERE goals.version_id = versions.id) AS row_count
+    FROM commercial_goal_versions versions`;
+}
+
+export function listCommercialGoalVersions() {
+  return db().prepare(`${goalVersionQuery()} ORDER BY version_number DESC`).all()
+    .map((row) => commercialGoalVersionFromRow(row));
+}
+
+export function getCommercialGoalVersion(id?: string) {
+  const row = id
+    ? db().prepare(`${goalVersionQuery()} WHERE versions.id = ?`).get(id)
+    : db().prepare(`${goalVersionQuery()} WHERE versions.status = 'active' LIMIT 1`).get();
+  return row ? commercialGoalVersionFromRow(row) : null;
+}
+
+export function listCommercialGoals(versionId: string, month?: string) {
+  const rows = month
+    ? db().prepare('SELECT * FROM commercial_goals WHERE version_id = ? AND month = ? ORDER BY product COLLATE NOCASE, seller COLLATE NOCASE, id').all(versionId, month)
+    : db().prepare('SELECT * FROM commercial_goals WHERE version_id = ? ORDER BY month, product COLLATE NOCASE, seller COLLATE NOCASE, id').all(versionId);
+  return rows.map((row) => commercialGoalFromRow(row));
+}
+
+export function listCommercialGoalChanges(versionId: string, limit = 100) {
+  return db().prepare('SELECT * FROM commercial_goal_changes WHERE version_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?')
+    .all(versionId, Math.max(1, Math.min(500, limit))).map((row) => commercialGoalChangeFromRow(row));
+}
+
+export function getActiveCommercialGoalPlan() {
+  const version = getCommercialGoalVersion();
+  if (!version) throw new Error('No existe un plan comercial activo.');
+  return {
+    version,
+    source: {
+      label: `${version.sourceLabel} · ${version.name} · v${version.version}`,
+      capturedAt: version.activatedAt?.slice(0, 10) ?? version.createdAt.slice(0, 10),
+      coverageFrom: version.coverageFrom,
+      coverageThrough: version.coverageThrough,
+    },
+    rows: listCommercialGoals(version.id),
+  };
+}
+
+export function getCommercialGoalsPayload(versionId?: string, month?: string): CommercialGoalsPayload {
+  const versions = listCommercialGoalVersions();
+  const selectedVersion = versions.find((item) => item.id === versionId) ?? versions.find((item) => item.status === 'active') ?? versions[0];
+  if (!selectedVersion) throw new Error('No existe un plan comercial disponible.');
+  const allRows = listCommercialGoals(selectedVersion.id);
+  const months = [...new Set(allRows.map((row) => row.month))].sort();
+  const selectedMonth = months.includes(month ?? '') ? month! : (months.at(-1) ?? '');
+  const rows = selectedMonth ? allRows.filter((row) => row.month === selectedMonth) : allRows;
+  return {
+    versions,
+    selectedVersion,
+    selectedMonth,
+    months,
+    sellers: [...new Set(allRows.map((row) => row.seller).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    products: [...new Set(allRows.map((row) => row.product).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    rows,
+    changes: listCommercialGoalChanges(selectedVersion.id, 100),
+  };
+}
+
+function addGoalChange(store: DatabaseSync, input: {
+  versionId: string;
+  eventType: CommercialGoalChange['eventType'];
+  entityKey?: string;
+  actor: string;
+  comment?: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  createdAt?: string;
+}) {
+  store.prepare(`
+    INSERT INTO commercial_goal_changes (
+      id, version_id, event_type, entity_key, actor, comment, before_json, after_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(), input.versionId, input.eventType, input.entityKey ?? '', input.actor,
+    input.comment ?? '', input.before ? JSON.stringify(input.before) : null,
+    input.after ? JSON.stringify(input.after) : null, input.createdAt ?? new Date().toISOString(),
+  );
+}
+
+export function createCommercialGoalVersion(input: { name: string; notes?: string; cloneFromId?: string; actor?: string }) {
+  const store = db();
+  const source = input.cloneFromId ? getCommercialGoalVersion(input.cloneFromId) : getCommercialGoalVersion();
+  if (!source) throw new Error('No existe un plan base para clonar.');
+  const versionNumber = Number(store.prepare('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM commercial_goal_versions').get()?.next ?? 1);
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const actor = input.actor?.trim().slice(0, 120) || 'Oficina Salice';
+  const name = input.name.trim().slice(0, 120) || `Plan comercial v${versionNumber}`;
+  const sourceRows = listCommercialGoals(source.id);
+  const insertGoal = store.prepare(`
+    INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO commercial_goal_versions (
+        id, version_number, name, status, source_label, coverage_from, coverage_through,
+        notes, created_at, created_by, activated_at
+      ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      id, versionNumber, name, `Clonado de ${source.name} · v${source.version}`,
+      source.coverageFrom, source.coverageThrough, String(input.notes ?? '').trim().slice(0, 1000), createdAt, actor,
+    );
+    for (const row of sourceRows) {
+      insertGoal.run(randomUUID(), id, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
+    }
+    addGoalChange(store, {
+      versionId: id, eventType: 'created', actor,
+      comment: `Versión creada desde ${source.name} · v${source.version}.`,
+      after: { rows: sourceRows.length, sourceVersionId: source.id }, createdAt,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return getCommercialGoalVersion(id)!;
+}
+
+function requireDraftGoalVersion(versionId: string) {
+  const version = getCommercialGoalVersion(versionId);
+  if (!version) throw new Error('La versión de objetivos no existe.');
+  if (version.status !== 'draft') throw new Error('Sólo se pueden modificar versiones en borrador. Creá una nueva versión para conservar la trazabilidad.');
+  return version;
+}
+
+export function updateCommercialGoalRow(versionId: string, rowId: string, input: {
+  month: string;
+  product: string;
+  seller: string;
+  kilos: number | null;
+  accounts: number | null;
+  invoicing: number | null;
+  actor?: string;
+  comment?: string;
+}) {
+  requireDraftGoalVersion(versionId);
+  const store = db();
+  const currentRow = store.prepare('SELECT * FROM commercial_goals WHERE id = ? AND version_id = ?').get(rowId, versionId);
+  if (!currentRow) return null;
+  const before = commercialGoalFromRow(currentRow);
+  const after: CommercialGoalRow = {
+    id: rowId,
+    month: input.month,
+    product: input.product.trim().slice(0, 160),
+    seller: input.seller.trim().slice(0, 120),
+    kilos: input.kilos,
+    accounts: input.accounts,
+    invoicing: input.invoicing,
+  };
+  const actor = input.actor?.trim().slice(0, 120) || 'Oficina Salice';
+  const createdAt = new Date().toISOString();
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`UPDATE commercial_goals SET month = ?, product = ?, seller = ?, kilos = ?, accounts = ?, invoicing = ? WHERE id = ? AND version_id = ?`)
+      .run(after.month, after.product, after.seller, after.kilos, after.accounts, after.invoicing, rowId, versionId);
+    addGoalChange(store, {
+      versionId, eventType: 'row_updated', entityKey: rowId, actor,
+      comment: String(input.comment ?? '').trim().slice(0, 1000), before: { ...before }, after: { ...after }, createdAt,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return after;
+}
+
+export function createCommercialGoalRow(versionId: string, input: Omit<CommercialGoalRow, 'id'> & { actor?: string; comment?: string }) {
+  requireDraftGoalVersion(versionId);
+  const row: CommercialGoalRow = {
+    id: randomUUID(),
+    month: input.month,
+    product: input.product.trim().slice(0, 160),
+    seller: input.seller.trim().slice(0, 120),
+    kilos: input.kilos,
+    accounts: input.accounts,
+    invoicing: input.invoicing,
+  };
+  const store = db();
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.id, versionId, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
+    addGoalChange(store, {
+      versionId, eventType: 'row_created', entityKey: row.id,
+      actor: input.actor?.trim().slice(0, 120) || 'Oficina Salice',
+      comment: String(input.comment ?? 'Objetivo agregado').trim().slice(0, 1000), before: null, after: { ...row },
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return row;
+}
+
+export function deleteCommercialGoalRow(versionId: string, rowId: string, actor = 'Oficina Salice') {
+  requireDraftGoalVersion(versionId);
+  const store = db();
+  const currentRow = store.prepare('SELECT * FROM commercial_goals WHERE id = ? AND version_id = ?').get(rowId, versionId);
+  if (!currentRow) return false;
+  const before = commercialGoalFromRow(currentRow);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare('DELETE FROM commercial_goals WHERE id = ? AND version_id = ?').run(rowId, versionId);
+    addGoalChange(store, {
+      versionId, eventType: 'row_deleted', entityKey: rowId, actor: actor.trim().slice(0, 120) || 'Oficina Salice',
+      comment: 'Objetivo eliminado del borrador.', before: { ...before }, after: null,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return true;
+}
+
+export function activateCommercialGoalVersion(versionId: string, actor = 'Oficina Salice', comment = '') {
+  const version = requireDraftGoalVersion(versionId);
+  const store = db();
+  const coverage = store.prepare('SELECT MIN(month) AS first, MAX(month) AS last, COUNT(*) AS total FROM commercial_goals WHERE version_id = ?').get(versionId) as { first?: string; last?: string; total?: number };
+  if (!coverage.total || !coverage.first || !coverage.last) throw new Error('El borrador no contiene objetivos y no puede activarse.');
+  const activatedAt = new Date().toISOString();
+  const cleanActor = actor.trim().slice(0, 120) || 'Oficina Salice';
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare("UPDATE commercial_goal_versions SET status = 'archived' WHERE status = 'active'").run();
+    store.prepare(`
+      UPDATE commercial_goal_versions SET status = 'active', coverage_from = ?, coverage_through = ?, activated_at = ? WHERE id = ?
+    `).run(coverage.first, coverage.last, activatedAt, versionId);
+    addGoalChange(store, {
+      versionId, eventType: 'activated', actor: cleanActor,
+      comment: comment.trim().slice(0, 1000) || `Plan ${version.name} activado para Reporte General.`,
+      after: { coverageFrom: coverage.first, coverageThrough: coverage.last, rows: Number(coverage.total) }, createdAt: activatedAt,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return getCommercialGoalVersion(versionId)!;
+}
+
 export function recordSuccessfulSync(snapshot: DashboardData) {
   db().prepare(`
     INSERT INTO sync_runs (completed_at, snapshot_at, status, clients, products)
@@ -505,6 +1191,9 @@ export function operationalStatus() {
   const activityCount = Number((store.prepare('SELECT COUNT(*) AS total FROM commercial_activities').get()?.total) ?? 0);
   const promiseCount = Number((store.prepare("SELECT COUNT(*) AS total FROM payment_promises WHERE status = 'pending'").get()?.total) ?? 0);
   const agendaCount = Number((store.prepare("SELECT COUNT(*) AS total FROM agenda_items WHERE status = 'pending'").get()?.total) ?? 0);
+  const receivableCaseCount = Number((store.prepare('SELECT COUNT(*) AS total FROM receivable_cases').get()?.total) ?? 0);
+  const savedViewCount = Number((store.prepare('SELECT COUNT(*) AS total FROM saved_views').get()?.total) ?? 0);
+  const goalVersionCount = Number((store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total) ?? 0);
   const lastSync = store.prepare('SELECT completed_at, snapshot_at, status FROM sync_runs ORDER BY id DESC LIMIT 1').get();
   const refreshRuns = listRefreshRuns(6);
   const lastSuccessRow = store.prepare("SELECT * FROM refresh_runs WHERE status = 'success' ORDER BY started_at DESC LIMIT 1").get();
@@ -515,6 +1204,9 @@ export function operationalStatus() {
     activities: activityCount,
     pendingPromises: promiseCount,
     pendingAgendaItems: agendaCount,
+    receivableCases: receivableCaseCount,
+    savedViews: savedViewCount,
+    goalVersions: goalVersionCount,
     lastSync: lastSync ? {
       completedAt: String(lastSync.completed_at),
       snapshotAt: String(lastSync.snapshot_at),

@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type {
+  CommercialGoalRow,
   GeneralPerformanceRow,
   GeneralReportFilters,
   GeneralReportMeta,
@@ -9,17 +10,21 @@ import type {
   GeneralTrendPoint,
 } from '../shared/models.js';
 import { decodeMultiFilter, matchesMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
-import { STATUS_TARGET_SOURCE, STATUS_TARGETS, type StatusTargetRow } from './data/status-targets.js';
 import { daysInclusive } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricRatio as ratio, metricShare, readMovementMetrics } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
+import { getActiveCommercialGoalPlan } from './operational-store.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3];
-const ALLOWED_ISSUERS = ['Salice Distribuciones S.A.'];
+const UNIVERSE = EXECUTABLE_UNIVERSES.general;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
 const SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Luciano Payba', 'Reventas'];
 const AUTOSERVICE_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'];
 const CORE_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'C&T'];
@@ -37,7 +42,6 @@ const brandGroupExpression = `CASE
 const categoryGroupExpression = `CASE WHEN TRIM(category) = 'Snacks' THEN 'C&T' ELSE TRIM(category) END`;
 
 type SqlValue = string | number;
-type MetricRow = { kilos: number | null; clients: number | null; units: number | null; netAmount: number | null };
 
 let cachedMeta: GeneralReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -91,17 +95,8 @@ function dateAtCutoff(month: string, day: number) {
   return `${month}-${String(Math.min(day, Number(monthEnd(month).slice(8, 10)))).padStart(2, '0')}`;
 }
 
-function ratio(actual: number, target: number) {
-  return target ? actual / target * 100 : null;
-}
-
 function commonUniverse() {
-  return {
-    sql: `company_id IN (${placeholders(COMPANIES)})
-      AND branch_id IN (${placeholders(BRANCHES)})
-      AND TRIM(issuer_name) IN (${placeholders(ALLOWED_ISSUERS)})`,
-    parameters: [...COMPANIES, ...BRANCHES, ...ALLOWED_ISSUERS] as SqlValue[],
-  };
+  return compileMovementUniverse(UNIVERSE);
 }
 
 function buildWhere(filters: GeneralReportFilters, start: string, end: string) {
@@ -146,29 +141,17 @@ function buildWhere(filters: GeneralReportFilters, start: string, end: string) {
 
 function metric(value: DatabaseSync, filters: GeneralReportFilters, start: string, end: string) {
   const where = buildWhere(filters, start, end);
-  const row = value.prepare(`
-    SELECT COALESCE(SUM(kilos), 0) AS kilos,
-           COUNT(DISTINCT client_id) AS clients,
-           COALESCE(SUM(units), 0) AS units,
-           COALESCE(SUM(net_amount), 0) AS netAmount
-    FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow;
-  const normalized = {
-    kilos: Number(row.kilos ?? 0),
-    clients: Number(row.clients ?? 0),
-    units: Number(row.units ?? 0),
-    netAmount: Number(row.netAmount ?? 0),
-  };
+  const normalized = readMovementMetrics(value, where.sql, where.parameters);
   return { ...normalized, primary: filters.mode === 'autoservice' ? normalized.netAmount : normalized.kilos };
 }
 
-function targetCategory(row: StatusTargetRow) {
+function targetCategory(row: CommercialGoalRow) {
   if (row.product === 'Alimento Húmedo') return 'Alimento Húmedo';
   if (row.product === 'C&T') return 'C&T';
   return 'Alimentos Balanceados';
 }
 
-function targetMatches(row: StatusTargetRow, filters: GeneralReportFilters, month: string) {
+function targetMatches(row: CommercialGoalRow, filters: GeneralReportFilters, month: string) {
   if (row.month !== month) return false;
   if (!matchesMultiFilter(row.seller, filters.seller)) return false;
   if (filters.mode === 'autoservice') return row.invoicing != null && AUTOSERVICE_SELLERS.includes(row.seller);
@@ -183,15 +166,15 @@ function targetMatches(row: StatusTargetRow, filters: GeneralReportFilters, mont
   return true;
 }
 
-function targetValue(filters: GeneralReportFilters, month: string) {
-  return STATUS_TARGETS.filter((row) => targetMatches(row, filters, month)).reduce((sum, row) => (
+function targetValue(goals: CommercialGoalRow[], filters: GeneralReportFilters, month: string) {
+  return goals.filter((row) => targetMatches(row, filters, month)).reduce((sum, row) => (
     sum + Number(filters.mode === 'autoservice' ? row.invoicing ?? 0 : row.kilos ?? 0)
   ), 0);
 }
 
-function targetMap(filters: GeneralReportFilters, month: string, dimension: 'seller' | 'category' | 'brand') {
+function targetMap(goals: CommercialGoalRow[], filters: GeneralReportFilters, month: string, dimension: 'seller' | 'category' | 'brand') {
   const grouped = new Map<string, number>();
-  for (const row of STATUS_TARGETS.filter((item) => targetMatches(item, filters, month))) {
+  for (const row of goals.filter((item) => targetMatches(item, filters, month))) {
     const name = dimension === 'seller' ? row.seller : dimension === 'category' ? targetCategory(row) : row.product;
     if (!name || (dimension === 'brand' && ['Alimento Húmedo', 'C&T'].includes(name))) continue;
     const amount = Number(filters.mode === 'autoservice' ? row.invoicing ?? 0 : row.kilos ?? 0);
@@ -222,7 +205,7 @@ function performanceRows(actual: Map<string, number>, target: Map<string, number
       target: targetAmount,
       completion: ratio(actualAmount, targetAmount),
       gap: actualAmount - targetAmount,
-      share: totalActual ? actualAmount / totalActual * 100 : 0,
+      share: metricShare(actualAmount, totalActual),
     };
   }).filter((row) => Math.abs(row.actual) > 0.0001 || Math.abs(row.target) > 0.0001);
 }
@@ -244,12 +227,20 @@ function normalizeFilters(input: Partial<Record<string, unknown>>, meta: General
 }
 
 export function getGeneralReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getGeneralReportMeta(): GeneralReportMeta {
-  if (cachedMeta) return cachedMeta;
   const value = db();
+  const goalPlan = getActiveCommercialGoalPlan();
+  const targetMonths = [...new Set(goalPlan.rows.map((row) => row.month))].sort();
+  const enrichTargets = (meta: GeneralReportMeta): GeneralReportMeta => ({
+    ...meta,
+    latestMonth: targetMonths.filter((month) => !meta.maxDate || month <= meta.maxDate.slice(0, 7)).at(-1) ?? targetMonths.at(-1) ?? '',
+    months: targetMonths,
+    targetSource: goalPlan.source,
+  });
+  if (cachedMeta) return enrichTargets(cachedMeta);
   const unavailable: GeneralReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
@@ -258,12 +249,12 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     minDate: '',
     maxDate: '',
     capturedAt: '',
-    latestMonth: STATUS_TARGET_SOURCE.coverageThrough,
-    months: [],
+    latestMonth: goalPlan.source.coverageThrough,
+    months: targetMonths,
     sourceDocumentCount: 0,
     unavailableDocumentCount: 0,
     options: { sellers: SELLERS, coreCategories: CORE_CATEGORIES, coreBrands: CORE_BRANDS, strategicBrands: STRATEGIC_BRANDS },
-    targetSource: STATUS_TARGET_SOURCE,
+    targetSource: goalPlan.source,
     universe: {
       companies: COMPANIES,
       branches: BRANCHES,
@@ -275,17 +266,15 @@ export function getGeneralReportMeta(): GeneralReportMeta {
       autoserviceSellers: AUTOSERVICE_SELLERS,
     },
   };
-  if (!value) return unavailable;
+  if (!value) return enrichTargets(unavailable);
   const base = commonUniverse();
   const profile = value.prepare(`
     SELECT MIN(sale_date) AS minDate, MAX(sale_date) AS maxDate, COUNT(*) AS rowCount,
            COUNT(DISTINCT source_document_key) AS sourceDocumentCount
     FROM movements WHERE ${base.sql}
   `).get(...base.parameters) as { minDate: string | null; maxDate: string | null; rowCount: number; sourceDocumentCount: number };
-  if (!profile.minDate || !profile.maxDate) return unavailable;
+  if (!profile.minDate || !profile.maxDate) return enrichTargets(unavailable);
   const meta = metadata(value);
-  const targetMonths = [...new Set(STATUS_TARGETS.map((row) => row.month))].sort();
-  const latestMonth = targetMonths.filter((month) => month <= profile.maxDate!.slice(0, 7)).at(-1) ?? targetMonths.at(-1) ?? '';
   cachedMeta = {
     ...unavailable,
     available: true,
@@ -295,18 +284,19 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     minDate: profile.minDate,
     maxDate: profile.maxDate,
     capturedAt: meta.get('captured_at') ?? '',
-    latestMonth,
-    months: targetMonths,
+    latestMonth: '',
+    months: [],
     sourceDocumentCount: Number(meta.get('source_document_count') ?? profile.sourceDocumentCount),
     unavailableDocumentCount: Number(meta.get('unavailable_document_count') ?? 0),
   };
-  return cachedMeta;
+  return enrichTargets(cachedMeta);
 }
 
 export function buildGeneralReport(input: Partial<Record<string, unknown>>): GeneralReportPayload | null {
   const value = db();
   const meta = getGeneralReportMeta();
   if (!value || !meta.available) return null;
+  const goals = getActiveCommercialGoalPlan().rows;
   const filters = normalizeFilters(input, meta);
   const start = monthStart(filters.month);
   const naturalEnd = monthEnd(filters.month);
@@ -315,7 +305,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>): Gen
   const elapsedDays = daysInclusive(start, end);
   const daysInMonth = Number(naturalEnd.slice(8, 10));
   const current = metric(value, filters, start, end);
-  const target = targetValue(filters, filters.month);
+  const target = targetValue(goals, filters, filters.month);
   const previousMonth = shiftMonth(filters.month, -1);
   const previousYear = shiftMonth(filters.month, -12);
   const cutoffDay = Number(end.slice(8, 10));
@@ -327,16 +317,16 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>): Gen
     const monthNaturalEnd = monthEnd(month);
     const monthPeriodEnd = month === meta.maxDate.slice(0, 7) ? meta.maxDate : monthNaturalEnd;
     const actual = metric(value, filters, monthStart(month), monthPeriodEnd).primary;
-    const monthTarget = targetValue(filters, month);
+    const monthTarget = targetValue(goals, filters, month);
     return { month, actual, target: monthTarget, completion: ratio(actual, monthTarget), isPartial: monthPeriodEnd < monthNaturalEnd };
   });
 
   const sellerActual = actualMap(value, filters, start, end, `COALESCE(NULLIF(TRIM(seller), ''), 'Sin vendedor')`);
-  const sellerTargets = targetMap(filters, filters.month, 'seller');
+  const sellerTargets = targetMap(goals, filters, filters.month, 'seller');
   const categoryActual = filters.mode === 'strategic' ? new Map<string, number>() : actualMap(value, filters, start, end, categoryGroupExpression);
-  const categoryTargets = filters.mode === 'core' ? targetMap(filters, filters.month, 'category') : new Map<string, number>();
+  const categoryTargets = filters.mode === 'core' ? targetMap(goals, filters, filters.month, 'category') : new Map<string, number>();
   const brandActual = filters.mode === 'autoservice' ? new Map<string, number>() : actualMap(value, filters, start, end, brandGroupExpression);
-  const brandTargets = filters.mode === 'autoservice' ? new Map<string, number>() : targetMap(filters, filters.month, 'brand');
+  const brandTargets = filters.mode === 'autoservice' ? new Map<string, number>() : targetMap(goals, filters, filters.month, 'brand');
 
   return {
     generatedAt: new Date().toISOString(),

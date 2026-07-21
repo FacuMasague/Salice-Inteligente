@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildSptReport, getSptReportMeta } from './spt-report';
+import { resolveActiveDataPaths } from './data-bundle';
 
-const describeWithDatabase = existsSync(resolve(process.cwd(), 'data/spt-gesi.sqlite')) ? describe : describe.skip;
+const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
 describeWithDatabase('reporte SPT construido desde GESI', () => {
   it('declara GESI como fuente operativa y expone su cobertura real', () => {

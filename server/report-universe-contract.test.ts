@@ -8,6 +8,7 @@ import { getNonBuyerReportMeta } from './non-buyers-report';
 import { getNutriPetReportMeta } from './nutripet-report';
 import { getPendingBalancesReportMeta } from './pending-balances-report';
 import { getSptReportMeta } from './spt-report';
+import { validateExecutableUniverses } from './report-universes';
 
 function documented(id: string) {
   const value = REPORT_UNIVERSES.find((universe) => universe.id === id);
@@ -16,6 +17,9 @@ function documented(id: string) {
 }
 
 describe('contrato central de universos de reporte', () => {
+  it('mantiene los contratos ejecutables alineados con el catálogo', () => {
+    expect(validateExecutableUniverses()).toEqual([]);
+  });
   it('mantiene empresa y sucursal alineadas con las implementaciones', () => {
     const mappings = [
       ['commercial-sales', getCommercialSalesReportMeta().universe],

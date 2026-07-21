@@ -6,6 +6,11 @@ data/raw/
 data/staging/
 data/backups/
 data/refresh-backups/
+data/bundles/
+data/active-bundle.json
+data/operations-backups/
+data/operations.sqlite.pre-restore-*
+data/salice-server.lock
 data/operations.sqlite*
 data/spt-report.sqlite*
 data/spt-gesi.sqlite*

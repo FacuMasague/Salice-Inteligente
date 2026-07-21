@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildNutriPetReport, getNutriPetReportMeta } from './nutripet-report';
+import { resolveActiveDataPaths } from './data-bundle';
 
-const describeWithDatabase = existsSync(resolve(process.cwd(), 'data/spt-gesi.sqlite')) ? describe : describe.skip;
+const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
 describeWithDatabase('Reporte NutriPet construido desde GESI', () => {
   it('declara el universo Salice y los filtros observados en Power BI', () => {

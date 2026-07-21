@@ -4,17 +4,20 @@ import type {
   PendingBalanceAgingRow,
   PendingBalanceClientRow,
   PendingBalanceFilters,
+  PendingBalanceDocumentRow,
   PendingBalanceReportMeta,
   PendingBalanceReportPayload,
   PendingBalanceSellerRow,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { PENDING_BALANCE_SELLERS } from './pending-balances-build.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricRatio as ratio } from './report-metrics.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_PENDING_BALANCES_DB_PATH
+const reportPath = () => process.env.SALICE_PENDING_BALANCES_DB_PATH
   ? resolve(process.env.SALICE_PENDING_BALANCES_DB_PATH)
-  : resolve(process.cwd(), 'data/pending-balances.sqlite');
+  : resolveActiveDataPaths().pendingBalances;
 
 type SqlValue = string | number;
 type RawClientRow = {
@@ -52,10 +55,6 @@ function metadata(value: DatabaseSync) {
   return new Map(rows<{ key: string; value: string }>(value.prepare('SELECT key, value FROM report_meta')).map((row) => [row.key, row.value]));
 }
 
-function ratio(numerator: number, denominator: number) {
-  return denominator > 0 ? numerator / denominator * 100 : null;
-}
-
 function normalizeFilters(input: Partial<Record<string, unknown>>, meta: PendingBalanceReportMeta): PendingBalanceFilters {
   return {
     seller: normalizeMultiFilter(input.seller, meta.options.sellers),
@@ -79,12 +78,12 @@ function where(filters: PendingBalanceFilters, alias = '') {
 }
 
 export function getPendingBalancesReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
-  if (cachedMeta) return cachedMeta;
   const value = db();
+  if (cachedMeta) return cachedMeta;
   const unavailable: PendingBalanceReportMeta = {
     available: false,
     sourceSystem: 'GESI API · saldos, comprobantes pendientes y ventas Salice',
@@ -222,4 +221,34 @@ export function buildPendingBalancesReport(input: Partial<Record<string, unknown
     clients,
     aging: agingRows(value, filters, meta.asOfDate),
   };
+}
+
+export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanceDocumentRow[] {
+  const value = db();
+  const meta = getPendingBalancesReportMeta();
+  if (!value || !meta.available) return [];
+  const validIds = [...new Set((clientIds ?? []).filter(Number.isFinite))];
+  const filter = validIds.length ? `WHERE client_id IN (${validIds.map(() => '?').join(', ')})` : '';
+  return rows<{
+    document_id: string;
+    client_id: number;
+    document_number: string;
+    issued_at: string;
+    due_at: string;
+    outstanding: number;
+    credit_term_days: number | null;
+    status: string;
+  }>(value.prepare(`SELECT * FROM documents ${filter} ORDER BY due_at, document_number`), validIds).map((row) => ({
+    documentId: row.document_id,
+    clientId: Number(row.client_id),
+    documentNumber: row.document_number,
+    issuedAt: row.issued_at,
+    dueAt: row.due_at,
+    outstanding: Number(row.outstanding),
+    creditTermDays: row.credit_term_days == null ? null : Number(row.credit_term_days),
+    status: row.status === 'overdue' ? 'overdue' : 'not_due',
+    overdueDays: row.due_at < meta.asOfDate
+      ? Math.max(0, Math.round((new Date(`${meta.asOfDate}T12:00:00Z`).getTime() - new Date(`${row.due_at}T12:00:00Z`).getTime()) / 86_400_000))
+      : 0,
+  }));
 }

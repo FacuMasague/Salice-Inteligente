@@ -11,20 +11,23 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { previousThreeFullMonths as averageWindow, shiftDays } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3];
-const ALLOWED_ISSUERS = ['Salice Distribuciones S.A.'];
-const CLIENT_STATUSES = ['Activo'];
-const EXCLUDED_CLIENTS = ['Consumidor Final', '', '*** ANULADO ***'];
-const EXCLUDED_PRODUCT_GROUPS = ['Drovet', 'Kualcos'];
-const EXCLUDED_CATEGORIES = ['POP', 'Promociones'];
-const EXCLUDED_SELLERS = ['Administración', 'Carolina', ''];
+const UNIVERSE = EXECUTABLE_UNIVERSES.nonBuyers;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
+const CLIENT_STATUSES = [...UNIVERSE.clientStatuses];
+const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
+const EXCLUDED_PRODUCT_GROUPS = [...UNIVERSE.excludedProductGroups];
+const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
+const EXCLUDED_SELLERS = [...UNIVERSE.excludedSellers];
 const EXCLUDED_BRANDS = ['Cancat', 'Lokal', 'Mi QR', 'Kualcos', '', 'Pampa Criadores', 'De La Huerta'];
 
 const FILTER_COLUMNS: Record<NonBuyerFilterKey, string> = {
@@ -70,26 +73,9 @@ function metadata(value: DatabaseSync) {
 }
 
 function baseUniverse(brandView = false) {
-  const clauses = [
-    `company_id IN (${placeholders(COMPANIES)})`,
-    `branch_id IN (${placeholders(BRANCHES)})`,
-    `TRIM(issuer_name) IN (${placeholders(ALLOWED_ISSUERS)})`,
-    `TRIM(client_status) IN (${placeholders(CLIENT_STATUSES)})`,
-    `TRIM(client_name) NOT IN (${placeholders(EXCLUDED_CLIENTS)})`,
-    `TRIM(product_group) NOT IN (${placeholders(EXCLUDED_PRODUCT_GROUPS)})`,
-    `TRIM(category) NOT IN (${placeholders(EXCLUDED_CATEGORIES)})`,
-    `TRIM(branch_seller) NOT IN (${placeholders(EXCLUDED_SELLERS)})`,
-  ];
-  const parameters: SqlValue[] = [
-    ...COMPANIES,
-    ...BRANCHES,
-    ...ALLOWED_ISSUERS,
-    ...CLIENT_STATUSES,
-    ...EXCLUDED_CLIENTS,
-    ...EXCLUDED_PRODUCT_GROUPS,
-    ...EXCLUDED_CATEGORIES,
-    ...EXCLUDED_SELLERS,
-  ];
+  const compiled = compileMovementUniverse(UNIVERSE);
+  const clauses = [compiled.sql];
+  const parameters: SqlValue[] = [...compiled.parameters];
   if (brandView) {
     clauses.push(`TRIM(brand) NOT IN (${placeholders(EXCLUDED_BRANDS)})`);
     parameters.push(...EXCLUDED_BRANDS);
@@ -268,12 +254,12 @@ function sellerRows(
 }
 
 export function getNonBuyerReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getNonBuyerReportMeta(): NonBuyerReportMeta {
-  if (cachedMeta) return cachedMeta;
   const value = db();
+  if (cachedMeta) return cachedMeta;
   const unavailable: NonBuyerReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',

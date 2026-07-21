@@ -17,17 +17,17 @@ Un reporte se considera técnicamente reemplazable sólo cuando cumple todos los
 11. La actualización manual aprobada reemplaza el artefacto sin reiniciar el servidor y una falla conserva la última versión válida.
 12. Administración confirma que filtros, detalle y futuras exportaciones cubren el uso cotidiano.
 
-## Estado al cierre de v0.3.0
+## Estado técnico de v0.4.0
 
 | Reporte | Fuente operativa | Pruebas y conciliación | Limitación pendiente | Estado de retiro |
 |---|---|---|---|---|
 | SPT Vol vs mes anterior | GESI | Sí | Validación de uso diario | Candidato a piloto |
-| Ventas · Comercial | GESI | Sí | Drill-down y exportación v0.4 | Candidato a piloto |
+| Ventas · Comercial | GESI | Sí | Aceptación de uso diario del nuevo explorador | Listo para piloto funcional |
 | Mars | GESI | Sí | Tipos de cliente con catálogo de respaldo | Candidato a piloto |
 | NutriPet | GESI | Sí | Validación de uso diario | Candidato a piloto |
 | Baires | GESI | Sí | Diferencias históricas ya declaradas | Candidato a piloto |
 | Cuentas no compradoras | GESI | Sí | AcuerdosComerciales no expuesto | Uso con salvedad |
-| Reporte General | GESI + plan versionado | Sí | Gestión editable y versionada de objetivos v0.4 | Candidato a piloto |
-| Saldos Pendientes | GESI | Sí | Flujo administrativo y exportación v0.4 | Candidato a piloto |
+| Reporte General | GESI + plan versionado | Sí | Aceptación del flujo de borrador y activación | Listo para piloto funcional |
+| Saldos Pendientes | GESI | Sí | Definir responsables reales antes del multiusuario | Listo para piloto funcional |
 
-“Candidato a piloto” no significa retirado. Ningún Power BI debe apagarse hasta que el área responsable complete pruebas de uso real y acepte por escrito su reemplazo.
+“Listo para piloto funcional” no significa retirado. Ningún Power BI debe apagarse hasta que el área responsable complete pruebas de uso real y acepte por escrito su reemplazo. Mientras no existan usuarios, las acciones administrativas se atribuyen al puesto `Oficina Salice`, no a una identidad personal.

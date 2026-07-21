@@ -4,21 +4,28 @@ import { DatabaseSync } from 'node:sqlite';
 export class ReloadableReadonlyDatabase {
   private database: DatabaseSync | null = null;
   private mtimeMs = -1;
+  private openedPath = '';
 
-  constructor(private readonly path: string) {}
+  constructor(private readonly source: string | (() => string)) {}
+
+  path() {
+    return typeof this.source === 'function' ? this.source() : this.source;
+  }
 
   get(): { database: DatabaseSync; changed: boolean } | null {
-    if (!existsSync(this.path)) {
+    const path = this.path();
+    if (!existsSync(path)) {
       this.close();
       return null;
     }
-    const nextMtime = statSync(this.path).mtimeMs;
-    const changed = !this.database || nextMtime !== this.mtimeMs;
+    const nextMtime = statSync(path).mtimeMs;
+    const changed = !this.database || path !== this.openedPath || nextMtime !== this.mtimeMs;
     if (changed) {
       this.close();
-      this.database = new DatabaseSync(this.path, { readOnly: true });
+      this.database = new DatabaseSync(path, { readOnly: true });
       this.database.exec('PRAGMA query_only = ON; PRAGMA busy_timeout = 5000;');
       this.mtimeMs = nextMtime;
+      this.openedPath = path;
     }
     return { database: this.database!, changed };
   }
@@ -27,5 +34,6 @@ export class ReloadableReadonlyDatabase {
     if (this.database) this.database.close();
     this.database = null;
     this.mtimeMs = -1;
+    this.openedPath = '';
   }
 }

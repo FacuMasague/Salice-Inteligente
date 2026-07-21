@@ -21,7 +21,10 @@ if [[ ! -d node_modules || ! -d dist ]]; then
   exit 1
 fi
 
-echo "Iniciando Salice Inteligente v0.3.0…"
+echo "Verificando y respaldando la información operativa local…"
+NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" "$NODE_BIN" node_modules/tsx/dist/cli.mjs scripts/backup-operations.ts
+
+echo "Iniciando Salice Inteligente v0.4.0…"
 NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" NODE_ENV=production "$NODE_BIN" node_modules/tsx/dist/cli.mjs server/index.ts &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT INT TERM

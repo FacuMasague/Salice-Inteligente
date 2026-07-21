@@ -1,3 +1,5 @@
+import { REPORT_ENDPOINT_METRICS } from './metric-links.js';
+
 export type MetricUnit = 'ars' | 'kg' | 'units' | 'clients' | 'documents' | 'days' | 'percent' | 'score';
 
 export interface MetricDefinition {
@@ -39,7 +41,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Renglón de comprobante e ítem',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['Ventas · Comercial', 'SPT', 'Reporte General', 'Cuentas no compradoras', 'Reportes de proveedor'],
+    consumers: ['Explorador de ventas', 'Ventas · Comercial', 'SPT', 'Reporte General', 'Cuentas no compradoras', 'Reportes de proveedor'],
     caveats: ['No incorpora datos del PBIX.', 'Los conceptos sin ítem se informan como cobertura no asignable.'],
   },
   {
@@ -51,7 +53,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Renglón de comprobante e ítem',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['SPT', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
+    consumers: ['Explorador de ventas', 'SPT', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
     caveats: ['No infiere peso desde el nombre del producto.', 'Conserva diferencias históricas trazables respecto de SQL/Power BI.'],
   },
   {
@@ -63,7 +65,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Renglón de comprobante e ítem',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['SPT', 'Ventas · Comercial', 'Reporte General'],
+    consumers: ['Explorador de ventas', 'SPT', 'Ventas · Comercial', 'Reporte General'],
     caveats: ['La unidad depende de la definición maestra de cada producto.'],
   },
   {
@@ -75,8 +77,44 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Cliente GESI',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['SPT', 'Ventas · Comercial', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
+    consumers: ['Explorador de ventas', 'SPT', 'Ventas · Comercial', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
     caveats: ['Mars puede alternar entre cuenta y sucursal de entrega.', 'No equivale al total de clientes activos.'],
+  },
+  {
+    id: 'sales.documents',
+    label: 'Comprobantes comerciales',
+    description: 'Facturas y notas de crédito distintas dentro del universo y período seleccionados.',
+    unit: 'documents',
+    formula: 'COUNT(DISTINCT movements.source_document_key)',
+    source: gesiMovements,
+    grain: 'Comprobante comercial',
+    dateBasis: 'Fecha de emisión del comprobante',
+    consumers: ['Explorador de ventas'],
+    caveats: ['Un comprobante puede contener varios renglones y productos.', 'Los comprobantes sin detalle no pueden integrar esta base analítica.'],
+  },
+  {
+    id: 'sales.average_ticket',
+    label: 'Ticket promedio',
+    description: 'Venta neta dividida por la cantidad de comprobantes comerciales distintos.',
+    unit: 'ars',
+    formula: 'sales.net / sales.documents',
+    source: 'Métrica derivada sobre movimientos GESI',
+    grain: 'Universo y período seleccionados',
+    dateBasis: 'Fecha de emisión del comprobante',
+    consumers: ['Explorador de ventas'],
+    caveats: ['Incluye el signo de las notas de crédito.', 'Queda sin valor cuando no existen comprobantes.'],
+  },
+  {
+    id: 'sales.average_price_kg',
+    label: 'Venta neta por kilo',
+    description: 'Venta neta total dividida por los kilos netos del mismo universo y período.',
+    unit: 'ars',
+    formula: 'sales.net / volume.kilos',
+    source: 'Métrica derivada sobre movimientos GESI',
+    grain: 'Universo y período seleccionados',
+    dateBasis: 'Fecha de emisión del comprobante',
+    consumers: ['Explorador de ventas'],
+    caveats: ['No equivale al promedio simple por renglón usado por algunas matrices históricas.', 'Queda sin valor cuando el volumen neto es cero.'],
   },
   {
     id: 'balance.net',
@@ -99,7 +137,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiFinance,
     grain: 'Comprobante abierto',
     dateBasis: 'Estado al corte del snapshot',
-    consumers: ['Saldos Pendientes', 'Cartera', 'Perfil de cliente'],
+    consumers: ['Cuentas por cobrar', 'Saldos Pendientes', 'Cartera', 'Perfil de cliente'],
     caveats: ['Recibos y notas de crédito no se presentan como deuda.', 'Los residuales menores a $1.000 permanecen visibles.'],
   },
   {
@@ -111,7 +149,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiFinance,
     grain: 'Comprobante abierto',
     dateBasis: 'Primer vencimiento exacto contra fecha del snapshot',
-    consumers: ['Agenda', 'Cartera', 'Saldos Pendientes', 'Reporte General', 'Perfiles'],
+    consumers: ['Agenda', 'Cuentas por cobrar', 'Cartera', 'Saldos Pendientes', 'Reporte General', 'Perfiles'],
     caveats: ['No usa el plazo habitual resumido para decidir si un documento venció.'],
   },
   {
@@ -171,7 +209,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: 'Configuración de planificación reconstruida desde la fuente externa histórica',
     grain: 'Mes, lectura y dimensión objetivo',
     dateBasis: 'Mes calendario del plan',
-    consumers: ['Reporte General'],
+    consumers: ['Reporte General', 'Objetivos comerciales'],
     caveats: ['No proviene de GESI.', 'Debe conservar versión, vigencia y trazabilidad.'],
   },
   {
@@ -247,7 +285,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: [],
     sellerRule: 'Dinámico; mantiene Sin vendedor cuando GESI no permite asignar uno.',
     dateRule: 'Foto al momento de captura; ventas operativas de 90/180/365 días según la métrica.',
-    source: 'data/snapshot.json desde GESI',
+    source: 'Snapshot del paquete activo desde GESI',
   },
   {
     id: 'spt-main',
@@ -259,7 +297,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Rubros POP y Promociones'],
     sellerRule: 'Lista histórica publicada; la página Vendedores y Trimestre poseen universos propios.',
     dateRule: 'Mes seleccionado y cortes equivalentes por número de día.',
-    source: 'data/spt-gesi.sqlite desde GESI; PBIX sólo para conciliación',
+    source: 'Base comercial del paquete activo desde GESI; PBIX sólo para conciliación',
   },
   {
     id: 'commercial-sales',
@@ -271,7 +309,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Via Salice MDP S.A.', 'Consumidor Final', 'GBA M6 S.A.'],
     sellerRule: 'Filtro dinámico.',
     dateRule: 'Mes o año; comparación contra el mismo número de días.',
-    source: 'data/spt-gesi.sqlite desde GESI',
+    source: 'Base comercial del paquete activo desde GESI',
   },
   {
     id: 'mars',
@@ -283,7 +321,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Via Salice MDP S.A.'],
     sellerRule: 'Sin lista fija de vendedores.',
     dateRule: 'Calendario comercial Mars de 13 períodos; comparaciones equivalentes salvo tarjeta histórica declarada.',
-    source: 'data/spt-gesi.sqlite desde GESI',
+    source: 'Base comercial del paquete activo desde GESI',
   },
   {
     id: 'nutripet',
@@ -295,7 +333,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Rubro POP', 'Via Salice MDP S.A.'],
     sellerRule: 'Sin lista fija de vendedores.',
     dateRule: 'Mes calendario y comparaciones equivalentes.',
-    source: 'data/spt-gesi.sqlite desde GESI',
+    source: 'Base comercial del paquete activo desde GESI',
   },
   {
     id: 'baires',
@@ -307,7 +345,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Rubro POP', 'Via Salice MDP S.A.'],
     sellerRule: 'Sin lista fija de vendedores.',
     dateRule: 'Mes calendario y comparaciones equivalentes.',
-    source: 'data/spt-gesi.sqlite desde GESI',
+    source: 'Base comercial del paquete activo desde GESI',
   },
   {
     id: 'non-buyers',
@@ -319,7 +357,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Consumidor Final', 'Anulados', 'Drovet', 'Kualcos', 'POP', 'Promociones', 'Administración', 'Carolina'],
     sellerRule: 'Vendedor de la definición de sucursal.',
     dateRule: 'Ventanas móviles 30/90/180 días al último movimiento elegible.',
-    source: 'data/spt-gesi.sqlite desde GESI',
+    source: 'Base comercial del paquete activo desde GESI',
   },
   {
     id: 'general-status',
@@ -331,7 +369,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: [],
     sellerRule: 'Lista del plan comercial versionado; Autoservicio usa Ana Ottaviano y Julieta Errecart.',
     dateRule: 'Mes calendario; real GESI y objetivo externo permanecen separados.',
-    source: 'Resultados de data/spt-gesi.sqlite + objetivos versionados',
+    source: 'Resultados de la base comercial activa + objetivos versionados',
   },
   {
     id: 'pending-balances',
@@ -343,15 +381,16 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
     excluded: ['Grupo de vendedores MM en la vista publicada'],
     sellerRule: 'Lista explícita del reporte publicado.',
     dateRule: 'Cartera al snapshot; venta neta móvil inclusiva de 30 días.',
-    source: 'data/pending-balances.sqlite desde GESI',
+    source: 'Base de saldos del paquete activo desde GESI',
   },
 ];
 
 export function metricCatalogSummary() {
   return {
-    version: '1.0.0',
+    version: '1.2.0',
     metrics: METRIC_CATALOG,
     universes: REPORT_UNIVERSES,
+    endpoints: REPORT_ENDPOINT_METRICS,
     principles: [
       'GESI es la fuente operativa de resultados reales.',
       'Power BI es una referencia funcional y de conciliación, nunca una dependencia.',

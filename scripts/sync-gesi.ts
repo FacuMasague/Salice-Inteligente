@@ -5,11 +5,18 @@ import type { GesiRawCapture } from '../server/gesi/types.js';
 import { saveSnapshot } from '../server/store.js';
 import { importSnapshotNotes, recordSuccessfulSync } from '../server/operational-store.js';
 import { buildPendingBalancesDatabase } from '../server/pending-balances-build.js';
+import { getActiveBundleManifest } from '../server/data-bundle.js';
 import type { DashboardData } from '../shared/models.js';
 
-const capturePath = resolve(process.cwd(), 'data/raw/gesi-salice-latest.json');
-const stagingDirectory = resolve(process.cwd(), 'data/staging');
-const stagingPath = resolve(stagingDirectory, 'snapshot-gesi.json');
+const capturePath = resolve(process.env.SALICE_CAPTURE_PATH ?? 'data/raw/gesi-salice-latest.json');
+const stagingPath = resolve(process.env.SALICE_STAGING_OUTPUT_PATH ?? 'data/staging/snapshot-gesi.json');
+const snapshotOutputPath = process.env.SALICE_SNAPSHOT_OUTPUT_PATH ? resolve(process.env.SALICE_SNAPSHOT_OUTPUT_PATH) : null;
+const pendingOutputPath = resolve(process.env.SALICE_PENDING_BALANCES_OUTPUT_PATH ?? 'data/pending-balances.sqlite');
+const candidateMode = Boolean(snapshotOutputPath);
+
+if (!candidateMode && getActiveBundleManifest()) {
+  throw new Error('La activación directa de sync:gesi está deshabilitada desde v0.3.3. Usá pnpm run refresh:gesi para construir, auditar y activar el paquete completo.');
+}
 
 console.log('Leyendo la última captura cruda de Salice…');
 const capture = JSON.parse(await readFile(capturePath, 'utf8')) as GesiRawCapture;
@@ -26,24 +33,33 @@ if (issues.length) {
   process.exit(1);
 }
 
-await mkdir(stagingDirectory, { recursive: true });
+await mkdir(resolve(stagingPath, '..'), { recursive: true });
 const temporaryPath = `${stagingPath}.tmp`;
 await writeFile(temporaryPath, `${JSON.stringify(snapshot)}\n`, 'utf8');
 await rename(temporaryPath, stagingPath);
 
+if (snapshotOutputPath) {
+  await mkdir(resolve(snapshotOutputPath, '..'), { recursive: true });
+  const snapshotTemporary = `${snapshotOutputPath}.tmp`;
+  await writeFile(snapshotTemporary, `${JSON.stringify(snapshot)}\n`, 'utf8');
+  await rename(snapshotTemporary, snapshotOutputPath);
+}
+
 // Migra cualquier nota escrita en versiones anteriores antes de reemplazar la
 // foto GESI. Desde v0.0.3 las notas viven en SQLite y sobreviven a cada sync.
-try {
-  const current = JSON.parse(await readFile(resolve(process.cwd(), 'data/snapshot.json'), 'utf8')) as DashboardData;
-  importSnapshotNotes(current);
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+if (!candidateMode) {
+  try {
+    const current = JSON.parse(await readFile(resolve(process.cwd(), 'data/snapshot.json'), 'utf8')) as DashboardData;
+    importSnapshotNotes(current);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  await saveSnapshot(snapshot);
+  recordSuccessfulSync(snapshot);
 }
-await saveSnapshot(snapshot);
-recordSuccessfulSync(snapshot);
-const pendingBalances = buildPendingBalancesDatabase(capture);
+const pendingBalances = buildPendingBalancesDatabase(capture, pendingOutputPath);
 
-console.log('Snapshot GESI validado y activado.');
+console.log(candidateMode ? 'Paquete candidato normalizado; todavía no está activo.' : 'Snapshot GESI validado y activado.');
 console.log(JSON.stringify({
   generatedAt: snapshot.meta.generatedAt,
   clients: snapshot.clients.length,

@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 
-const capturePath = resolve(process.cwd(), 'data/raw/gesi-salice-latest.json');
-const targetPath = resolve(process.cwd(), 'data/spt-gesi.sqlite');
+const capturePath = resolve(process.env.SALICE_CAPTURE_PATH ?? 'data/raw/gesi-salice-latest.json');
+const targetPath = resolve(process.env.SALICE_SPT_OUTPUT_PATH ?? 'data/spt-gesi.sqlite');
 const temporaryPath = `${targetPath}.tmp`;
 
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;

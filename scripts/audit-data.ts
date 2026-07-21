@@ -3,8 +3,9 @@ import { resolve } from 'node:path';
 import { validateNormalizedSnapshot } from '../server/gesi/normalize.js';
 import { optimizeRoute, recommendProducts } from '../shared/algorithms.js';
 import { SNAPSHOT_REVISION, VECTOR_LABELS, type DashboardData } from '../shared/models.js';
+import { resolveActiveDataPaths } from '../server/data-bundle.js';
 
-const snapshotPath = resolve(process.cwd(), 'data/snapshot.json');
+const snapshotPath = resolve(process.env.SALICE_SNAPSHOT_PATH ?? resolveActiveDataPaths().snapshot);
 const data = JSON.parse(await readFile(snapshotPath, 'utf8')) as DashboardData;
 const issues = data.meta.source === 'gesi' ? validateNormalizedSnapshot(data) : [];
 const productIDs = new Set(data.products.map((product) => product.id));

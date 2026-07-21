@@ -13,18 +13,22 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { cutoffDate as dateAtCutoff, daysInclusive, isoDate as iso, monthEnd, monthKey, monthStart, shiftedMonth as shiftMonth, utcDate } from './reporting-periods.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
+import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
+import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-const reportPath = process.env.SALICE_SPT_DB_PATH
+const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
-  : resolve(process.cwd(), 'data/spt-gesi.sqlite');
+  : resolveActiveDataPaths().commercial;
 
-const COMPANIES = [3];
-const BRANCHES = [3];
-const ALLOWED_ISSUERS = ['Salice Distribuciones S.A.'];
-const PRODUCT_GROUP = 'Nutri Pet';
-const EXCLUDED_CATEGORIES = ['POP'];
-const EXCLUDED_CLIENTS = ['Via Salice MDP S.A.'];
+const UNIVERSE = EXECUTABLE_UNIVERSES.nutripet;
+const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
+const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
+const PRODUCT_GROUP = UNIVERSE.includedProductGroups[0];
+const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
+const EXCLUDED_CLIENTS = [...UNIVERSE.excludedClients];
 const SPECIALIZED_CHANNELS = [
   'COSTA-RUTA2', 'Especial', 'Distribuidor', 'Freelance', 'Especializado',
   'Especializado Z2', 'Partido de la Costa', 'Refugios', 'Reventa', 'Reventa2',
@@ -47,7 +51,6 @@ const FILTER_EXPRESSIONS: Record<NutriPetFilterKey, string> = {
 };
 
 type SqlValue = string | number;
-type MetricRow = { kilos: number | null; clients: number | null; units: number | null; netAmount: number | null };
 
 let cachedMeta: NutriPetReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -75,26 +78,7 @@ function metadata(value: DatabaseSync) {
 }
 
 function baseUniverse() {
-  return {
-    sql: `company_id IN (${placeholders(COMPANIES)})
-      AND branch_id IN (${placeholders(BRANCHES)})
-      AND UPPER(TRIM(issuer_name)) IN (${placeholders(ALLOWED_ISSUERS)})
-      AND UPPER(TRIM(product_group)) = ?
-      AND UPPER(TRIM(category)) NOT IN (${placeholders(EXCLUDED_CATEGORIES)})
-      AND UPPER(TRIM(client_name)) NOT IN (${placeholders(EXCLUDED_CLIENTS)})`,
-    parameters: [
-      ...COMPANIES,
-      ...BRANCHES,
-      ...ALLOWED_ISSUERS.map((value) => value.toUpperCase()),
-      PRODUCT_GROUP.toUpperCase(),
-      ...EXCLUDED_CATEGORIES.map((value) => value.toUpperCase()),
-      ...EXCLUDED_CLIENTS.map((value) => value.toUpperCase()),
-    ] as SqlValue[],
-  };
-}
-
-function ratio(value: number, base: number) {
-  return base ? value / base * 100 : null;
+  return compileMovementUniverse(UNIVERSE);
 }
 
 function buildWhere(filters: NutriPetFilters, start?: string, end?: string) {
@@ -114,19 +98,7 @@ function buildWhere(filters: NutriPetFilters, start?: string, end?: string) {
 
 function metric(value: DatabaseSync, filters: NutriPetFilters, start: string, end: string): NutriPetMetrics {
   const where = buildWhere(filters, start, end);
-  const row = value.prepare(`
-    SELECT COALESCE(SUM(kilos), 0) AS kilos,
-           COUNT(DISTINCT client_id) AS clients,
-           COALESCE(SUM(units), 0) AS units,
-           COALESCE(SUM(net_amount), 0) AS netAmount
-    FROM movements WHERE ${where.sql}
-  `).get(...where.parameters) as MetricRow;
-  return {
-    kilos: Number(row.kilos ?? 0),
-    clients: Number(row.clients ?? 0),
-    units: Number(row.units ?? 0),
-    netAmount: Number(row.netAmount ?? 0),
-  };
+  return readMovementMetrics(value, where.sql, where.parameters);
 }
 
 function normalizeFilters(input: Partial<Record<string, unknown>>, meta: NutriPetReportMeta): NutriPetFilters {
@@ -200,9 +172,9 @@ function brandRows(value: DatabaseSync, filters: NutriPetFilters, start: string,
       clients: Number(row.clients),
       units: Number(row.units),
       netAmount: Number(row.netAmount),
-      share: total ? kilos / total * 100 : 0,
+      share: metricShare(kilos, total),
       previousYearKilos,
-      variation: previousYearKilos ? (kilos - previousYearKilos) / previousYearKilos * 100 : null,
+      variation: metricVariation(kilos, previousYearKilos),
     };
   }).filter((row) => Math.abs(row.kilos) > 0.0001).sort((a, b) => b.kilos - a.kilos);
 }
@@ -226,17 +198,17 @@ function productRows(value: DatabaseSync, filters: NutriPetFilters, start: strin
     clients: Number(row.clients),
     units: Number(row.units),
     netAmount: Number(row.netAmount),
-    share: total ? Number(row.kilos) / total * 100 : 0,
+    share: metricShare(Number(row.kilos), total),
   })).filter((row) => Math.abs(row.kilos) > 0.0001);
 }
 
 export function getNutriPetReportPath() {
-  return reportPath;
+  return reportPath();
 }
 
 export function getNutriPetReportMeta(): NutriPetReportMeta {
-  if (cachedMeta) return cachedMeta;
   const value = db();
+  if (cachedMeta) return cachedMeta;
   const unavailable: NutriPetReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
