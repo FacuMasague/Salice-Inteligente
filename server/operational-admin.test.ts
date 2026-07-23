@@ -107,6 +107,42 @@ describe('persistencia administrativa v0.4.0', () => {
     expect(store.listSavedViews()).toHaveLength(0);
   });
 
+  it('guarda listas reproducibles y vínculos de oportunidades sin crear un workflow', () => {
+    const list = store.createSavedView({
+      viewKey: 'products',
+      purpose: 'product_opportunities',
+      name: 'Mix para revisar',
+      filters: { clientId: '123', kind: 'mix_gap', confidence: 'reliable' },
+    });
+    const note = store.createCommercialNote({
+      clientId: 123,
+      seller: 'Vendedor prueba',
+      type: 'note',
+      occurredAt: '2026-07-23T15:00:00.000Z',
+      note: 'La oficina documentó que la oportunidad fue conversada fuera del sistema.',
+      productIds: ['producto-123'],
+    });
+    const link = store.createCommercialOpportunityLink({
+      savedViewId: list.id,
+      clientId: 123,
+      productId: 'producto-123',
+      recommendationKinds: ['mix_gap'],
+      activityId: note.activity.id,
+      snapshotAt: '2026-07-22T14:02:00.000Z',
+    });
+    expect(store.listSavedViews('products', 'product_opportunities')).toEqual([
+      expect.objectContaining({ id: list.id, purpose: 'product_opportunities' }),
+    ]);
+    expect(store.listCommercialOpportunityLinks({ savedViewId: list.id })).toEqual([
+      expect.objectContaining({ id: link.id, activityId: note.activity.id, recommendationKinds: ['mix_gap'] }),
+    ]);
+    expect(note.activity.productIds).toEqual(['producto-123']);
+    expect(note.nextAgendaItem).toBeNull();
+    expect(note.promise).toBeNull();
+    expect(store.deleteSavedView(list.id)).toBe(true);
+    expect(store.listCommercialOpportunityLinks({ clientId: 123 })).toEqual([]);
+  });
+
   it('persiste la revisión humana de inventario sin modificar las señales GESI', () => {
     expect(store.listInventoryAlertReviews()).toEqual(expect.arrayContaining([
       expect.objectContaining({ productId: 'producto-legado', status: 'unreviewed', note: 'Revisión iniciada antes de incorporar el tercer estado.' }),
@@ -224,6 +260,27 @@ describe('persistencia administrativa v0.4.0', () => {
     expect(() => database.prepare('UPDATE product_price_snapshots SET reference_price = 1').run()).toThrow(/append-only/);
     expect(() => database.prepare('DELETE FROM product_price_snapshots').run()).toThrow(/append-only/);
     database.close();
+  });
+
+  it('guarda una nota comercial sin crear tareas, promesas ni planificación', () => {
+    const result = store.createCommercialNote({
+      clientId: 789,
+      seller: 'Vendedor prueba',
+      type: 'call',
+      occurredAt: '2026-07-23T14:00:00.000Z',
+      note: 'La oficina dejó constancia de una conversación realizada fuera del sistema.',
+    });
+    expect(result.activity).toMatchObject({
+      clientId: 789,
+      type: 'call',
+      outcome: 'noted',
+      nextActionAt: null,
+      note: 'La oficina dejó constancia de una conversación realizada fuera del sistema.',
+    });
+    expect(result.promise).toBeNull();
+    expect(result.nextAgendaItem).toBeNull();
+    expect(store.listAgendaItems({ clientId: 789 })).toEqual([]);
+    expect(store.listPromises({ clientId: 789 })).toEqual([]);
   });
 
   it('registra un evento por seguimiento, materializa promesas y revierte el estado al borrar', () => {

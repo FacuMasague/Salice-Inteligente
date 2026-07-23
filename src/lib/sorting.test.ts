@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleSort, emptySort, sortItems } from './sorting';
+import { cycleSort, cycleSortDescendingFirst, emptySort, sortItems } from './sorting';
 
 describe('ordenamiento de tres estados', () => {
   it('recorre ascendente, descendente y orden original', () => {
@@ -9,6 +9,15 @@ describe('ordenamiento de tres estados', () => {
     expect(ascending).toEqual({ key: 'value', direction: 'asc' });
     expect(descending).toEqual({ key: 'value', direction: 'desc' });
     expect(cycleSort(descending, 'value')).toEqual(initial);
+  });
+
+  it('puede recorrer descendente, ascendente y orden original', () => {
+    const initial = emptySort<'value'>();
+    const descending = cycleSortDescendingFirst(initial, 'value');
+    const ascending = cycleSortDescendingFirst(descending, 'value');
+    expect(descending).toEqual({ key: 'value', direction: 'desc' });
+    expect(ascending).toEqual({ key: 'value', direction: 'asc' });
+    expect(cycleSortDescendingFirst(ascending, 'value')).toEqual(initial);
   });
 
   it('ordena establemente y restaura la entrada al quitar el orden', () => {

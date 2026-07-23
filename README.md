@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.5.9
+# Salice Inteligente · v0.6.5
 
-Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, planificar y registrar gestiones comerciales, documentar promesas de pago, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
+Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, reunir señales comerciales y notas de oficina, documentar promesas de pago, generar recomendaciones explicables, planificar rutas y consultar reportes de gestión.
 
 ## Abrir el programa
 
@@ -38,6 +38,56 @@ La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda
 
 ## Qué incluye esta versión
 
+### Oportunidades en gestiones y ubicación administrativa · v0.6.5
+
+- `Cliente → Gestiones` incorpora una lista `Oportunidades` que reúne exclusivamente notas humanas vinculadas a productos desde `Productos → Oportunidades`.
+- Cada registro muestra la nota, su fecha y el producto relacionado. El nombre del producto abre su ficha existente.
+- Las notas vinculadas dejan de repetirse en `Notas sobre hechos externos`; no se crea otra gestión, estado o workflow.
+- `Cartera` conserva la misma pantalla y las mismas reglas, pero se mueve de `Centro operativo` a `Administración` en el menú lateral.
+
+La ficha completa está en `docs/release-v0.6.5.md`.
+
+### Cierre de gestión comercial liviana · v0.6.2–v0.6.4
+
+- Las combinaciones de filtros pueden guardarse como listas reproducibles para recuperación de clientes, cobranzas y oportunidades de productos. Son referencias de oficina: no crean campañas, mensajes, gestiones ni estados.
+- Las oportunidades explicables pueden vincularse explícitamente con una lista guardada y/o con una nota humana. La nota conserva el cliente y el producto, pero no demuestra contacto, oferta ni resultado.
+- `Objetivos` relaciona cada versión seleccionada —activa, borrador o histórica— con resultados reales calculados desde GESI para el mismo mes.
+- El seguimiento por vendedor separa objetivo, resultado, diferencia y avance. También muestra clientes con notas, cantidad de notas y oportunidad O alta como señales simples, sin interpretarlas como productividad o etapas de un embudo.
+- El embudo comercial detallado permanece suspendido hasta que una necesidad real de Salice justifique sus estados.
+- `Cartera para revisar` queda reducida a prioridad P, identidad, localidad y ventas recientes; ya no repite oportunidad ni bloqueo a la derecha.
+
+Las fichas completas están en `docs/release-v0.6.2.md`, `docs/release-v0.6.3.md` y `docs/release-v0.6.4.md`.
+
+### Lectura administrativa de carteras · v0.6.1
+
+- `Vendedores` compara carteras usando exclusivamente clientes activos de GESI e incluye `Sin vendedor` para no ocultar cuentas sin responsable informado.
+- Cada vendedor muestra clientes, ventas de 90 días, localidades informadas, riesgo de cobranza, oportunidad alta y prioridad alta.
+- La tabla se puede ordenar desde todos sus encabezados: descendente, ascendente y orden original. La ficha de cartera mantiene ventas, cobranza y evolución, y agrega filtros simples para revisar cuentas por C, O o P.
+- C, O y P se muestran por separado. No se crea un puntaje adicional ni se interpreta O como oportunidad cuando el cliente está bloqueado o no tiene compras recientes.
+- Las localidades provienen del maestro de cada cliente y se agrupan ignorando diferencias de mayúsculas y espacios. No se presentan como territorios, porque GESI continúa sin entregar un maestro de zonas confiable.
+- La lectura es informativa: no reasigna clientes, no guarda simulaciones y no genera tareas, comunicaciones o planificaciones.
+- La lista `Cartera para revisar` mantiene la prioridad P descendente y no presenta C como dato de la fila.
+- La bandeja comercial vuelve a mantener un único orden descendente por P para todos los clientes, sin agrupar primero cobranzas u oportunidades.
+
+Las reglas compartidas están en `shared/portfolio-analysis.ts`, el orden triestado reutiliza `src/lib/sorting.ts` y la ficha completa está en `docs/release-v0.6.1.md`.
+
+### Bandeja comercial semanal · v0.6.0
+
+- `Administración → Bandeja comercial` reúne en una sola lectura señales calculadas, oportunidades de productos, promesas, seguimientos de cobranza, recordatorios históricos y notas de oficina.
+- La bandeja trabaja por semana, vendedor, origen y búsqueda. Cada cliente aparece una sola vez aunque reúna varios motivos.
+- La base semanal reserva espacio tanto para cobranzas accionables como para oportunidades elegibles. C, O y P permanecen separados y no se crea otro puntaje; desde v0.6.1 todos los clientes se muestran en un único orden P descendente.
+- El universo es estrictamente el de clientes activos en GESI, igual que Cartera. Una promesa, recordatorio o nota histórica no reincorpora un cliente inactivo.
+- Los clientes bloqueados o sin compras positivas en los últimos 90 días pueden aparecer por cobranza, recordatorios o notas, pero no muestran O ni productos sugeridos.
+- La fecha antes presentada como próxima visita se identifica ahora como `Revisión sugerida`: es una referencia algorítmica, no una visita planificada.
+- La oficina puede agregar una nota con cliente, fecha, categoría y texto obligatorio para documentar algo ocurrido fuera del sistema.
+- Guardar una nota no completa, cancela ni modifica una sugerencia; tampoco crea una próxima tarea, una promesa, una asignación o una comunicación.
+- Las promesas y los seguimientos se administran en Cuentas por cobrar. La bandeja sólo los reúne y mantiene navegación a cliente, vendedor, producto, cobranzas y rutas.
+- Las oportunidades continúan exigiendo stock positivo, compatibilidad y evidencia visible. Su puntaje ordena, no representa probabilidad de compra ni demuestra que un producto haya sido ofrecido.
+- La página puede desplazarse para apartar los controles y aprovechar la altura completa de la pantalla en la lectura de clientes y su detalle.
+- Los recordatorios anteriores conservados en `agenda_items` siguen siendo legibles, pero la aplicación ya no ofrece creación de tareas comerciales.
+
+Los contratos están en `server/agenda.ts` y `shared/models.ts`, las notas se persisten mediante `server/operational-store.ts` y la ficha completa está en `docs/release-v0.6.0.md`.
+
 ### Ciclo de incidencias de inventario · v0.5.9
 
 - Una revisión de producto ya no queda cerrada para siempre: cada snapshot vuelve a clasificar la señal de inventario sin modificar los valores recibidos de GESI.
@@ -57,7 +107,7 @@ Las reglas compartidas están en `shared/inventory-decisions.ts`, la persistenci
 - Toda recomendación exige producto comercializable con stock positivo. Clientes inactivos, maestros inactivos, inventario insuficiente e incompatibilidades explícitas quedan excluidos.
 - La afinidad se explica en lenguaje normal, la confianza es visible y la evidencia puede desplegarse. Cliente, vendedor, marca, producto sugerido, producto sustituido y ejemplos comparables son navegables.
 - La ficha del Catálogo invierte la misma lectura para cada producto: muestra las cinco mejores cuentas activas que todavía no lo compraron y permite abrir la lista completa, buscarla y navegar al cliente. No incorpora un segundo puntaje ni cambia las exclusiones existentes.
-- Las sugerencias no crean tareas ni registran gestiones. Una acción sólo se considera realizada cuando una persona guarda la gestión correspondiente.
+- Las sugerencias no crean tareas ni registran que un producto haya sido ofrecido. Las notas humanas permanecen separadas.
 
 Las reglas ejecutables están en `shared/commercial-opportunities.ts`, sus contratos en `shared/models.ts` y la ficha completa en `docs/release-v0.5.8.md`.
 
@@ -171,7 +221,7 @@ Las decisiones y comprobaciones de esta entrega están en `docs/release-v0.4.4.m
 - `Promesa informada` exige importe y fecha. Responsable, estado, próximo seguimiento, promesa y comentario quedan en la capa operativa local, separados del saldo GESI.
 - Cada cliente conserva el historial de seguimientos en Cuentas por cobrar y en la pestaña `Gestiones` de su perfil. Una eliminación es lógica: deja marca de fecha y actor para preservar auditoría.
 - La razón social y el vendedor navegan a sus fichas. La edición del seguimiento se abre únicamente desde el lápiz ubicado a la derecha de la fila.
-- La antigua ventana `Agenda` se reemplaza por `Gestiones comerciales` dentro de Administración. Allí quedan visitas, llamadas y ofertas; las cobranzas y promesas se concentran en Cuentas por cobrar.
+- La antigua ventana `Agenda` se reemplazó en v0.4.3 por `Gestiones comerciales`; v0.6.0 la simplifica como `Bandeja comercial`. Las cobranzas y promesas continúan administrándose en Cuentas por cobrar.
 - Facturas y notas de crédito abren un panel unificado desde Cartera, Cuentas por cobrar, perfiles y Explorador de ventas. El panel combina encabezado, saldo y renglones disponibles sin inventar faltantes, y genera un PDF A4 trazable.
 - Los filtros de selección única usan el mismo componente visual que los filtros combinables. Los formatos compactos conservan el punto de miles argentino en lugar de abreviaciones ambiguas.
 
@@ -274,9 +324,9 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 - La relación vencido/ventas ya no presenta `Infinity`: cuando no existe venta en la ventana, la interfaz explica `Sin ventas 30d`. La base analítica se reconstruye automáticamente al activar una nueva captura GESI.
 - Base analítica SQLite construida directamente desde facturas, notas de crédito y maestros de la API GESI, limitada a Salice empresa 3. El PBIX queda aislado como referencia de conciliación y nunca se consulta para operar la pantalla.
 - Inventario incremental de Power BI en `docs/powerbi`, con los reemplazos web de SPT, Ventas Comercial, Mars, NutriPet, Baires, Cuentas no compradoras, Status Salice y Saldos Pendientes.
-- Agenda operativa por fecha y vendedor: combina prioridades algorítmicas, tareas manuales y promesas exigibles, explicando el motivo de cada acción.
-- Registro persistente de visitas, llamadas, cobranzas y ofertas, con resultado, importe, productos ofrecidos y próxima acción opcional.
-- Promesas de pago con fecha, importe y estado pendiente/cumplida/incumplida; alimentan la agenda y las alertas sin confundirse con dinero cobrado.
+- Bandeja comercial semanal por vendedor: combina señales algorítmicas, oportunidades, promesas, recordatorios y notas sin convertirlos en una planificación.
+- Registro persistente de notas sobre visitas, llamadas, ofertas u otros hechos ocurridos fuera del sistema; no comunica ni crea acciones futuras.
+- Promesas de pago con fecha, importe y estado pendiente/cumplida/incumplida; alimentan la bandeja y las alertas sin confundirse con dinero cobrado.
 - Mapa Leaflet + OpenStreetMap con agrupación de marcadores, filtros y marcador del centro de distribución en Eduardo Bradley 1450.
 - Ficha contextual y perfil ampliado del cliente sin perder la pantalla de origen: ventas, señales administrativas, C/O/P, compras, comprobantes, comportamiento contra vencimiento, gestiones y notas persistentes.
 - Agenda de cobranzas con filtros, bandas de antigüedad, saldo pendiente real, fechas con año y condición de pago; conserva deuda aunque el cliente esté inactivo.
@@ -287,7 +337,7 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 - Puntajes separados: C para riesgo de cobranza, O para oportunidad comercial y P para prioridad combinada de visita.
 - Planificador por vendedor y corredor, con duración por visita, jornada máxima, factor vial visible, alertas de factibilidad y enlaces de navegación.
 - Búsqueda global de clientes/productos y bandeja dinámica de promesas exigibles y riesgos de cobranza altos.
-- Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas, tareas, gestiones, promesas y ejecuciones de sincronización.
+- Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas, recordatorios históricos, promesas y ejecuciones de sincronización.
 
 La IA no interviene en la operación diaria de esta versión. La clasificación se construye mediante reglas reproducibles y cada afinidad positiva conserva evidencia. Las correcciones de oficina son acciones humanas explícitas con motivo, autor e historial; ninguna IA modifica automáticamente vectores ni algoritmos operativos.
 
@@ -354,18 +404,18 @@ La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` 
 ## Criterios de negocio de esta foto
 
 - Se conservan todos los clientes del maestro. El estado 1 de GESI define actividad; la definición empresa 3 / sucursal 3 se muestra por separado como pertenencia confirmada o a revisar.
-- Los indicadores operativos, las recomendaciones y los recorridos usan exclusivamente clientes activos. La agenda de cobranzas mantiene cualquier documento abierto, incluso si el cliente pasó a inactivo.
+- Los indicadores operativos, las recomendaciones y los recorridos usan exclusivamente clientes activos. Cuentas por cobrar mantiene cualquier documento abierto, incluso si el cliente pasó a inactivo.
 - La facturación de 90 días se reconcilia contra los renglones positivos de producto; conceptos no asignables quedan informados por separado.
 - El comportamiento de pago se calcula sólo cuando cobranza, factura y vencimiento pueden vincularse: días desde emisión, días antes/después del vencimiento y porcentaje en término.
 - La cuenta corriente no usa `limiteDeCredito_Dias` como duración contractual: la documentación de GESI sólo tipa el campo y los valores no concuerdan de forma estable con las condiciones de pago. El plazo operativo se obtiene de cada factura.
 - Para resumir varias facturas, diferencias de hasta 3 días se agrupan como una misma condición probable por corrimientos de calendario. Una opción debe representar al menos 60% para llamarse predominante; de lo contrario, el cliente queda “mixto”. El estado de vencimiento siempre usa la fecha exacta del comprobante.
-- El saldo del cliente conserva créditos y anticipos; la agenda muestra únicamente documentos con saldo positivo.
+- El saldo del cliente conserva créditos y anticipos; la bandeja sólo incorpora compromisos de cobranza ya registrados.
 - Como los límites de crédito llegan en cero para toda la cartera activa, la interfaz no presenta porcentajes ficticios de utilización.
 - El precio de referencia prioriza el canal especializado de GESI, luego el canal general y finalmente cualquier precio positivo disponible.
 - La cobertura de stock de un producto es `stock disponible U1 positivo ÷ (unidades U1 vendidas en 90 días / 3)`. No se redondea la rotación antes de dividir; con stock cero, negativo o ausente, o sin rotación positiva, se muestra como no calculable y no se infiere demanda.
 - La similitud de producto no es probabilidad de venta. Combina afinidad vectorial y coincidencias del maestro, mientras que la confianza expresa únicamente la calidad de las señales disponibles.
 - Los recorridos parten y regresan al centro de distribución de Eduardo Bradley 1450, Mar del Plata (`-37.9457069, -57.5823923`), estiman distancia vial con un factor explícito y controlan duración de visita/jornada. Todavía no incorporan tránsito ni ventanas horarias.
-- Una tarea sólo cuenta como realizada cuando una persona guarda la gestión. La ubicación y la fecha sugerida no se usan para inferir productividad.
+- Las señales nunca cuentan como realizadas. Una nota sólo documenta un hecho externo y no se usa para inferir productividad.
 - Las promesas exigibles suman compromisos locales pendientes hasta la fecha elegida; no equivalen a cobranzas conciliadas en GESI.
 - Los saldos residuales menores a $1.000 siguen visibles en la cuenta, pero no generan por sí solos una tarea o alerta de cobranza.
 
@@ -413,8 +463,7 @@ React + Vite
     ├── GET  /api/system/status
     ├── GET  /api/system/data-health
     ├── GET  /api/agenda
-    ├── POST /api/agenda
-    ├── POST /api/activities
+    ├── POST /api/commercial-notes
     ├── PATCH /api/promises/:id
     ├── GET  /api/notifications
     ├── GET  /api/clients/:id/recommendations
@@ -447,4 +496,4 @@ pnpm run audit:prices
 pnpm run audit:operations
 ```
 
-Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, promesas vencidas, registro explícito de gestiones, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.
+Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, bandeja comercial semanal, promesas vencidas, notas sin planificación automática, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.

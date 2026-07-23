@@ -3,24 +3,23 @@ import cors from 'cors';
 import express from 'express';
 import { resolve } from 'node:path';
 import { recommendProducts, optimizeRoute } from '../shared/algorithms.js';
-import { buildProductClientOpportunities } from '../shared/commercial-opportunities.js';
+import { buildProductClientOpportunities, isCommercialOpportunityEligible } from '../shared/commercial-opportunities.js';
 import {
   APP_VERSION,
   SAVED_VIEW_KEYS,
   type ClientTrendDirection,
-  type CommercialActivityOutcome,
   type CommercialActivityType,
   type PaymentPromiseStatus,
   type SavedViewKey,
+  type SavedViewPurpose,
   type VectorKey,
 } from '../shared/models.js';
 import { VECTOR_KEYS } from '../shared/product-vectors.js';
 import { parseLocalizedNumber } from '../shared/localized-number.js';
-import { decodeMultiFilter } from '../shared/multi-filter.js';
 import { REPORT_ENDPOINT_METRICS } from '../shared/metric-links.js';
 import { metricCatalogSummary } from '../shared/metrics.js';
 import { classifyInventoryProduct, type InventoryExceptionType, type InventoryReviewStatus } from '../shared/inventory-decisions.js';
-import { buildAgendaPayload, buildNotifications } from './agenda.js';
+import { buildCommercialInbox, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
 import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
 import { buildDataHealth, loadPlatformAuditSummary } from './data-health.js';
@@ -42,19 +41,21 @@ import { acquireServerLock } from './runtime-lock.js';
 import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
 import { countOperationalBackups } from './operations-backup.js';
 import {
-  createAgendaItem,
   activateCommercialGoalVersion,
   addReceivableComment,
   createCommercialGoalRow,
   createCommercialGoalVersion,
   createSavedView,
+  createCommercialOpportunityLink,
   deleteCommercialGoalRow,
   deleteReceivableCaseEvent,
   deleteSavedView,
   getCommercialGoalsPayload,
-  createCommercialActivity,
+  getSavedView,
+  createCommercialNote,
   getOperationalDatabasePath,
   listActivities,
+  listCommercialGoals,
   listAgendaItems,
   listClientTrendReviews,
   listInventoryAlertReviews,
@@ -75,6 +76,7 @@ import {
   removeProductVectorCorrection,
   syncReceivablePaymentPromise,
   listSavedViews,
+  listCommercialOpportunityLinks,
   updateCommercialGoalRow,
   updateSavedView,
   updatePromiseStatus,
@@ -82,14 +84,14 @@ import {
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
-const activityTypes = new Set<CommercialActivityType>(['visit', 'call', 'collection', 'offer']);
-const activityOutcomes = new Set<CommercialActivityOutcome>(['completed', 'sale', 'promise', 'no_contact', 'rescheduled', 'no_interest']);
+const commercialNoteTypes = new Set<CommercialActivityType>(['note', 'visit', 'call', 'offer']);
 const promiseStatuses = new Set<PaymentPromiseStatus>(['pending', 'kept', 'broken', 'cancelled']);
 const clientTrendDirections = new Set<ClientTrendDirection>(['growth', 'decline']);
 const inventoryReviewStatuses = new Set<InventoryReviewStatus>(['unreviewed', 'in_review', 'reviewed']);
 const inventoryExceptionTypes = new Set<InventoryExceptionType>(['none', 'seasonal', 'discontinued', 'reserved_stock']);
 const vectorKeys = new Set<VectorKey>(VECTOR_KEYS);
 const savedViewKeys = new Set<SavedViewKey>(SAVED_VIEW_KEYS);
+const savedViewPurposes = new Set<SavedViewPurpose>(['general', 'client_recovery', 'collections', 'product_opportunities']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function localDate(value = new Date()) {
@@ -500,6 +502,70 @@ app.get('/api/admin/goals', (req, res) => {
   }
 });
 
+app.get('/api/admin/goals/progress', async (req, res) => {
+  try {
+    const payload = getCommercialGoalsPayload(String(req.query.versionId ?? ''), String(req.query.month ?? ''));
+    const goals = listCommercialGoals(payload.selectedVersion.id);
+    const modes = [
+      { mode: 'core', label: 'Objetivos kilos' },
+      { mode: 'strategic', label: 'Marcas estratégicas' },
+      { mode: 'autoservice', label: 'Autoservicio' },
+    ] as const;
+    const reports = modes.map((item) => ({
+      ...item,
+      report: buildGeneralReport({ mode: item.mode, month: payload.selectedMonth }, goals),
+    }));
+    if (reports.some((item) => !item.report)) return res.status(503).json({ error: 'No se pudieron calcular los resultados de GESI.' });
+    const data = await loadSnapshot();
+    const activities = listActivities({
+      from: `${payload.selectedMonth}-01`,
+      to: `${payload.selectedMonth}-31T23:59:59.999Z`,
+      limit: 10000,
+    });
+    const activityBySeller = new Map<string, { notes: number; clients: Set<number> }>();
+    for (const activity of activities) {
+      const current = activityBySeller.get(activity.seller) ?? { notes: 0, clients: new Set<number>() };
+      current.notes += 1; current.clients.add(activity.clientId); activityBySeller.set(activity.seller, current);
+    }
+    const opportunitiesBySeller = new Map<string, number>();
+    for (const client of data.clients.filter((value) => isCommercialOpportunityEligible(value) && value.commercialOpportunity >= 55)) {
+      opportunitiesBySeller.set(client.seller, (opportunitiesBySeller.get(client.seller) ?? 0) + 1);
+    }
+    const core = reports[0].report!;
+    const sellerNames = new Set([...core.sellers.map((row) => row.name), ...activityBySeller.keys(), ...opportunitiesBySeller.keys()]);
+    return res.json({
+      versionId: payload.selectedVersion.id,
+      month: payload.selectedMonth,
+      sourceMaxDate: core.sourceMaxDate,
+      summaries: reports.map(({ mode, label, report }) => ({
+        mode, label, unit: report!.unit, actual: report!.actual, target: report!.target,
+        gap: report!.gap, completion: report!.completion, isPartial: report!.isPartial,
+      })),
+      sellers: [...sellerNames].sort((a, b) => a.localeCompare(b, 'es')).map((seller) => {
+        const result = core.sellers.find((row) => row.name === seller);
+        const activity = activityBySeller.get(seller);
+        return {
+          seller,
+          actual: result?.actual ?? 0,
+          target: result?.target ?? 0,
+          gap: result?.gap ?? 0,
+          completion: result?.completion ?? null,
+          clientsWithNotes: activity?.clients.size ?? 0,
+          notes: activity?.notes ?? 0,
+          highOpportunityClients: opportunitiesBySeller.get(seller) ?? 0,
+        };
+      }),
+      activity: {
+        notes: activities.length,
+        clientsWithNotes: new Set(activities.map((item) => item.clientId)).size,
+        highOpportunityClients: [...opportunitiesBySeller.values()].reduce((sum, value) => sum + value, 0),
+      },
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.get('/api/admin/goals/export', async (req, res) => {
   const format = String(req.query.format ?? 'xlsx');
   const versionId = String(req.query.versionId ?? '') || undefined;
@@ -599,15 +665,18 @@ app.get('/api/saved-views', (req, res) => {
   const viewKey = String(req.query.viewKey ?? '');
   if (viewKey && !savedViewKeys.has(viewKey as SavedViewKey)) return res.status(400).json({ error: 'Vista inválida.' });
   const normalizedViewKey = viewKey ? viewKey as SavedViewKey : undefined;
-  return res.json({ views: listSavedViews(normalizedViewKey) });
+  const purpose = String(req.query.purpose ?? '');
+  if (purpose && !savedViewPurposes.has(purpose as SavedViewPurpose)) return res.status(400).json({ error: 'Propósito de lista inválido.' });
+  return res.json({ views: listSavedViews(normalizedViewKey, purpose ? purpose as SavedViewPurpose : undefined) });
 });
 
 app.post('/api/saved-views', (req, res) => {
   const viewKey = String(req.body?.viewKey ?? '') as SavedViewKey;
   const name = String(req.body?.name ?? '').trim().slice(0, 80);
   const filters = stringRecord(req.body?.filters);
-  if (!savedViewKeys.has(viewKey) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista o filtros inválidos.' });
-  return res.status(201).json({ view: createSavedView({ viewKey, name, filters, favorite: Boolean(req.body?.favorite) }) });
+  const purpose = String(req.body?.purpose ?? 'general') as SavedViewPurpose;
+  if (!savedViewKeys.has(viewKey) || !savedViewPurposes.has(purpose) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista, propósito o filtros inválidos.' });
+  return res.status(201).json({ view: createSavedView({ viewKey, purpose, name, filters, favorite: Boolean(req.body?.favorite) }) });
 });
 
 app.patch('/api/saved-views/:id', (req, res) => {
@@ -660,12 +729,11 @@ app.post('/api/system/refresh', (_req, res) => {
 app.get('/api/agenda', async (req, res) => {
   const date = validDate(req.query.date) || localDate();
   const seller = String(req.query.seller || '').trim().slice(0, 1000);
-  const selectedSellers = decodeMultiFilter(seller);
   const data = await loadSnapshot();
   const activities = listActivities({ limit: 1000 });
   const promises = listPromises({ limit: 1000 });
-  const items = listAgendaItems({ date, seller: selectedSellers.length === 1 ? selectedSellers[0] : undefined });
-  res.json(buildAgendaPayload(data, date, seller, items, activities, promises));
+  const items = listAgendaItems({ includeCancelled: false });
+  res.json(buildCommercialInbox(data, date, seller, items, activities, promises, listReceivableCases()));
 });
 
 app.get('/api/notifications', async (_req, res) => {
@@ -687,69 +755,26 @@ app.get('/api/clients/:id/operations', async (req, res) => {
   });
 });
 
-app.post('/api/activities', async (req, res) => {
+app.post('/api/commercial-notes', async (req, res) => {
   const data = await loadSnapshot();
   const clientId = Number(req.body?.clientId);
   const client = data.clients.find((item) => item.id === clientId);
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.active) return res.status(409).json({ error: 'El cliente está inactivo en GESI; la gestión comercial no se puede agregar a la agenda activa.' });
-  const type = String(req.body?.type || '') as CommercialActivityType;
-  const outcome = String(req.body?.outcome || '') as CommercialActivityOutcome;
-  if (!activityTypes.has(type)) return res.status(400).json({ error: 'Tipo de gestión inválido' });
-  if (!activityOutcomes.has(outcome)) return res.status(400).json({ error: 'Resultado de gestión inválido' });
+  if (!client.active) return res.status(409).json({ error: 'El cliente está inactivo en GESI; agregá contexto histórico desde su nota general.' });
+  const type = String(req.body?.type || 'note') as CommercialActivityType;
+  if (!commercialNoteTypes.has(type)) return res.status(400).json({ error: 'Categoría de nota inválida' });
   const occurredAt = req.body?.occurredAt ? validDateTime(req.body.occurredAt) : new Date().toISOString();
-  if (!occurredAt) return res.status(400).json({ error: 'La fecha y hora de la gestión no son válidas' });
-  const occurredDate = localDate(new Date(occurredAt));
-  const nextActionAt = req.body?.nextActionAt ? validDate(req.body.nextActionAt) : null;
-  if (req.body?.nextActionAt && !nextActionAt) return res.status(400).json({ error: 'La fecha de próxima acción no es válida' });
-  if (nextActionAt && nextActionAt < occurredDate) return res.status(400).json({ error: 'La próxima acción no puede quedar antes de la gestión' });
-  if (outcome === 'rescheduled' && !nextActionAt) return res.status(400).json({ error: 'Indicá la nueva fecha para una gestión reprogramada' });
-  const rawAmount = req.body?.amount == null || req.body.amount === '' ? null : parseLocalizedNumber(req.body.amount);
-  if (rawAmount != null && (!Number.isFinite(rawAmount) || rawAmount < 0)) return res.status(400).json({ error: 'El importe no es válido' });
-  const amount = rawAmount === 0 ? null : rawAmount;
-  const knownProducts = new Set(data.products.map((product) => product.id));
-  const requestedProductIds: string[] = Array.isArray(req.body?.productIds)
-    ? req.body.productIds.map((value: unknown) => String(value))
-    : [];
-  const productIds = [...new Set(requestedProductIds.filter((id) => knownProducts.has(id)))].slice(0, 20);
-  let promise: { dueAt: string; amount: number; note: string } | null = null;
-  if (outcome === 'promise') {
-    const dueAt = validDate(req.body?.promise?.dueAt);
-    const amount = parseLocalizedNumber(req.body?.promise?.amount);
-    if (!dueAt || amount == null || amount <= 0) return res.status(400).json({ error: 'Indicá fecha e importe válidos para la promesa' });
-    if (dueAt < occurredDate) return res.status(400).json({ error: 'La promesa no puede vencer antes de la gestión' });
-    promise = { dueAt, amount, note: String(req.body?.promise?.note || '').trim().slice(0, 500) };
-  } else if (req.body?.promise) {
-    return res.status(400).json({ error: 'Elegí “Promesa de pago” como resultado para guardar una promesa' });
-  }
-  const result = createCommercialActivity({
+  if (!occurredAt || occurredAt > new Date().toISOString()) return res.status(400).json({ error: 'La fecha y hora de la nota no son válidas' });
+  const note = String(req.body?.note || '').trim().slice(0, 1000);
+  if (!note) return res.status(400).json({ error: 'Escribí una nota breve sobre lo ocurrido fuera del sistema' });
+  const result = createCommercialNote({
     clientId,
     seller: client.seller,
     type,
-    outcome,
     occurredAt,
-    note: String(req.body?.note || '').trim().slice(0, 1000),
-    amount,
-    productIds,
-    nextActionAt,
-    agendaItemId: req.body?.agendaItemId ? String(req.body.agendaItemId).slice(0, 120) : null,
-    promise,
+    note,
   });
   return res.status(201).json(result);
-});
-
-app.post('/api/agenda', async (req, res) => {
-  const data = await loadSnapshot();
-  const clientId = Number(req.body?.clientId);
-  const client = data.clients.find((item) => item.id === clientId);
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.active) return res.status(409).json({ error: 'El cliente está inactivo en GESI' });
-  const scheduledFor = validDate(req.body?.scheduledFor);
-  const actionType = String(req.body?.actionType || '') as CommercialActivityType;
-  if (!scheduledFor || !activityTypes.has(actionType)) return res.status(400).json({ error: 'Fecha o tipo de acción inválidos' });
-  const reason = String(req.body?.reason || '').trim().slice(0, 500);
-  if (!reason) return res.status(400).json({ error: 'Indicá el motivo de la tarea' });
-  return res.status(201).json(createAgendaItem({ clientId, seller: client.seller, scheduledFor, actionType, reason }));
 });
 
 app.patch('/api/promises/:id', (req, res) => {
@@ -765,6 +790,57 @@ app.get('/api/clients/:id/recommendations', async (req, res) => {
   const client = data.clients.find((item) => item.id === Number(req.params.id));
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
   return res.json({ recommendations: recommendProducts(client, data.clients, data.products, 12) });
+});
+
+app.get('/api/commercial-opportunity-links', (req, res) => {
+  const clientId = req.query.clientId == null ? undefined : Number(req.query.clientId);
+  if (clientId != null && !Number.isInteger(clientId)) return res.status(400).json({ error: 'Cliente inválido.' });
+  return res.json({ links: listCommercialOpportunityLinks({
+    clientId,
+    productId: String(req.query.productId ?? '') || undefined,
+    savedViewId: String(req.query.savedViewId ?? '') || undefined,
+  }) });
+});
+
+app.post('/api/commercial-opportunity-links', async (req, res) => {
+  const data = await loadSnapshot();
+  const clientId = Number(req.body?.clientId);
+  const productId = String(req.body?.productId ?? '');
+  const client = data.clients.find((item) => item.id === clientId);
+  const product = data.products.find((item) => item.id === productId);
+  if (!client || !product) return res.status(404).json({ error: 'Cliente o producto no encontrado.' });
+  if (!client.active || client.salesBlocked || client.sales90d <= 0) return res.status(409).json({ error: 'El cliente ya no es elegible para oportunidades comerciales.' });
+  const recommendation = recommendProducts(client, data.clients, data.products, 100).find((item) => item.product.id === productId);
+  if (!recommendation) return res.status(409).json({ error: 'La oportunidad ya no está respaldada por el snapshot activo.' });
+  const savedViewId = String(req.body?.savedViewId ?? '') || null;
+  const note = String(req.body?.note ?? '').trim().slice(0, 1000);
+  if (!savedViewId && !note) return res.status(400).json({ error: 'Elegí una lista o escribí una nota.' });
+  if (savedViewId) {
+    const view = getSavedView(savedViewId);
+    if (!view || view.purpose !== 'product_opportunities') return res.status(400).json({ error: 'La lista de oportunidades no es válida.' });
+  }
+  const noteResult = note ? createCommercialNote({
+    clientId,
+    seller: client.seller,
+    type: 'note',
+    occurredAt: new Date().toISOString(),
+    note,
+    productIds: [productId],
+  }) : null;
+  try {
+    const link = createCommercialOpportunityLink({
+      savedViewId,
+      clientId,
+      productId,
+      recommendationKinds: recommendation.kinds,
+      activityId: noteResult?.activity.id ?? null,
+      snapshotAt: data.meta.generatedAt,
+    });
+    return res.status(201).json({ link, activity: noteResult?.activity ?? null });
+  } catch (error) {
+    if (String(error).includes('UNIQUE')) return res.status(409).json({ error: 'La oportunidad ya está vinculada a esa lista.' });
+    throw error;
+  }
 });
 
 app.get('/api/products/:id/client-opportunities', async (req, res) => {

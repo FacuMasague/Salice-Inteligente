@@ -12,6 +12,7 @@ import type {
   CommercialGoalsPayload,
   CommercialGoalRow,
   CommercialGoalVersion,
+  CommercialOpportunityLink,
   ClientTrendDirection,
   ClientTrendReview,
   DashboardData,
@@ -24,6 +25,7 @@ import type {
   ReceivableCaseEvent,
   ReceivableCaseStatus,
   SavedView,
+  SavedViewPurpose,
   VectorKey,
 } from '../shared/models.js';
 import { STATUS_TARGET_SOURCE, STATUS_TARGETS } from './data/status-targets.js';
@@ -333,6 +335,7 @@ function db() {
     CREATE TABLE IF NOT EXISTS saved_views (
       id TEXT PRIMARY KEY,
       view_key TEXT NOT NULL,
+      purpose TEXT NOT NULL DEFAULT 'general',
       name TEXT NOT NULL,
       filters_json TEXT NOT NULL,
       favorite INTEGER NOT NULL DEFAULT 0,
@@ -340,6 +343,22 @@ function db() {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_saved_views_key ON saved_views(view_key, favorite DESC, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS commercial_opportunity_links (
+      id TEXT PRIMARY KEY,
+      saved_view_id TEXT,
+      client_id INTEGER NOT NULL,
+      product_id TEXT NOT NULL,
+      recommendation_kinds_json TEXT NOT NULL,
+      activity_id TEXT,
+      snapshot_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(saved_view_id) REFERENCES saved_views(id) ON DELETE CASCADE,
+      FOREIGN KEY(activity_id) REFERENCES commercial_activities(id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunity_link_list_product
+      ON commercial_opportunity_links(saved_view_id, client_id, product_id)
+      WHERE saved_view_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_opportunity_links_client ON commercial_opportunity_links(client_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS commercial_goal_versions (
       id TEXT PRIMARY KEY,
       version_number INTEGER NOT NULL UNIQUE,
@@ -409,6 +428,12 @@ function db() {
   `);
   migrateInventoryReviewStatuses(database);
   migrateInventoryReviewLifecycle(database);
+  const savedViewColumns = new Set(database.prepare('PRAGMA table_info(saved_views)').all().map((row) => String(row.name)));
+  if (!savedViewColumns.has('purpose')) {
+    database.exec("ALTER TABLE saved_views ADD COLUMN purpose TEXT NOT NULL DEFAULT 'general'");
+    database.exec("UPDATE saved_views SET purpose = 'client_recovery' WHERE view_key = 'non-buyers'");
+    database.exec("UPDATE saved_views SET purpose = 'collections' WHERE view_key = 'receivables'");
+  }
   const caseColumns = new Set(database.prepare('PRAGMA table_info(receivable_cases)').all().map((row) => String(row.name)));
   if (!caseColumns.has('promise_amount')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_amount REAL');
   if (!caseColumns.has('promise_due_at')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_due_at TEXT');
@@ -603,11 +628,25 @@ function savedViewFromRow(row: Record<string, unknown>): SavedView {
   return {
     id: textValue(row.id),
     viewKey: textValue(row.view_key) as SavedView['viewKey'],
+    purpose: (textValue(row.purpose) || 'general') as SavedViewPurpose,
     name: textValue(row.name),
     filters: jsonRecord(row.filters_json) as Record<string, string> ?? {},
     favorite: Boolean(row.favorite),
     createdAt: textValue(row.created_at),
     updatedAt: textValue(row.updated_at),
+  };
+}
+
+function commercialOpportunityLinkFromRow(row: Record<string, unknown>): CommercialOpportunityLink {
+  return {
+    id: textValue(row.id),
+    savedViewId: nullableText(row.saved_view_id),
+    clientId: Number(row.client_id),
+    productId: textValue(row.product_id),
+    recommendationKinds: parseProductIds(row.recommendation_kinds_json) as CommercialOpportunityLink['recommendationKinds'],
+    activityId: nullableText(row.activity_id),
+    snapshotAt: textValue(row.snapshot_at),
+    createdAt: textValue(row.created_at),
   };
 }
 
@@ -800,6 +839,29 @@ export function createCommercialActivity(input: CreateActivityInput) {
     throw error;
   }
   return { activity, promise, nextAgendaItem };
+}
+
+export function createCommercialNote(input: {
+  clientId: number;
+  seller: string;
+  type: CommercialActivityType;
+  occurredAt: string;
+  note: string;
+  productIds?: string[];
+}) {
+  return createCommercialActivity({
+    clientId: input.clientId,
+    seller: input.seller,
+    type: input.type,
+    outcome: 'noted',
+    occurredAt: input.occurredAt,
+    note: input.note,
+    amount: null,
+    productIds: input.productIds ?? [],
+    nextActionAt: null,
+    agendaItemId: null,
+    promise: null,
+  });
 }
 
 export function createAgendaItem(input: {
@@ -1373,9 +1435,13 @@ export function deleteReceivableCaseEvent(clientId: number, eventId: string, act
   return true;
 }
 
-export function listSavedViews(viewKey?: SavedView['viewKey']) {
-  const rows = viewKey
+export function listSavedViews(viewKey?: SavedView['viewKey'], purpose?: SavedViewPurpose) {
+  const rows = viewKey && purpose
+    ? db().prepare('SELECT * FROM saved_views WHERE view_key = ? AND purpose = ? ORDER BY favorite DESC, updated_at DESC').all(viewKey, purpose)
+    : viewKey
     ? db().prepare('SELECT * FROM saved_views WHERE view_key = ? ORDER BY favorite DESC, updated_at DESC').all(viewKey)
+    : purpose
+    ? db().prepare('SELECT * FROM saved_views WHERE purpose = ? ORDER BY view_key, favorite DESC, updated_at DESC').all(purpose)
     : db().prepare('SELECT * FROM saved_views ORDER BY view_key, favorite DESC, updated_at DESC').all();
   return rows.map((row) => savedViewFromRow(row));
 }
@@ -1385,11 +1451,13 @@ export function createSavedView(input: {
   name: string;
   filters: Record<string, string>;
   favorite?: boolean;
+  purpose?: SavedViewPurpose;
 }) {
   const now = new Date().toISOString();
   const view: SavedView = {
     id: randomUUID(),
     viewKey: input.viewKey,
+    purpose: input.purpose ?? 'general',
     name: input.name.trim().slice(0, 80),
     filters: input.filters,
     favorite: Boolean(input.favorite),
@@ -1397,9 +1465,9 @@ export function createSavedView(input: {
     updatedAt: now,
   };
   db().prepare(`
-    INSERT INTO saved_views (id, view_key, name, filters_json, favorite, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(view.id, view.viewKey, view.name, JSON.stringify(view.filters), Number(view.favorite), view.createdAt, view.updatedAt);
+    INSERT INTO saved_views (id, view_key, purpose, name, filters_json, favorite, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(view.id, view.viewKey, view.purpose, view.name, JSON.stringify(view.filters), Number(view.favorite), view.createdAt, view.updatedAt);
   return view;
 }
 
@@ -1421,6 +1489,50 @@ export function updateSavedView(id: string, input: { name?: string; filters?: Re
 
 export function deleteSavedView(id: string) {
   return Number(db().prepare('DELETE FROM saved_views WHERE id = ?').run(id).changes) > 0;
+}
+
+export function getSavedView(id: string) {
+  const row = db().prepare('SELECT * FROM saved_views WHERE id = ?').get(id);
+  return row ? savedViewFromRow(row) : null;
+}
+
+export function listCommercialOpportunityLinks(filters: { clientId?: number; productId?: string; savedViewId?: string } = {}) {
+  return db().prepare('SELECT * FROM commercial_opportunity_links ORDER BY created_at DESC').all()
+    .map((row) => commercialOpportunityLinkFromRow(row))
+    .filter((link) => (
+      (filters.clientId == null || link.clientId === filters.clientId)
+      && (!filters.productId || link.productId === filters.productId)
+      && (!filters.savedViewId || link.savedViewId === filters.savedViewId)
+    ));
+}
+
+export function createCommercialOpportunityLink(input: {
+  savedViewId?: string | null;
+  clientId: number;
+  productId: string;
+  recommendationKinds: CommercialOpportunityLink['recommendationKinds'];
+  activityId?: string | null;
+  snapshotAt: string;
+}) {
+  const link: CommercialOpportunityLink = {
+    id: randomUUID(),
+    savedViewId: input.savedViewId ?? null,
+    clientId: input.clientId,
+    productId: input.productId,
+    recommendationKinds: input.recommendationKinds,
+    activityId: input.activityId ?? null,
+    snapshotAt: input.snapshotAt,
+    createdAt: new Date().toISOString(),
+  };
+  db().prepare(`
+    INSERT INTO commercial_opportunity_links (
+      id, saved_view_id, client_id, product_id, recommendation_kinds_json, activity_id, snapshot_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    link.id, link.savedViewId, link.clientId, link.productId, JSON.stringify(link.recommendationKinds),
+    link.activityId, link.snapshotAt, link.createdAt,
+  );
+  return link;
 }
 
 function goalVersionQuery() {

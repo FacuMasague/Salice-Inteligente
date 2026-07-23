@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Check, ChevronRight, EyeOff, Search, Users } from 'lucide-react';
+import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import type { Client, ClientTrendDirection, ClientTrendReview } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
@@ -48,7 +49,8 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
       : sort === 'growth' ? b.salesDelta - a.salesDelta
       : sort === 'decline' ? a.salesDelta - b.salesDelta
         : sort === 'risk' ? b.collectionRisk - a.collectionRisk
-      : sort === 'opportunity' ? b.commercialOpportunity - a.commercialOpportunity
+      : sort === 'opportunity' ? Number(isCommercialOpportunityEligible(b)) - Number(isCommercialOpportunityEligible(a))
+        || b.commercialOpportunity - a.commercialOpportunity
         : sort === 'sales' ? b.sales90d - a.sales90d
           : b.visitPriority - a.visitPriority);
   const tableSorted = sortItems(baseFiltered, tableSort, (client, key) => {
@@ -57,7 +59,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
     if (key === 'zone') return `${client.zone} ${client.seller}`;
     if (key === 'sales') return client.sales90d;
     if (key === 'risk') return client.collectionRisk;
-    if (key === 'opportunity') return client.commercialOpportunity;
+    if (key === 'opportunity') return isCommercialOpportunityEligible(client) ? client.commercialOpportunity : -1;
     if (key === 'term') return client.creditDays;
     return client.nextVisitAt;
   });
@@ -115,7 +117,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
         <div className="data-card-header"><div><span className="section-kicker">{decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? <EyeOff size={14} /> : <Users size={14} />} Cartera comercial</span><h2>{trendMode === 'growth' ? 'Clientes con crecimiento de 30% o más' : trendMode === 'decline' ? 'Clientes con caída de 30% o más' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'active' ? 'Clientes activos en GESI' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? 'Histórico de clientes inactivos' : 'Universo completo de clientes'}</h2><p>{trendMode ? 'Los pendientes de revisar aparecen primero; el tilde mueve el cliente al final de esta lista.' : 'Riesgo de cobranza y oportunidad comercial se calculan por separado.'}</p>{reviewError && <small className="form-error">{reviewError}</small>}</div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table clients-data-table">
-            <thead><tr><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('status')}><SortButton label="GESI / Salice" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('zone')}><SortButton label="Zona y vendedor" direction={direction('zone')} onClick={() => changeTableSort('zone')} /></th><th aria-sort={ariaSort('sales')}><SortButton label="Ventas 90d" direction={direction('sales')} onClick={() => changeTableSort('sales')} /></th><th aria-sort={ariaSort('risk')}><SortButton label="Cobranza" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th aria-sort={ariaSort('opportunity')}><SortButton label="Oportunidad" direction={direction('opportunity')} onClick={() => changeTableSort('opportunity')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo / pago" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('visit')}><SortButton label="Visita sugerida" direction={direction('visit')} onClick={() => changeTableSort('visit')} /></th><th>{trendMode ? 'Revisado' : ''}</th></tr></thead>
+            <thead><tr><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('status')}><SortButton label="GESI / Salice" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('zone')}><SortButton label="Zona y vendedor" direction={direction('zone')} onClick={() => changeTableSort('zone')} /></th><th aria-sort={ariaSort('sales')}><SortButton label="Ventas 90d" direction={direction('sales')} onClick={() => changeTableSort('sales')} /></th><th aria-sort={ariaSort('risk')}><SortButton label="Cobranza" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th aria-sort={ariaSort('opportunity')}><SortButton label="Oportunidad" direction={direction('opportunity')} onClick={() => changeTableSort('opportunity')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo / pago" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('visit')}><SortButton label="Revisión sugerida" direction={direction('visit')} onClick={() => changeTableSort('visit')} /></th><th>{trendMode ? 'Revisado' : ''}</th></tr></thead>
             <tbody>
               {visible.map((client) => (
                 <tr key={client.id} className={`${client.active ? '' : 'inactive-client-row'} ${trendMode && reviewed(client.id) ? 'trend-reviewed-row' : ''}`} onClick={() => onOpen(client)}>
@@ -124,9 +126,9 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
                   <td><strong className="normal-weight">{client.zone}</strong><button className="entity-link cell-sub" onClick={(event) => { event.stopPropagation(); onOpenSeller(client.seller); }}>{client.seller}</button></td>
                   <td><strong>{money(client.sales90d, true)}</strong><span title="Compara los últimos 90 días contra los 90 días inmediatamente anteriores" className={`cell-sub inline-delta ${client.salesDelta > 0 ? 'positive' : client.salesDelta < 0 ? 'negative' : ''}`}>{client.salesDelta > 0 ? <ArrowUpRight size={12} /> : client.salesDelta < 0 ? <ArrowDownRight size={12} /> : null}{client.salesDelta === 0 ? 'sin cambio vs. 90d previos' : `${client.salesDelta > 0 ? '+' : '-'}${Math.abs(client.salesDelta)}% vs. 90d previos`}</span></td>
                   <td>{client.active ? <><span className={`score-badge ${client.health}`}>{client.collectionRisk}</span><span className="cell-sub">{money(client.overdueOutstanding, true)} vencido</span></> : <span className="muted">—</span>}</td>
-                  <td>{client.active ? <><span className="score-badge opportunity">{client.commercialOpportunity}</span><span className="cell-sub">prioridad P{client.visitPriority}</span></> : <span className="muted">—</span>}</td>
+                  <td>{isCommercialOpportunityEligible(client) ? <><span className="score-badge opportunity">{client.commercialOpportunity}</span><span className="cell-sub">prioridad P{client.visitPriority}</span></> : <><span className="muted">—</span><span className="cell-sub">{client.salesBlocked ? 'Bloqueo de ventas' : client.active ? 'Sin compras 90d' : 'Cliente inactivo'}</span></>}</td>
                   <td><strong>{creditTermLabel(client)}</strong><span className="cell-sub">{client.paymentSampleSize ? `${paymentDelay(client.avgPaymentDelayDays)} · ${client.onTimePaymentRate}% en término` : client.paymentMethod}</span></td>
-                  <td>{client.active ? <><strong>{shortDate(client.nextVisitAt)}</strong><span className="cell-sub">fecha algorítmica</span></> : <span className="muted">Fuera de agenda</span>}</td>
+                  <td>{client.active ? <><strong>{shortDate(client.nextVisitAt)}</strong><span className="cell-sub">referencia algorítmica</span></> : <span className="muted">Fuera de la bandeja</span>}</td>
                   <td>{trendMode ? <button className={`trend-review-button ${reviewed(client.id) ? 'active' : ''}`} aria-label={`${reviewed(client.id) ? 'Marcar como pendiente' : 'Marcar como revisado'} a ${clientPrimaryName(client)}`} title={reviewed(client.id) ? 'Volver a pendientes' : 'Marcar como revisado'} disabled={reviewPending === client.id} onClick={(event) => { event.stopPropagation(); toggleReviewed(client.id); }}><Check size={16} /></button> : <button className="icon-button"><ChevronRight size={17} /></button>}</td>
                 </tr>
               ))}

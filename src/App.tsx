@@ -35,17 +35,17 @@ type View = TutorialView;
 type SidebarSection = 'operations' | 'administration' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
-  map: 'operations', clients: 'operations', sellers: 'operations', finance: 'operations', products: 'operations', brands: 'operations', routes: 'operations',
-  agenda: 'administration', 'sales-explorer': 'administration', receivables: 'administration', goals: 'administration',
+  map: 'operations', clients: 'operations', sellers: 'operations', products: 'operations', brands: 'operations', routes: 'operations',
+  finance: 'administration', agenda: 'administration', 'sales-explorer': 'administration', receivables: 'administration', goals: 'administration',
   reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
   settings: 'system',
 };
 
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
-  agenda: { title: 'Gestiones comerciales', subtitle: 'Planificación y registro administrativo de visitas, llamadas y ofertas' },
+  agenda: { title: 'Bandeja comercial', subtitle: 'Señales, oportunidades, compromisos y notas de oficina' },
   clients: { title: 'Clientes', subtitle: 'Toda la cartera comercial en una sola vista' },
-  sellers: { title: 'Vendedores', subtitle: 'Carteras, desempeño, cobranza y prioridades por responsable' },
+  sellers: { title: 'Vendedores y carteras', subtitle: 'Clientes activos, ventas, localidades y señales por responsable' },
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
   products: { title: 'Inteligencia de producto', subtitle: 'Inventario, catálogo y oportunidades con análisis avanzados agrupados' },
   brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
@@ -69,7 +69,6 @@ const nav: { id: View; label: string; icon: typeof Map }[] = [
   { id: 'routes', label: 'Rutas', icon: Route },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'sellers', label: 'Vendedores', icon: Users },
-  { id: 'finance', label: 'Cartera', icon: CircleDollarSign },
   { id: 'products', label: 'Productos', icon: Boxes },
   { id: 'brands', label: 'Marcas', icon: Store },
 ];
@@ -330,7 +329,7 @@ export default function App() {
             {nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => selectView(item.id)}><Icon size={19} /><span>{item.label}</span>{item.id === 'finance' && activeClients.some((client) => client.health === 'critical') && <i>{activeClients.filter((client) => client.health === 'critical').length}</i>}</button>; })}
           </nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.administration} aria-controls="sidebar-administration" onClick={() => toggleSidebarSection('administration')}><span>Administración</span>{sidebarSections.administration ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'agenda' ? 'active' : ''} onClick={() => selectView('agenda')}><ClipboardCheck size={19} /><span>Gestiones comerciales</span></button><button className={view === 'goals' ? 'active' : ''} onClick={() => selectView('goals')}><Target size={19} /><span>Objetivos comerciales</span></button></nav>}
+          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'finance' ? 'active' : ''} onClick={() => selectView('finance')}><CircleDollarSign size={19} /><span>Cartera</span>{activeClients.some((client) => client.health === 'critical') && <i>{activeClients.filter((client) => client.health === 'critical').length}</i>}</button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'agenda' ? 'active' : ''} onClick={() => selectView('agenda')}><ClipboardCheck size={19} /><span>Bandeja comercial</span></button><button className={view === 'goals' ? 'active' : ''} onClick={() => selectView('goals')}><Target size={19} /><span>Objetivos comerciales</span></button></nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.reports} aria-controls="sidebar-reports" onClick={() => toggleSidebarSection('reports')}><span>Reportes</span>{sidebarSections.reports ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={view === 'reports' ? 'active' : ''} onClick={() => selectView('reports')}><LayoutDashboard size={19} /><span>Reporte General</span></button><button className={view === 'commercial-sales' ? 'active' : ''} onClick={() => selectView('commercial-sales')}><ShoppingBasket size={19} /><span>Ventas · Comercial</span></button><button className={view === 'spt' ? 'active' : ''} onClick={() => selectView('spt')}><BarChart3 size={19} /><span>SPT Vol vs mes anterior</span></button><button className={view === 'pending-balances' ? 'active' : ''} onClick={() => selectView('pending-balances')}><WalletCards size={19} /><span>Saldos Pendientes</span></button><button className={view === 'non-buyers' ? 'active' : ''} onClick={() => selectView('non-buyers')}><PackageSearch size={19} /><span>Cuentas no compradoras</span></button><button className={view === 'mars' ? 'active' : ''} onClick={() => selectView('mars')}><PawPrint size={19} /><span>Reporte Mars</span></button><button className={view === 'nutripet' ? 'active' : ''} onClick={() => selectView('nutripet')}><ShoppingBag size={19} /><span>Reporte NutriPet</span></button><button className={view === 'baires' ? 'active' : ''} onClick={() => selectView('baires')}><Package size={19} /><span>Reporte Baires</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
@@ -367,7 +366,7 @@ export default function App() {
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
           {view === 'map' && <MapDashboard clients={data.clients} products={data.products} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
-          {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOperationalChange={refreshNotifications} />}
+          {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}

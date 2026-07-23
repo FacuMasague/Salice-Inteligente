@@ -5,6 +5,10 @@ import { compareProductPair } from './product-comparison.js';
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
+export function isCommercialOpportunityEligible(client: Client) {
+  return client.active && !client.salesBlocked && client.sales90d > 0;
+}
+
 function availableForRecommendation(product: Product) {
   return product.masterStatus !== 'inactive'
     && product.commercialStatus !== 'not_commercializable'
@@ -130,7 +134,7 @@ function buildSubstitutes(client: Client, products: Product[], productsById: Map
 }
 
 export function buildCommercialOpportunities(client: Client, clients: Client[], products: Product[], limit = 12): Recommendation[] {
-  if (!client.active || client.purchases.length === 0) return [];
+  if (!isCommercialOpportunityEligible(client) || client.purchases.length === 0) return [];
   const productsById = new Map(products.map((product) => [product.id, product]));
   const owned = new Set(client.purchases.map((purchase) => purchase.productId));
   const profile = clientProfile(client, productsById);
@@ -196,7 +200,7 @@ export function buildProductClientOpportunities(product: Product, clients: Clien
   const purchaseSets = new Map(clients.map((client) => [client.id, new Set(client.purchases.map((purchase) => purchase.productId))]));
   const peersByProduct = new Map<string, Client[]>();
   for (const peer of clients) {
-    if (!peer.active || peer.portfolioStatus !== 'confirmed' || peer.purchases.length === 0) continue;
+    if (!isCommercialOpportunityEligible(peer) || peer.portfolioStatus !== 'confirmed' || peer.purchases.length === 0) continue;
     for (const productId of purchaseSets.get(peer.id) ?? []) {
       const peers = peersByProduct.get(productId) ?? [];
       peers.push(peer);
@@ -212,7 +216,7 @@ export function buildProductClientOpportunities(product: Product, clients: Clien
 
   for (const client of clients) {
     const owned = purchaseSets.get(client.id) ?? new Set<string>();
-    if (!client.active || owned.size === 0 || owned.has(product.id)) continue;
+    if (!isCommercialOpportunityEligible(client) || owned.size === 0 || owned.has(product.id)) continue;
     const profile = clientProfile(client, productsById);
     if (!compatibleWithClient(profile, product)) continue;
 
@@ -280,6 +284,9 @@ export function buildProductClientOpportunities(product: Product, clients: Clien
 export const commercialOpportunityPolicy = {
   observableWindowDays: 90,
   comparablePeerLimit: 40,
+  activeClientRequired: true,
+  recentPurchaseRequired: true,
+  salesBlockExcluded: true,
   positiveStockRequired: true,
   automaticTaskCreation: false,
 } as const;

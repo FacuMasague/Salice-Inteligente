@@ -3,14 +3,14 @@ export type InvoiceStatus = 'paid' | 'open' | 'due_soon' | 'overdue';
 export type PortfolioStatus = 'confirmed' | 'review';
 export type RecommendationConfidence = 'reliable' | 'exploratory' | 'insufficient';
 export type RecommendationKind = 'mix_gap' | 'peer_adoption' | 'stockout_substitute' | 'high_stock_opportunity';
-export type CommercialActivityType = 'visit' | 'call' | 'collection' | 'offer';
-export type CommercialActivityOutcome = 'completed' | 'sale' | 'promise' | 'no_contact' | 'rescheduled' | 'no_interest';
+export type CommercialActivityType = 'note' | 'visit' | 'call' | 'collection' | 'offer';
+export type CommercialActivityOutcome = 'noted' | 'completed' | 'sale' | 'promise' | 'no_contact' | 'rescheduled' | 'no_interest';
 export type PaymentPromiseStatus = 'pending' | 'kept' | 'broken' | 'cancelled';
 export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.5.9';
+export const APP_VERSION = '0.6.5';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -1242,6 +1242,37 @@ export interface CommercialGoalsPayload {
   changes: CommercialGoalChange[];
 }
 
+export interface CommercialGoalProgressPayload {
+  versionId: string;
+  month: string;
+  sourceMaxDate: string;
+  summaries: Array<{
+    mode: GeneralReportMode;
+    label: string;
+    unit: GeneralReportUnit;
+    actual: number;
+    target: number;
+    gap: number;
+    completion: number | null;
+    isPartial: boolean;
+  }>;
+  sellers: Array<{
+    seller: string;
+    actual: number;
+    target: number;
+    gap: number;
+    completion: number | null;
+    clientsWithNotes: number;
+    notes: number;
+    highOpportunityClients: number;
+  }>;
+  activity: {
+    notes: number;
+    clientsWithNotes: number;
+    highOpportunityClients: number;
+  };
+}
+
 export type SavedViewKey =
   | 'map' | 'agenda' | 'routes' | 'clients' | 'sellers' | 'finance' | 'products' | 'brands'
   | 'sales-explorer' | 'receivables' | 'goals'
@@ -1255,14 +1286,28 @@ export const SAVED_VIEW_KEYS: SavedViewKey[] = [
   'settings',
 ];
 
+export type SavedViewPurpose = 'general' | 'client_recovery' | 'collections' | 'product_opportunities';
+
 export interface SavedView {
   id: string;
   viewKey: SavedViewKey;
+  purpose: SavedViewPurpose;
   name: string;
   filters: Record<string, string>;
   favorite: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CommercialOpportunityLink {
+  id: string;
+  savedViewId: string | null;
+  clientId: number;
+  productId: string;
+  recommendationKinds: RecommendationKind[];
+  activityId: string | null;
+  snapshotAt: string;
+  createdAt: string;
 }
 
 export type NonBuyerFilterKey = 'productGroup' | 'category' | 'brand' | 'seller';
@@ -1439,6 +1484,69 @@ export interface AgendaPayload {
     planned: string;
     completed: string;
     promiseAmountDue: string;
+  };
+}
+
+export type CommercialInboxSource = 'system' | 'promise' | 'reminder' | 'note';
+
+export type CommercialInboxSignalKind =
+  | 'promise_overdue'
+  | 'promise_due'
+  | 'follow_up_overdue'
+  | 'follow_up_due'
+  | 'legacy_reminder'
+  | 'sales_blocked'
+  | 'sales_decline'
+  | 'collection_risk'
+  | 'commercial_opportunity'
+  | 'suggested_review';
+
+export interface CommercialInboxSignal {
+  id: string;
+  kind: CommercialInboxSignalKind;
+  source: Exclude<CommercialInboxSource, 'note'>;
+  label: string;
+  detail: string;
+  date: string | null;
+  severity: 'critical' | 'attention' | 'information';
+  amount: number | null;
+}
+
+export interface CommercialInboxEntry {
+  clientId: number;
+  clientName: string;
+  seller: string;
+  locality: string;
+  address: string;
+  coordinates: [number, number] | null;
+  collectionRisk: number;
+  commercialOpportunity: number;
+  visitPriority: number;
+  overdueOutstanding: number;
+  sales90d: number;
+  salesDelta: number;
+  salesBlocked: boolean;
+  portfolioStatus: PortfolioStatus;
+  sources: CommercialInboxSource[];
+  signals: CommercialInboxSignal[];
+  notes: CommercialActivity[];
+}
+
+export interface CommercialInboxPayload {
+  weekStart: string;
+  weekEnd: string;
+  seller: string;
+  entries: CommercialInboxEntry[];
+  stats: {
+    clients: number;
+    systemSignals: number;
+    dueItems: number;
+    notes: number;
+  };
+  definitions: {
+    systemSignals: string;
+    dueItems: string;
+    notes: string;
   };
 }
 

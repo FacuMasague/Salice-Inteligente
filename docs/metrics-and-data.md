@@ -1,4 +1,4 @@
-# Catálogo central de métricas y datos · v0.5.9
+# Catálogo central de métricas y datos · v0.6.5
 
 La fuente ejecutable del catálogo es `shared/metrics.ts`. La misma definición se publica en `GET /api/metrics/catalog` y se presenta en Configuración. Este documento explica el contrato de mantenimiento; no reemplaza a las fichas particulares de `docs/powerbi`.
 
@@ -46,6 +46,10 @@ En v0.5.7 el catálogo llega a la versión 1.5.0 e incorpora `product.reference_
 En v0.5.8 el catálogo llega a la versión 1.6.0 e incorpora `recommendation.client_product_fit`. El puntaje ordena pares cliente-producto y no sustituye la señal O del cliente ni representa probabilidad de venta. Afinidad descriptiva, adopción comparable, inventario y rotación permanecen como componentes visibles; stock positivo y compatibilidad son condiciones de entrada. Los sustitutos exigen uso y presentación compatibles. La confianza describe la calidad de evidencia y ninguna recomendación crea una tarea o gestión.
 
 En v0.5.9 la clasificación de inventario sigue calculándose exclusivamente desde el snapshot GESI, mientras que su ciclo humano se conserva en `operations.sqlite`. `inventory_alert_reviews` representa el estado vigente; `inventory_alert_review_events` registra de forma append-only revisiones guardadas, resoluciones y reaperturas. Una incidencia se resuelve cuando desaparece su familia de alerta y se reabre cuando reaparece después de esa resolución o cambia a una familia distinta. Oscilaciones dentro de la misma familia no generan trabajo nuevo. Estos estados operativos no alteran stock ni cifras de GESI.
+
+En v0.6.0 el catálogo pasa a 1.6.2 sin crear nuevas métricas. C, O y P mantienen fórmulas y escalas separadas; sólo se actualizan sus consumidores para incluir `Bandeja comercial`. La bandeja ordena vencidos, bloqueos y P mediante precedencias visibles, no mediante un cuarto puntaje. `nextVisitAt` se presenta como revisión sugerida y no como planificación. Las notas humanas se guardan por separado y no cambian ninguna señal. O se conserva como cálculo auditable, pero deja de mostrarse como oportunidad operativa cuando el cliente está inactivo, tiene bloqueo de ventas o no registra compras positivas en los últimos 90 días; esos clientes pueden seguir visibles por motivos de cobranza.
+
+En v0.6.5 el catálogo permanece en 1.6.2: la nueva lista `Oportunidades` de la ficha del cliente sólo presenta actividades humanas que ya conservan un `productId`. No agrega métricas, estados ni inferencias. La lectura de carteras y el seguimiento de objetivos continúan reutilizando C, O, P, ventas, resultados y objetivos ya definidos.
 
 En v0.4.0 el catálogo llega a la versión 1.2.0 con 20 métricas. El Explorador de ventas agrega `sales.documents`, `sales.average_ticket` y `sales.average_price_kg` sobre el mismo universo ejecutable de Ventas · Comercial. `target.monthly` ya no lee una constante en memoria: toma la única versión activa de `operations.sqlite`, mientras resultados, cumplimiento y proyección continúan calculándose desde GESI.
 

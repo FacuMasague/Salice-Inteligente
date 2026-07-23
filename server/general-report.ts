@@ -292,11 +292,11 @@ export function getGeneralReportMeta(): GeneralReportMeta {
   return enrichTargets(cachedMeta);
 }
 
-export function buildGeneralReport(input: Partial<Record<string, unknown>>): GeneralReportPayload | null {
+export function buildGeneralReport(input: Partial<Record<string, unknown>>, goalRows?: CommercialGoalRow[]): GeneralReportPayload | null {
   const value = db();
   const meta = getGeneralReportMeta();
   if (!value || !meta.available) return null;
-  const goals = getActiveCommercialGoalPlan().rows;
+  const goals = goalRows ?? getActiveCommercialGoalPlan().rows;
   const filters = normalizeFilters(input, meta);
   const start = monthStart(filters.month);
   const naturalEnd = monthEnd(filters.month);

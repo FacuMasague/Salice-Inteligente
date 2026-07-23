@@ -54,4 +54,21 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
     expect(strategicBrand?.brands[0]?.actual).toBeCloseTo(strategicBrand?.actual ?? 0, 6);
     expect(strategicBrand?.trend).toHaveLength(13);
   });
+
+  it('relaciona los mismos resultados GESI con una versión explícita de objetivos', () => {
+    const month = getGeneralReportMeta().latestMonth;
+    const customGoals = [{
+      id: 'objetivo-versionado-prueba',
+      month,
+      product: 'Pedigree',
+      seller: 'Reventas',
+      kilos: 123,
+      accounts: null,
+      invoicing: null,
+    }];
+    const report = buildGeneralReport({ mode: 'core', month }, customGoals);
+    expect(report?.target).toBe(123);
+    expect(report?.sellers.find((row) => row.name === 'Reventas')?.target).toBe(123);
+    expect(report?.actual).toBeGreaterThanOrEqual(0);
+  });
 });

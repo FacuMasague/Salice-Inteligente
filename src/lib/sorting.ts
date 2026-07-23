@@ -17,6 +17,12 @@ export function cycleSort<Key extends string>(state: SortState<Key>, key: Key): 
   return emptySort<Key>();
 }
 
+export function cycleSortDescendingFirst<Key extends string>(state: SortState<Key>, key: Key): SortState<Key> {
+  if (state.key !== key) return { key, direction: 'desc' };
+  if (state.direction === 'desc') return { key, direction: 'asc' };
+  return emptySort<Key>();
+}
+
 function compareValues(left: SortableValue, right: SortableValue) {
   if (left == null && right == null) return 0;
   if (left == null) return 1;

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Maximize2, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
+import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import type { Client, CommercialActivity, PaymentPromise, Product, ReceivableCaseEvent, Recommendation } from '../../shared/models';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
+import { partitionClientActivities } from '../lib/commercial-activities';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
 const invoiceLabel = { paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', overdue: 'Vencida' } as const;
@@ -125,6 +127,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const utilization = client.creditLimit ? Math.round(Math.max(0, client.balance) / client.creditLimit * 100) : 0;
   const openInvoices = client.invoices.filter((invoice) => invoice.outstanding > 0);
   const activeReceivableEvents = receivableEvents.filter((event) => !event.deletedAt && event.eventType !== 'status');
+  const { opportunities: opportunityActivities, general: generalActivities } = partitionClientActivities(activities);
 
   return (
     <aside className={`client-panel ${mode === 'full' ? 'client-profile' : 'client-panel-compact'}`} data-tour="client-panel" aria-label={`Ficha de ${clientPrimaryName(client)}`}>
@@ -173,9 +176,9 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                 <small>{money(client.overdueOutstanding, true)} vencido · {client.oldestOverdueDays || 0} días máx.</small>
               </article>
               <article className="mini-metric">
-                <span>Oportunidad comercial</span>
-                <strong>O{client.commercialOpportunity}</strong>
-                <small>P{client.visitPriority} prioridad combinada</small>
+                <span>{isCommercialOpportunityEligible(client) ? 'Oportunidad comercial' : 'Oportunidad no mostrada'}</span>
+                <strong>{isCommercialOpportunityEligible(client) ? `O${client.commercialOpportunity}` : '—'}</strong>
+                <small>{client.salesBlocked ? 'Bloqueo de ventas informado' : client.sales90d <= 0 ? 'Sin compras en 90 días' : `P${client.visitPriority} prioridad combinada`}</small>
               </article>
             </section>
 
@@ -215,15 +218,15 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                   </article>
                 ))}
               </div>
-              <p className="section-description recommendation-human-rule">Las sugerencias no crean tareas ni registran una gestión como realizada.</p>
+              <p className="section-description recommendation-human-rule">Las sugerencias no crean tareas ni registran que una oferta haya ocurrido. Las notas de oficina permanecen separadas.</p>
             </section> : <section className="panel-section"><div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Motor de oportunidades</span><h3>Recomendaciones pausadas</h3></div></div><p className="section-description inactive-recommendation-copy">Los clientes inactivos no participan de comparaciones, recomendaciones ni recorridos. Podés consultar sus compras y su cuenta corriente desde las otras pestañas.</p></section>}
 
             <section className="panel-section next-action">
               <div className="section-title-row">
-                <div><span className="section-kicker"><CalendarDays size={14} /> {client.active ? 'Próxima acción' : 'Registro interno'}</span><h3>{client.active ? `Visita · ${longDate(client.nextVisitAt)}` : 'Notas históricas del cliente'}</h3></div>
+                <div><span className="section-kicker"><CalendarDays size={14} /> {client.active ? 'Referencia del sistema' : 'Registro interno'}</span><h3>{client.active ? `Revisión sugerida · ${longDate(client.nextVisitAt)}` : 'Notas históricas del cliente'}</h3></div>
                 {client.active && <strong className="priority-number">P{client.visitPriority}</strong>}
               </div>
-              <textarea value={note} onChange={(event) => { setNote(event.target.value); setSaved(false); }} maxLength={500} aria-label="Nota para la próxima visita" />
+              <textarea value={note} onChange={(event) => { setNote(event.target.value); setSaved(false); }} maxLength={500} aria-label="Nota general del cliente" placeholder="Nota general del cliente; no programa ni comunica acciones." />
               {saveError && <p className="form-error">{saveError}</p>}
               <div className="action-row">
                 <button className="button secondary" onClick={saveNote} disabled={saving || note === client.note}>
@@ -299,9 +302,14 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
               <div className="panel-operation-list receivable-events">{activeReceivableEvents.map((event) => <article key={event.id}><span>{receivableEventLabels[event.eventType]}</span><div><strong>{event.comment || receivableEventLabels[event.eventType]}</strong><small>{longDate(event.createdAt)} · {event.actor}</small></div></article>)}</div>
             </section>
             <section className="panel-section first">
-              <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Actividad local</span><h3>Gestiones registradas</h3></div><span className="count-badge">{activities.length}</span></div>
-              {!activities.length && <p className="section-description">Todavía no hay visitas, llamadas, cobranzas u ofertas guardadas para este cliente.</p>}
-              <div className="panel-operation-list">{activities.map((activity) => <article key={activity.id}><span>{activity.type === 'visit' ? 'Visita' : activity.type === 'call' ? 'Llamada' : activity.type === 'collection' ? 'Cobranza' : 'Oferta'}</span><div><strong>{activity.outcome === 'sale' ? 'Venta concretada' : activity.outcome === 'promise' ? 'Promesa de pago' : activity.outcome === 'no_contact' ? 'Sin contacto' : activity.outcome === 'rescheduled' ? 'Reprogramada' : activity.outcome === 'no_interest' ? 'Sin interés por ahora' : 'Completada'}</strong><small>{longDate(activity.occurredAt)}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}</div>
+              <div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Productos vinculados</span><h3>Oportunidades</h3></div><span className="count-badge">{opportunityActivities.length}</span></div>
+              {!opportunityActivities.length && <p className="section-description">Todavía no hay notas vinculadas a oportunidades de productos.</p>}
+              <div className="panel-operation-list opportunity-activity-list">{opportunityActivities.map((activity) => <article key={activity.id}><span>Nota</span><div><strong>{activity.note || 'Oportunidad documentada por la oficina'}</strong><small>{longDate(activity.occurredAt)}</small><div className="opportunity-activity-products">{activity.productIds.map((productId) => { const product = products.find((item) => item.id === productId); return product ? <button className="entity-link product-entity-link" key={productId} onClick={() => onOpenProduct?.(product)}><Package size={13} />{product.name}<ChevronRight size={12} /></button> : <span key={productId}>Producto {productId} no disponible</span>; })}</div></div></article>)}</div>
+            </section>
+            <section className="panel-section first">
+              <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Registro local</span><h3>Notas sobre hechos externos</h3></div><span className="count-badge">{generalActivities.length}</span></div>
+              {!generalActivities.length && <p className="section-description">Todavía no hay otras notas de visitas, llamadas u ofertas para este cliente.</p>}
+              <div className="panel-operation-list">{generalActivities.map((activity) => <article key={activity.id}><span>{activity.type === 'note' ? 'Nota' : activity.type === 'visit' ? 'Visita' : activity.type === 'call' ? 'Llamada' : activity.type === 'collection' ? 'Cobranza' : 'Oferta'}</span><div><strong>{activity.outcome === 'noted' ? 'Nota de oficina' : activity.outcome === 'sale' ? 'Venta concretada' : activity.outcome === 'promise' ? 'Promesa de pago' : activity.outcome === 'no_contact' ? 'Sin contacto' : activity.outcome === 'rescheduled' ? 'Reprogramada' : activity.outcome === 'no_interest' ? 'Sin interés por ahora' : 'Registro anterior'}</strong><small>{longDate(activity.occurredAt)}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}</div>
             </section>
             <section className="panel-section">
               <div className="section-title-row"><div><span className="section-kicker"><CircleDollarSign size={14} /> Compromisos</span><h3>Promesas de pago</h3></div><span className="count-badge">{promises.filter((promise) => promise.status === 'pending').length} pendientes</span></div>

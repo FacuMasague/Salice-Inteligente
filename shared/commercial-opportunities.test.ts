@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
-import { buildCommercialOpportunities, buildProductClientOpportunities, commercialOpportunityPolicy } from './commercial-opportunities';
+import { buildCommercialOpportunities, buildProductClientOpportunities, commercialOpportunityPolicy, isCommercialOpportunityEligible } from './commercial-opportunities';
 
 describe('oportunidades comerciales explicables', () => {
   it('excluye productos sin stock, inactivos e incompatibles con la especie dominante', () => {
@@ -19,6 +19,18 @@ describe('oportunidades comerciales explicables', () => {
     expect(recommendations.every((item) => item.affinityExplanation.length > 0 && item.evidence.length > 0)).toBe(true);
     expect(recommendations.every((item) => ['reliable', 'exploratory', 'insufficient'].includes(item.confidence))).toBe(true);
     expect(commercialOpportunityPolicy.automaticTaskCreation).toBe(false);
+  });
+
+  it('excluye clientes bloqueados o sin compras positivas en los últimos 90 días', () => {
+    const snapshot = createDemoSnapshot();
+    const base = snapshot.clients[0]!;
+    const blocked = { ...base, salesBlocked: true };
+    const withoutRecentSales = { ...base, id: 990003, sales90d: 0 };
+    expect(isCommercialOpportunityEligible(base)).toBe(true);
+    expect(isCommercialOpportunityEligible(blocked)).toBe(false);
+    expect(isCommercialOpportunityEligible(withoutRecentSales)).toBe(false);
+    expect(buildCommercialOpportunities(blocked, snapshot.clients, snapshot.products)).toEqual([]);
+    expect(buildCommercialOpportunities(withoutRecentSales, snapshot.clients, snapshot.products)).toEqual([]);
   });
 
   it('identifica una alternativa disponible sólo si uso y presentación son compatibles', () => {
@@ -55,6 +67,21 @@ describe('oportunidades comerciales explicables', () => {
     expect(result.every((item) => item.reason.length > 0 && item.affinityExplanation.length > 0 && item.evidence.length > 0)).toBe(true);
     expect(result.every((item) => item.kinds.includes('mix_gap'))).toBe(true);
     expect(result).toEqual([...result].sort((left, right) => right.score - left.score || right.similarity - left.similarity));
+  });
+
+  it('tampoco propone bloqueados o sin venta reciente desde la ficha de producto', () => {
+    const snapshot = createDemoSnapshot();
+    const target = snapshot.products.find((product) => product.stock > 0 && product.inventory.status === 'positive')!;
+    const blockedId = snapshot.clients[0]!.id;
+    const withoutRecentSalesId = snapshot.clients[1]!.id;
+    const clients = snapshot.clients.map((client) => client.id === blockedId
+      ? { ...client, salesBlocked: true }
+      : client.id === withoutRecentSalesId
+        ? { ...client, sales90d: 0 }
+        : client);
+    const result = buildProductClientOpportunities(target, clients, snapshot.products, 200);
+    expect(result.some((item) => item.client.id === blockedId)).toBe(false);
+    expect(result.some((item) => item.client.id === withoutRecentSalesId)).toBe(false);
   });
 
   it('no propone clientes si el producto no tiene stock positivo', () => {

@@ -401,7 +401,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiFinance,
     grain: 'Cliente',
     dateBasis: 'Snapshot activo',
-    consumers: ['Mapa', 'Agenda', 'Clientes', 'Vendedores', 'Cartera'],
+    consumers: ['Mapa', 'Bandeja comercial', 'Clientes', 'Vendedores', 'Cartera'],
     caveats: ['Escala 0–100.', 'No es una predicción crediticia.'],
   },
   {
@@ -413,8 +413,8 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Cliente',
     dateBasis: 'Ventanas de 90 y 180 días al snapshot',
-    consumers: ['Mapa', 'Agenda', 'Clientes', 'Vendedores'],
-    caveats: ['Escala 0–100.', 'No equivale al riesgo de cobranza.'],
+    consumers: ['Mapa', 'Bandeja comercial', 'Clientes', 'Vendedores'],
+    caveats: ['Escala 0–100.', 'No equivale al riesgo de cobranza.', 'No se muestra como oportunidad operativa si el cliente está inactivo, tiene bloqueo de ventas o no registra compras positivas en los últimos 90 días.'],
   },
   {
     id: 'recommendation.client_product_fit',
@@ -423,10 +423,10 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     unit: 'score',
     formula: '45% afinidad descriptiva + 35% adopción comparable + 12% señal de stock alto + 8% rotación relativa; los sustitutos usan compatibilidad de uso y presentación',
     source: 'Snapshot GESI · compras de 90 días, catálogo, inventario del depósito 2 y vectores v2.2',
-    grain: 'Cliente activo y producto comercializable con stock positivo',
+    grain: 'Cliente activo, sin bloqueo y con compras positivas en 90 días; producto comercializable con stock positivo',
     dateBasis: 'Ventana observable de 90 días terminada en el snapshot activo',
     consumers: ['Productos · Oportunidades', 'Perfil de cliente'],
-    caveats: ['No es probabilidad de venta.', 'La confianza expresa calidad de evidencia.', 'No crea tareas ni gestiones automáticamente.', 'Excluye incompatibilidades explícitas y productos sin stock positivo.'],
+    caveats: ['No es probabilidad de venta.', 'La confianza expresa calidad de evidencia.', 'No crea tareas ni gestiones automáticamente.', 'Excluye clientes bloqueados, sin compras positivas en 90 días o inactivos, además de incompatibilidades explícitas y productos sin stock positivo.'],
   },
   {
     id: 'score.visit_priority',
@@ -437,8 +437,8 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: 'Métrica derivada de reglas explicables',
     grain: 'Cliente activo',
     dateBasis: 'Snapshot activo',
-    consumers: ['Mapa', 'Agenda', 'Clientes', 'Vendedores', 'Rutas'],
-    caveats: ['Escala 0–100.', 'Una tarea sólo se completa al guardar una gestión humana.'],
+    consumers: ['Mapa', 'Bandeja comercial', 'Clientes', 'Vendedores', 'Rutas'],
+    caveats: ['Escala 0–100.', 'Ordena revisiones sugeridas; no representa una visita planificada ni realizada.'],
   },
 ];
 
@@ -555,7 +555,7 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
 
 export function metricCatalogSummary() {
   return {
-    version: '1.6.0',
+    version: '1.6.2',
     metrics: METRIC_CATALOG,
     universes: REPORT_UNIVERSES,
     endpoints: REPORT_ENDPOINT_METRICS,

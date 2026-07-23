@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Check, Clock3, MapPin, Navigation, Route, Sparkles, Truck } from 'lucide-react';
 import { distanceKm } from '../../shared/algorithms';
+import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import type { Client, RoutePlan } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
@@ -106,7 +107,7 @@ export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSelle
             <button className="route-check-button" onClick={() => toggle(client.id)} aria-label={`${selectedIds.has(client.id) ? 'Quitar' : 'Agregar'} ${clientPrimaryName(client)} de la ruta`}><span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span></button>
             <button className="route-client-identity" onClick={() => onOpenClient(client)}><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) && <>{clientSecondaryName(client)} · </>}<MapPin size={12} /> {client.locality}</span></button>
             <button className="entity-link route-seller-link" onClick={() => onOpenSeller(client.seller)}>{client.seller}</button>
-            <div className="route-priority"><strong>P{client.visitPriority}</strong><span>C{client.collectionRisk} · O{client.commercialOpportunity}</span></div>
+            <div className="route-priority"><strong>P{client.visitPriority}</strong><span>C{client.collectionRisk}{isCommercialOpportunityEligible(client) ? ` · O${client.commercialOpportunity}` : ''}</span></div>
           </article>)}
         </div>
         <div className="route-picker-footer"><div><span>Venta 90d seleccionada</span><strong>{money(selectedSales, true)}</strong></div><button className="button primary large" disabled={!selectedIds.size || loading} onClick={optimize}><Sparkles size={17} /> {loading ? 'Optimizando…' : 'Optimizar recorrido'}</button></div>

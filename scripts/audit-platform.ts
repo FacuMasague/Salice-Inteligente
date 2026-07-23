@@ -85,7 +85,7 @@ const operationsIntegrity = (() => {
 const administrativeStorage = (() => {
   try {
     const operations = new DatabaseSync(operationsPath, { readOnly: true });
-    const requiredTables = ['receivable_cases', 'receivable_case_events', 'client_trend_reviews', 'inventory_alert_reviews', 'inventory_alert_review_events', 'saved_views', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes', 'product_vector_corrections', 'product_vector_correction_events', 'product_price_snapshots'];
+    const requiredTables = ['receivable_cases', 'receivable_case_events', 'client_trend_reviews', 'inventory_alert_reviews', 'inventory_alert_review_events', 'saved_views', 'commercial_opportunity_links', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes', 'product_vector_corrections', 'product_vector_correction_events', 'product_price_snapshots'];
     const requiredTriggers = ['prevent_inventory_review_event_update', 'prevent_inventory_review_event_delete', 'prevent_vector_correction_event_update', 'prevent_vector_correction_event_delete', 'prevent_product_price_snapshot_update', 'prevent_product_price_snapshot_delete'];
     const tables = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name));
     const triggers = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger'").all() as { name: string }[]).map((row) => row.name));
@@ -128,11 +128,11 @@ add(
 add('operations-integrity', 'La persistencia operativa supera integrity_check', operationsIntegrity === 'ok', operationsIntegrity);
 add(
   'administrative-storage',
-  'La persistencia operativa contiene todos los contratos hasta v0.5.9',
+  'La persistencia operativa contiene todos los contratos hasta v0.6.5',
   !administrativeStorage.error && administrativeStorage.missing.length === 0 && administrativeStorage.missingTriggers.length === 0,
   administrativeStorage.error || (administrativeStorage.missing.length || administrativeStorage.missingTriggers.length
     ? `Faltan tablas: ${administrativeStorage.missing.join(', ') || 'ninguna'} · triggers: ${administrativeStorage.missingTriggers.join(', ') || 'ninguno'}`
-    : 'Seguimientos, incidencias de inventario auditables, correcciones vectoriales, historial de precios, vistas y objetivos disponibles'),
+    : 'Seguimientos, listas y oportunidades vinculadas, incidencias de inventario auditables, correcciones vectoriales, historial de precios y objetivos disponibles'),
 );
 add(
   'active-commercial-plan',
