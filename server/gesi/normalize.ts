@@ -10,7 +10,8 @@ import {
   type Purchase,
 } from '../../shared/models.js';
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
-import { applyCatalogPricePositioning, estimateContentKg, inferProductVectorV2, VECTOR_KEYS } from '../../shared/product-vectors.js';
+import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
+import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
 
 const number = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -251,7 +252,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     purchasesByClient.set(clientID, current);
   }
 
-  const stockByProduct = new Map(capture.stocks.map((row) => [text(row.productoID), row]));
+  const stockRowsByProduct = groupRows(capture.stocks, 'productoID');
+  const stockByProduct = new Map([...stockRowsByProduct].map(([id, rows]) => [id, rows[0]]));
   const pricesByProduct = groupRows(capture.prices, 'productoID');
   const rawProductsByID = new Map(capture.products.map((row) => [text(row.productoID), row]));
   const soldProductIDs = new Set(
@@ -260,7 +262,11 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       .filter((row) => text(row.tipoDeItem) === 'P')
       .map((row) => text(row.codigoDeItem)).filter(Boolean),
   );
-  const catalogProductIDs = [...new Set([...stockByProduct.keys(), ...soldProductIDs])].sort();
+  const catalogProductIDs = [...new Set([
+    ...capture.products.filter((row) => text(row.estado) === 'A').map((row) => text(row.productoID)).filter(Boolean),
+    ...capture.stocks.filter((row) => number(row.unidad1Disponible) !== 0 || number(row.unidad2Disponible) !== 0).map((row) => text(row.productoID)).filter(Boolean),
+    ...soldProductIDs,
+  ])].sort();
 
   const baseProducts: Product[] = catalogProductIDs.map((id) => {
     const row = rawProductsByID.get(id) ?? { productoID: id, descripcion: `Producto ${id} · sin maestro GESI` };
@@ -281,6 +287,24 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     const productName = text(row.descripcion, `Producto ${id} · sin descripción`);
     const productDescription = text(row.descripcionExtendida);
     const price = selectPrice(pricesByProduct.get(id) ?? []);
+    const masterStatus = text(row.estado) === 'A' ? 'active' : text(row.estado) === 'I' ? 'inactive' : 'unknown';
+    const inventory = calculateInventoryMetrics({
+      availableUnit1: stockRow ? number(stockRow.unidad1Disponible) : null,
+      availableUnit2: stockRow ? number(stockRow.unidad2Disponible) : null,
+      units90d,
+      masterStatus,
+      price,
+      unit1: text(row.unidad1),
+      unit2: text(row.unidad2),
+      capturedAllProducts: capture.captureMeta.inventoryIncludesZeroStock === true,
+      duplicateRows: Math.max(0, (stockRowsByProduct.get(id)?.length ?? 0) - 1),
+    });
+    const catalogParticipation = catalogParticipationReasons({
+      masterStatus,
+      soldRecently: soldProductIDs.has(id),
+      availableUnit1: inventory.rawAvailableUnit1,
+      availableUnit2: inventory.rawAvailableUnit2,
+    });
     const vectorProfile = inferProductVectorV2({
       name: productName,
       description: productDescription,
@@ -306,18 +330,41 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       pack,
       unit,
       unitsPerCase: number(row.unidadesPorCaja) > 0 ? number(row.unidadesPorCaja) : null,
-      masterStatus: text(row.estado) === 'A' ? 'active' : text(row.estado) === 'I' ? 'inactive' : 'unknown',
+      masterStatus,
+      commercialStatus: inventory.commercialStatus,
+      discontinuationStatus: 'not_reported',
+      catalogParticipation,
       price,
-      contentKg: vectorProfile.vector.alimento_seco >= 75 ? estimateContentKg(productName, productDescription) : null,
+      contentKg: vectorProfile.vector.alimento_seco >= 75 ? resolveProductContentKg({
+        unit1: unit,
+        unit2: text(row.unidad2),
+        unit2PerUnit1: number(row.unidad2XUnidad1) > 0 ? number(row.unidad2XUnidad1) : null,
+        descriptions: [productName, productDescription, pack],
+      }) : null,
       referencePricePerKg: null,
       pricePosition: 'unknown',
-      stock: Math.max(0, Math.round(number(stockRow?.unidad1Disponible))),
+      stock: Math.round(inventory.operationalStock * 100) / 100,
       units90d: Math.round(units90d * 100) / 100,
-      monthlyUnits: Math.round(monthlyUnitsExact),
+      monthlyUnits: Math.round(inventory.monthlyRotation * 100) / 100,
       sales90d: productSales90d.get(id) ?? 0,
       clients90d: productClients90d.get(id)?.size ?? 0,
       lastSaleAt: productLastSaleAt.get(id) ?? '',
-      stockCoverageMonths: monthlyUnitsExact > 0 ? Math.round(Math.max(0, number(stockRow?.unidad1Disponible)) / monthlyUnitsExact * 10) / 10 : null,
+      stockCoverageMonths: inventory.coverageMonths == null ? null : Math.round(inventory.coverageMonths * 10) / 10,
+      inventory: {
+        capturedAt: capture.captureMeta.capturedAt,
+        companyId: capture.captureMeta.empresaID,
+        branchId: capture.captureMeta.sucursalID,
+        warehouseId: capture.captureMeta.almacenPrincipalID,
+        warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(stockRow?.almacen, `Depósito ${capture.captureMeta.almacenPrincipalID}`),
+        completeZeroStockUniverse: capture.captureMeta.inventoryIncludesZeroStock === true,
+        rawAvailableUnit1: inventory.rawAvailableUnit1,
+        rawAvailableUnit2: inventory.rawAvailableUnit2,
+        unit2: text(row.unidad2),
+        unit2PerUnit1: number(row.unidad2XUnidad1) > 0 ? number(row.unidad2XUnidad1) : null,
+        status: inventory.stockStatus,
+        quality: inventory.quality,
+        qualityReasons: inventory.qualityReasons,
+      },
       margin: null,
       vector: vectorProfile.vector,
       vectorMeta: vectorProfile.meta,
@@ -509,6 +556,37 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const activeSalesBlockedClients = clients.filter((client) => client.active && client.salesBlocked).length;
   const creditTermInvoices = clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0);
   const invalidCreditTermInvoices = invoices.length - creditTermInvoices;
+  const masterProductIDs = new Set(capture.products.map((row) => text(row.productoID)).filter(Boolean));
+  const uniqueStockProductIDs = new Set(capture.stocks.map((row) => text(row.productoID)).filter(Boolean));
+  const stockForMaster = capture.stocks.filter((row) => masterProductIDs.has(text(row.productoID)));
+  const inventoryCoverage = {
+    companyId: capture.captureMeta.empresaID,
+    branchId: capture.captureMeta.sucursalID,
+    warehouseId: capture.captureMeta.almacenPrincipalID,
+    warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(capture.stocks.find((row) => row.almacen)?.almacen, `Depósito ${capture.captureMeta.almacenPrincipalID}`),
+    capturedAt: capture.captureMeta.capturedAt,
+    completeZeroStockUniverse: capture.captureMeta.inventoryIncludesZeroStock === true,
+    masterRows: capture.products.length,
+    uniqueMasterProducts: masterProductIDs.size,
+    duplicateMasterRows: capture.products.length - masterProductIDs.size,
+    activeMasterProducts: capture.products.filter((row) => text(row.estado) === 'A').length,
+    inactiveMasterProducts: capture.products.filter((row) => text(row.estado) === 'I').length,
+    unknownMasterProducts: capture.products.filter((row) => !['A', 'I'].includes(text(row.estado))).length,
+    stockRows: capture.stocks.length,
+    uniqueStockProducts: uniqueStockProductIDs.size,
+    duplicateStockRows: capture.captureMeta.inventoryDuplicateRows ?? capture.stocks.length - uniqueStockProductIDs.size,
+    invalidStockRows: capture.captureMeta.inventoryInvalidRows ?? capture.stocks.filter((row) => !text(row.productoID)).length,
+    positiveStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) > 0).length,
+    zeroStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) === 0).length,
+    negativeStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) < 0).length,
+    missingStockProducts: [...masterProductIDs].filter((id) => !uniqueStockProductIDs.has(id)).length,
+    catalogProducts: products.length,
+    commercializableProducts: products.filter((product) => product.commercialStatus === 'commercializable').length,
+    insufficientProducts: products.filter((product) => product.commercialStatus === 'insufficient' || product.inventory.quality === 'insufficient').length,
+    explicitDiscontinuedProducts: 0,
+    productsWithMissingPrimaryUnit: capture.products.filter((row) => !text(row.unidad1)).length,
+    productsWithSecondaryUnit: capture.products.filter((row) => Boolean(text(row.unidad2))).length,
+  };
   const unavailableMasters = [
     capture.masters.zones.length ? '' : 'zonas',
     capture.masters.clientTypes.length ? '' : 'tipos de cliente',
@@ -529,7 +607,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       sourceLabel: 'GESI · Salice',
       syncStatus: 'connected',
       apiBaseConfigured: true,
-      productVectorVersion: '2.1',
+      productVectorVersion: '2.2',
       disclaimer: `Foto validada de GESI. La operación usa ${activeClients} clientes activos; ${activePortfolioConfirmedClients} tienen definición explícita para la sucursal Salice y ${activeClients - activePortfolioConfirmedClients} quedan marcados para revisión, sin excluirlos automáticamente.${omittedDetailsWarning}${unavailableMastersWarning}`,
       coverage: {
         rawClients: capture.clients.length,
@@ -559,6 +637,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         invalidCreditTermInvoices,
         clientsWithObservedCreditTerms: clients.filter((client) => client.creditTermSampleSize > 0).length,
         clientsWithMixedCreditTerms: clients.filter((client) => client.creditTermStatus === 'mixed').length,
+        inventory: inventoryCoverage,
       },
     },
     products,
@@ -574,7 +653,7 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   const check = (condition: boolean, message: string) => { if (!condition) issues.push(message); };
 
   check(data.meta.source === 'gesi', 'El snapshot normalizado no está marcado como GESI');
-  check(data.meta.productVectorVersion === '2.1', 'El snapshot no declara vectorización de producto v2.1');
+  check(data.meta.productVectorVersion === '2.2', 'El snapshot no declara vectorización de producto v2.2');
   check(data.meta.revision === SNAPSHOT_REVISION, `Revisión ${data.meta.revision} != ${SNAPSHOT_REVISION}`);
   check(new Set(data.clients.map((client) => client.id)).size === data.clients.length, 'Hay IDs de cliente duplicados');
   check(productIDs.size === data.products.length, 'Hay IDs de producto duplicados');
@@ -582,6 +661,9 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.coverage?.activeClients === data.clients.filter((client) => client.active).length, 'La cobertura de clientes activos no coincide');
   check(data.meta.coverage?.inactiveClients === data.clients.filter((client) => !client.active).length, 'La cobertura de clientes inactivos no coincide');
   check(data.meta.coverage?.catalogProducts === data.products.length, 'La cobertura de productos no coincide con el snapshot');
+  check(data.meta.coverage?.inventory?.completeZeroStockUniverse === true, 'El snapshot no certifica la captura de existencias cero');
+  check(data.meta.coverage?.inventory?.companyId === 3 && data.meta.coverage.inventory.branchId === 3 && data.meta.coverage.inventory.warehouseId === 2, 'El contexto de inventario no corresponde a empresa 3 / sucursal 3 / depósito 2');
+  check(data.meta.coverage?.inventory?.missingStockProducts === 0, 'Hay maestros sin fila de existencias en el universo completo');
   check(data.meta.coverage?.portfolioConfirmedClients === data.clients.filter((client) => client.portfolioStatus === 'confirmed').length, 'La cobertura de cartera confirmada no coincide');
   check(data.meta.coverage?.activePortfolioReviewClients === data.clients.filter((client) => client.active && client.portfolioStatus === 'review').length, 'La cobertura de cartera activa a revisar no coincide');
   check(data.meta.coverage?.creditTermInvoices === data.clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0), 'La cobertura de facturas con plazo observado no coincide');
@@ -591,12 +673,16 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   for (const product of data.products) {
     const values = Object.values(product.vector);
     check(values.length === VECTOR_KEYS.length, `${product.id}: vector con ${values.length} dimensiones`);
-    check(product.vectorMeta.version === '2.1', `${product.id}: metadata vectorial anterior a v2.1`);
+    check(product.vectorMeta.version === '2.2', `${product.id}: metadata vectorial distinta de v2.2`);
     check(product.contentKg == null || product.contentKg > 0, `${product.id}: contenido neto inválido`);
     check(product.referencePricePerKg == null || product.referencePricePerKg > 0, `${product.id}: precio por kilo inválido`);
     check(values.every((value) => Number.isFinite(value) && value >= 0 && value <= 100), `${product.id}: vector fuera de 0–100`);
-    check(product.vectorMeta.version === '2.1' && product.vectorMeta.confidence >= 0 && product.vectorMeta.confidence <= 100, `${product.id}: metadatos vectoriales inválidos`);
+    check(product.vectorMeta.version === '2.2' && product.vectorMeta.confidence >= 0 && product.vectorMeta.confidence <= 100, `${product.id}: metadatos vectoriales inválidos`);
     check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0 && product.sales90d >= 0 && product.clients90d >= 0, `${product.id}: precio, stock o rotación inválidos`);
+    check(product.catalogParticipation.length > 0, `${product.id}: producto sin motivo de participación en catálogo`);
+    check(product.discontinuationStatus === 'not_reported', `${product.id}: discontinuación inventada fuera de GESI`);
+    check(product.inventory.companyId === 3 && product.inventory.branchId === 3 && product.inventory.warehouseId === 2, `${product.id}: contexto de existencias distinto de empresa 3 / sucursal 3 / depósito 2`);
+    check(product.inventory.status !== 'negative' || product.stock === 0, `${product.id}: disponibilidad negativa usada como stock operativo`);
   }
 
   for (const client of data.clients) {

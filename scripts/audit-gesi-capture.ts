@@ -68,8 +68,13 @@ const invoiceWithDetail = capture.invoices.filter((row) => Array.isArray(row.det
 const current90Invoices = invoiceWithDetail.filter((row) => date(row.fechaDeEmision) >= current90From);
 const previous90Invoices = invoiceWithDetail.filter((row) => date(row.fechaDeEmision) >= previous90From && date(row.fechaDeEmision) < current90From);
 const allItems = invoiceWithDetail.flatMap((row) => row.detalleItems as GesiRow[]);
-const soldProductIDs = uniqueStrings(allItems, 'codigoDeItem');
-const catalogProductIDs = new Set([...stockProductIDs, ...soldProductIDs]);
+const soldProductIDs = uniqueStrings(allItems.filter((row) => text(row.tipoDeItem) === 'P'), 'codigoDeItem');
+const activeMasterProductIDs = new Set(capture.products.filter((row) => text(row.estado) === 'A').map((row) => text(row.productoID)).filter(Boolean));
+const nonzeroInventoryProductIDs = new Set(capture.stocks
+  .filter((row) => number(row.unidad1Disponible) !== 0 || number(row.unidad2Disponible) !== 0)
+  .map((row) => text(row.productoID)).filter(Boolean));
+const catalogProductIDs = new Set([...activeMasterProductIDs, ...nonzeroInventoryProductIDs, ...soldProductIDs]);
+const stockRowIDs = capture.stocks.map((row) => text(row.productoID)).filter(Boolean);
 
 const invoiceKeys = capture.invoices.map(documentKey);
 const invoiceCreditTerms = capture.invoices.map((row) => invoiceCreditTermDays(date(row.fechaDeEmision), date(row.fechaDePrimerVencimiento)));
@@ -139,8 +144,26 @@ const report = {
     masterRows: capture.products.length,
     uniqueMasterIDs: productIDs.size,
     duplicateMasterIDs: capture.products.length - productIDs.size,
-    positiveStockRows: capture.stocks.length,
-    positiveStockProducts: stockProductIDs.size,
+    inventoryIncludesZeroStock: capture.captureMeta.inventoryIncludesZeroStock === true,
+    inventoryCompanyID: capture.captureMeta.empresaID,
+    inventoryBranchID: capture.captureMeta.sucursalID,
+    inventoryWarehouseID: capture.captureMeta.almacenPrincipalID,
+    inventoryWarehouse: capture.captureMeta.almacenPrincipal ?? text(capture.stocks[0]?.almacen),
+    inventoryRows: capture.stocks.length,
+    uniqueInventoryProducts: stockProductIDs.size,
+    duplicateInventoryRows: capture.captureMeta.inventoryDuplicateRows ?? stockRowIDs.length - distinct(stockRowIDs),
+    invalidInventoryRows: capture.captureMeta.inventoryInvalidRows ?? capture.stocks.filter((row) => !text(row.productoID)).length,
+    positiveUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) > 0).length,
+    zeroUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) === 0).length,
+    negativeUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) < 0).length,
+    missingInventoryProducts: [...productIDs].filter((id) => !stockProductIDs.has(id)).length,
+    activeMasterProducts: activeMasterProductIDs.size,
+    inactiveMasterProducts: capture.products.filter((row) => text(row.estado) === 'I').length,
+    unknownMasterProducts: capture.products.filter((row) => !['A', 'I'].includes(text(row.estado))).length,
+    primaryUnits: countBy(capture.products, 'unidad1'),
+    secondaryUnits: countBy(capture.products, 'unidad2'),
+    missingPrimaryUnit: capture.products.filter((row) => !text(row.unidad1)).length,
+    invalidUnit2Ratio: capture.products.filter((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0).length,
     priceRows: capture.prices.length,
     pricedProducts: priceProductIDs.size,
     priceRowsForBranch3: capture.prices.filter((row) => number(row.sucursalID) === 3).length,
@@ -148,7 +171,7 @@ const report = {
     priceBranchIDs: countBy(capture.prices, 'sucursalID'),
     priceChannelIDs: countBy(capture.prices, 'canalDeVentaID'),
     soldProducts180d: soldProductIDs.size,
-    catalogStockOrSales: catalogProductIDs.size,
+    catalogActiveOrNonzeroInventoryOrSales: catalogProductIDs.size,
     soldMissingFromMaster: [...soldProductIDs].filter((id) => !productIDs.has(id)).length,
     catalogMissingPriceDefinition: [...catalogProductIDs].filter((id) => !priceProductIDs.has(id)).length,
     stockValues: quantiles(capture.stocks.map((row) => number(row.unidad1Disponible))),
@@ -206,3 +229,30 @@ const report = {
 };
 
 console.log(JSON.stringify(report, null, 2));
+
+const requiredIssues: string[] = [];
+const qualityWarnings: string[] = [];
+const require = (condition: boolean, message: string) => { if (!condition) requiredIssues.push(message); };
+require(capture.captureMeta.empresaID === 3, `Empresa de inventario ${capture.captureMeta.empresaID}; esperada 3.`);
+require(capture.captureMeta.sucursalID === 3, `Sucursal de inventario ${capture.captureMeta.sucursalID}; esperada 3.`);
+require(capture.captureMeta.almacenPrincipalID === 2, `Depósito de inventario ${capture.captureMeta.almacenPrincipalID}; esperado 2.`);
+require(capture.captureMeta.inventoryIncludesZeroStock === true, 'La captura no certifica incluir productos sin existencias.');
+require(capture.products.length === productIDs.size, 'El maestro contiene productoID duplicados.');
+require(capture.stocks.length === stockProductIDs.size, 'Las existencias normalizadas contienen productoID duplicados.');
+require([...productIDs].every((id) => stockProductIDs.has(id)), 'Hay maestros sin fila de existencias en la captura completa.');
+require([...stockProductIDs].every((id) => productIDs.has(id)), 'Hay existencias cuyo productoID no existe en el maestro.');
+require(capture.stocks.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3 && number(row.almacenID) === 2), 'Hay filas de existencias fuera de empresa 3 / sucursal 3 / depósito 2.');
+require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
+if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
+if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);
+if (capture.products.some((row) => !text(row.unidad1))) qualityWarnings.push(`${capture.products.filter((row) => !text(row.unidad1)).length} maestro(s) no informan unidad primaria.`);
+if (capture.products.some((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0)) qualityWarnings.push(`${capture.products.filter((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0).length} maestro(s) informan U2 sin una relación positiva U2/U1.`);
+
+if (requiredIssues.length) {
+  console.error(`Auditoría de captura fallida: ${requiredIssues.length} requisito(s).`);
+  requiredIssues.forEach((issue) => console.error(`- ${issue}`));
+  process.exitCode = 1;
+} else {
+  console.log(`Auditoría de captura consistente: 0 fallas requeridas; ${qualityWarnings.length} salvedad(es).`);
+  qualityWarnings.forEach((warning) => console.warn(`- ${warning}`));
+}

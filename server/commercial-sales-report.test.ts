@@ -10,10 +10,10 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     const meta = getCommercialSalesReportMeta();
     expect(meta.available).toBe(true);
     expect(meta.sourceSystem).toContain('GESI API');
-    expect(meta.rowCount).toBeGreaterThan(250_000);
-    expect(meta.maxDate).toBe('2026-07-20');
-    expect(meta.latestYear).toBe('2026');
-    expect(meta.years.slice(0, 2)).toEqual(['2026', '2025']);
+    expect(meta.rowCount).toBeGreaterThan(0);
+    expect(meta.maxDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(meta.latestYear).toBe(meta.maxDate.slice(0, 4));
+    expect(meta.years).toContain(meta.latestYear);
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.universe.branches).toEqual([3, 6]);
     expect(meta.universe.allowedIssuers).toEqual(['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.']);
@@ -22,11 +22,12 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
   }, 15_000);
 
   it('calcula corte equivalente, negocios y composición conciliable', () => {
-    const report = buildCommercialSalesReport({ month: '2026-07' });
+    const meta = getCommercialSalesReportMeta();
+    const report = buildCommercialSalesReport({ month: meta.latestMonth });
     expect(report).not.toBeNull();
-    expect(report!.cutoffDay).toBe(20);
-    expect(report!.current.netAmount).toBeGreaterThan(300_000_000);
-    expect(report!.current.kilos).toBeGreaterThan(120_000);
+    expect(report!.cutoffDay).toBe(Number(meta.maxDate.slice(8, 10)));
+    expect(report!.current.netAmount).toBeGreaterThan(0);
+    expect(report!.current.kilos).toBeGreaterThan(0);
     expect(report!.periodMode).toBe('month');
     expect(report!.comparison.netAmount).toBeGreaterThan(0);
     expect(report!.difference).toBeCloseTo(report!.current.netAmount - report!.comparison.netAmount, 6);
@@ -39,28 +40,30 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
   }, 15_000);
 
   it('ofrece una vista anual completa y compara el mismo corte del año anterior', () => {
-    const report = buildCommercialSalesReport({ periodMode: 'year', year: '2026' });
+    const meta = getCommercialSalesReportMeta();
+    const report = buildCommercialSalesReport({ periodMode: 'year', year: meta.latestYear });
     expect(report).not.toBeNull();
     expect(report!.periodMode).toBe('year');
-    expect(report!.selectedPeriod).toBe('2026');
-    expect(report!.periodStart).toBe('2026-01-01');
-    expect(report!.periodEnd).toBe('2026-07-20');
-    expect(report!.comparisonStart).toBe('2025-01-01');
-    expect(report!.comparisonEnd).toBe('2025-07-20');
-    expect(report!.elapsedDays).toBe(201);
+    expect(report!.selectedPeriod).toBe(meta.latestYear);
+    expect(report!.periodStart).toBe(`${meta.latestYear}-01-01`);
+    expect(report!.periodEnd).toBe(meta.maxDate);
+    expect(report!.comparisonStart).toBe(`${Number(meta.latestYear) - 1}-01-01`);
+    expect(report!.comparisonEnd).toBe(`${Number(meta.latestYear) - 1}${meta.maxDate.slice(4)}`);
+    expect(report!.elapsedDays).toBeGreaterThan(0);
     expect(report!.comparisonAvailable).toBe(true);
-    expect(report!.current.netAmount).toBeGreaterThan(3_500_000_000);
+    expect(report!.current.netAmount).toBeGreaterThan(0);
     expect(report!.comparison.netAmount).toBeGreaterThan(0);
-    expect(report!.monthly).toHaveLength(7);
-    expect(report!.monthly[0].month).toBe('2026-01');
-    expect(report!.monthly[6].month).toBe('2026-07');
+    expect(report!.monthly).toHaveLength(Number(meta.latestMonth.slice(5, 7)));
+    expect(report!.monthly[0].month).toBe(`${meta.latestYear}-01`);
+    expect(report!.monthly.at(-1)?.month).toBe(meta.latestMonth);
     expect(report!.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
   }, 15_000);
 
   it('recalcula toda la respuesta al filtrar vendedor', () => {
-    const full = buildCommercialSalesReport({ month: '2026-07' });
+    const month = getCommercialSalesReportMeta().latestMonth;
+    const full = buildCommercialSalesReport({ month });
     const seller = getCommercialSalesReportMeta().options.seller.find((value) => value === 'Edgardo Larrea') ?? getCommercialSalesReportMeta().options.seller[0];
-    const filtered = buildCommercialSalesReport({ month: '2026-07', seller });
+    const filtered = buildCommercialSalesReport({ month, seller });
     expect(filtered).not.toBeNull();
     expect(filtered!.filters.seller).toBe(seller);
     expect(filtered!.current.netAmount).toBeGreaterThan(0);

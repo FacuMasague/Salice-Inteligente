@@ -15,12 +15,16 @@ export interface ProductVectorAudit {
     withPricePerKg: number;
     changedProducts: number;
     largePricePerKgChanges: number;
+    declaredCombinations: number;
+    lowConfidenceProducts: number;
   };
   coverageByDimension: Record<VectorKey, number>;
   priceCohorts: Array<{ species: 'perros' | 'gatos'; packBand: string; products: number; budget: number; market: number; premium: number }>;
   positioning: Record<'budget' | 'market' | 'premium' | 'unknown', number>;
   review: {
     contradictions: Array<{ productId: string; name: string; reason: string }>;
+    declaredCombinations: Array<{ productId: string; name: string; combinations: NonNullable<Product['vectorMeta']['declaredCombinations']> }>;
+    lowConfidenceProducts: Array<{ productId: string; name: string; confidence: number; sourceCoverage: number }>;
     unrecognizedWeights: Array<{ productId: string; name: string; price: number }>;
     pricePositioning: Array<{ productId: string; name: string; position: 'budget' | 'premium'; pricePerKg: number | null; evidence: string[] }>;
     changedProducts: Array<{ productId: string; name: string; dimensions: VectorKey[] }>;
@@ -34,9 +38,9 @@ function positive(product: Product, key: VectorKey, threshold = 65) {
 
 function contradiction(product: Product) {
   const reasons: string[] = [];
-  if (positive(product, 'perros') && positive(product, 'gatos')) reasons.push('Especie perro y gato simultánea');
-  if (positive(product, 'cachorros') && positive(product, 'senior')) reasons.push('Etapa cachorro y senior simultánea');
-  if (positive(product, 'tamano_pequeno') && positive(product, 'tamano_grande')) reasons.push('Porte pequeño y grande simultáneo');
+  if (positive(product, 'perros') && positive(product, 'gatos') && !product.vectorMeta.declaredCombinations?.species) reasons.push('Especie perro y gato simultánea');
+  if (positive(product, 'cachorros') && positive(product, 'senior') && !product.vectorMeta.declaredCombinations?.lifeStage) reasons.push('Etapa cachorro y senior simultánea');
+  if (positive(product, 'tamano_pequeno') && positive(product, 'tamano_grande') && !product.vectorMeta.declaredCombinations?.petSize) reasons.push('Porte pequeño y grande simultáneo');
   if (positive(product, 'economico') && positive(product, 'premium')) reasons.push('Posicionamiento económico y premium simultáneo');
   return reasons;
 }
@@ -85,7 +89,10 @@ export function analyzeProductVectors(current: DashboardData, previous: Dashboar
     cohortMap.set(key, row);
   }
   const contradictions = current.products.flatMap((product) => contradiction(product).map((reason) => ({ productId: product.id, name: product.name, reason })));
+  const declaredCombinations = current.products.filter((product) => product.vectorMeta.declaredCombinations && Object.keys(product.vectorMeta.declaredCombinations).length)
+    .map((product) => ({ productId: product.id, name: product.name, combinations: product.vectorMeta.declaredCombinations! }));
   const emptyVectors = current.products.filter((product) => VECTOR_KEYS.every((key) => product.vector[key] === 0)).length;
+  const lowConfidenceProducts = current.products.filter((product) => product.vectorMeta.confidence < 45);
   const unrecognizedWeights = current.products.filter((product) => product.vector.alimento_seco >= 75 && product.price > 0 && product.contentKg == null);
   const positioning = { budget: 0, market: 0, premium: 0, unknown: 0 };
   current.products.forEach((product) => { positioning[product.pricePosition] += 1; });
@@ -104,12 +111,16 @@ export function analyzeProductVectors(current: DashboardData, previous: Dashboar
       withPricePerKg: current.products.filter((product) => product.referencePricePerKg != null).length,
       changedProducts: changedProducts.length,
       largePricePerKgChanges: priceChanges.length,
+      declaredCombinations: declaredCombinations.length,
+      lowConfidenceProducts: lowConfidenceProducts.length,
     },
     coverageByDimension,
     priceCohorts: [...cohortMap.values()].sort((a, b) => `${a.species}:${a.packBand}`.localeCompare(`${b.species}:${b.packBand}`)),
     positioning,
     review: {
       contradictions: contradictions.slice(0, 500),
+      declaredCombinations: declaredCombinations.slice(0, 500),
+      lowConfidenceProducts: lowConfidenceProducts.slice(0, 500).map((product) => ({ productId: product.id, name: product.name, confidence: product.vectorMeta.confidence, sourceCoverage: product.vectorMeta.sourceCoverage })),
       unrecognizedWeights: unrecognizedWeights.slice(0, 500).map((product) => ({ productId: product.id, name: product.name, price: product.price })),
       pricePositioning: current.products.filter((product) => product.pricePosition === 'budget' || product.pricePosition === 'premium').slice(0, 500).map((product) => ({
         productId: product.id,

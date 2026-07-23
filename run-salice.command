@@ -24,7 +24,8 @@ fi
 echo "Verificando y respaldando la información operativa local…"
 NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" "$NODE_BIN" node_modules/tsx/dist/cli.mjs scripts/backup-operations.ts
 
-echo "Iniciando Salice Inteligente v0.4.0…"
+SALICE_APP_VERSION="$("$NODE_BIN" -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")"
+echo "Iniciando Salice Inteligente v${SALICE_APP_VERSION}…"
 NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning" NODE_ENV=production "$NODE_BIN" node_modules/tsx/dist/cli.mjs server/index.ts &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT INT TERM

@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import { resolve } from 'node:path';
 import { recommendProducts, optimizeRoute } from '../shared/algorithms.js';
+import { buildProductClientOpportunities } from '../shared/commercial-opportunities.js';
 import {
   APP_VERSION,
   SAVED_VIEW_KEYS,
@@ -11,11 +12,14 @@ import {
   type CommercialActivityType,
   type PaymentPromiseStatus,
   type SavedViewKey,
+  type VectorKey,
 } from '../shared/models.js';
+import { VECTOR_KEYS } from '../shared/product-vectors.js';
 import { parseLocalizedNumber } from '../shared/localized-number.js';
 import { decodeMultiFilter } from '../shared/multi-filter.js';
 import { REPORT_ENDPOINT_METRICS } from '../shared/metric-links.js';
 import { metricCatalogSummary } from '../shared/metrics.js';
+import { classifyInventoryProduct, type InventoryExceptionType, type InventoryReviewStatus } from '../shared/inventory-decisions.js';
 import { buildAgendaPayload, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
 import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
@@ -25,6 +29,9 @@ import { buildMarsReport, getMarsReportMeta, getMarsReportPath } from './mars-re
 import { buildNonBuyerReport, getNonBuyerReportMeta, getNonBuyerReportPath } from './non-buyers-report.js';
 import { buildPendingBalancesReport, getPendingBalancesReportMeta, getPendingBalancesReportPath } from './pending-balances-report.js';
 import { buildNutriPetReport, getNutriPetReportMeta, getNutriPetReportPath } from './nutripet-report.js';
+import { buildProductDemandAnalysis, getProductDemandAnalysisPath } from './product-demand-analysis.js';
+import { buildProductPriceAnalysis, buildProductPriceDetail, getProductPriceAnalysisPath } from './product-price-analysis.js';
+import { initializeProductPriceHistory } from './product-price-history.js';
 import { ensureSnapshot, getBackupCount, getSnapshotPath, loadSnapshot } from './store.js';
 import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report.js';
 import { buildSalesExplorer, getSalesExplorerDocument, getSalesExplorerMeta, getSalesExplorerPath } from './sales-explorer.js';
@@ -50,14 +57,22 @@ import {
   listActivities,
   listAgendaItems,
   listClientTrendReviews,
+  listInventoryAlertReviews,
+  listInventoryAlertReviewEvents,
+  listProductVectorCorrectionEvents,
+  listProductVectorCorrections,
   listPromises,
   listReceivableCases,
   listReceivableCaseEvents,
   operationalStatus,
   rebuildAllReceivableCasesFromEvents,
+  reconcileInventoryAlertReviews,
   saveClientNote,
   saveReceivableCase,
   setClientTrendReviewed,
+  saveInventoryAlertReview,
+  saveProductVectorCorrection,
+  removeProductVectorCorrection,
   syncReceivablePaymentPromise,
   listSavedViews,
   updateCommercialGoalRow,
@@ -71,6 +86,9 @@ const activityTypes = new Set<CommercialActivityType>(['visit', 'call', 'collect
 const activityOutcomes = new Set<CommercialActivityOutcome>(['completed', 'sale', 'promise', 'no_contact', 'rescheduled', 'no_interest']);
 const promiseStatuses = new Set<PaymentPromiseStatus>(['pending', 'kept', 'broken', 'cancelled']);
 const clientTrendDirections = new Set<ClientTrendDirection>(['growth', 'decline']);
+const inventoryReviewStatuses = new Set<InventoryReviewStatus>(['unreviewed', 'in_review', 'reviewed']);
+const inventoryExceptionTypes = new Set<InventoryExceptionType>(['none', 'seasonal', 'discontinued', 'reserved_stock']);
+const vectorKeys = new Set<VectorKey>(VECTOR_KEYS);
 const savedViewKeys = new Set<SavedViewKey>(SAVED_VIEW_KEYS);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -130,6 +148,32 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/dashboard', async (_req, res) => {
   res.json(await loadSnapshot());
+});
+
+app.get('/api/products/demand-analysis', async (req, res) => {
+  const data = await loadSnapshot();
+  const analysis = buildProductDemandAnalysis(data.products, req.query as Record<string, unknown>);
+  if (!analysis) return res.status(503).json({ error: 'La base comercial para demanda y rotación todavía no fue construida.', path: getProductDemandAnalysisPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(analysis);
+});
+
+app.get('/api/products/price-analysis', async (req, res) => {
+  const data = await loadSnapshot();
+  const analysis = buildProductPriceAnalysis(data.products, data.meta.generatedAt, req.query as Record<string, unknown>);
+  if (!analysis) return res.status(503).json({ error: 'La base comercial para precios efectivos todavía no fue construida.', path: getProductPriceAnalysisPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(analysis);
+});
+
+app.get('/api/products/:id/price-history', async (req, res) => {
+  const data = await loadSnapshot();
+  const product = data.products.find((item) => item.id === req.params.id);
+  if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+  const detail = buildProductPriceDetail(product, data.meta.generatedAt, req.query as Record<string, unknown>);
+  if (!detail) return res.status(503).json({ error: 'La base comercial para precios efectivos todavía no fue construida.', path: getProductPriceAnalysisPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(detail);
 });
 
 app.get('/api/metrics/catalog', (_req, res) => {
@@ -307,6 +351,76 @@ app.put('/api/client-trend-reviews/:clientId/:direction', async (req, res) => {
   if (!clientTrendDirections.has(direction)) return res.status(400).json({ error: 'Evolución inválida.' });
   const review = setClientTrendReviewed(clientId, direction, req.body?.reviewed !== false);
   return res.json({ review });
+});
+
+app.get('/api/inventory-alert-reviews', (_req, res) => {
+  return loadSnapshot().then((data) => {
+    reconcileInventoryAlertReviews(data.products, data.meta.generatedAt);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ reviews: listInventoryAlertReviews() });
+  });
+});
+
+app.get('/api/inventory-alert-reviews/:productId/events', async (req, res) => {
+  const productId = String(req.params.productId ?? '').trim().slice(0, 160);
+  const data = await loadSnapshot();
+  if (!data.products.some((product) => product.id === productId)) return res.status(404).json({ error: 'Producto no encontrado.' });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({ events: listInventoryAlertReviewEvents(productId) });
+});
+
+app.put('/api/inventory-alert-reviews/:productId', async (req, res) => {
+  const productId = String(req.params.productId ?? '').trim().slice(0, 160);
+  const status = String(req.body?.status ?? '') as InventoryReviewStatus;
+  const exceptionType = String(req.body?.exceptionType ?? 'none') as InventoryExceptionType;
+  const data = await loadSnapshot();
+  const product = data.products.find((item) => item.id === productId);
+  if (!product) return res.status(404).json({ error: 'Producto no encontrado.' });
+  if (!inventoryReviewStatuses.has(status) || !inventoryExceptionTypes.has(exceptionType)) return res.status(400).json({ error: 'Estado o excepción inválidos.' });
+  const review = saveInventoryAlertReview(productId, {
+    status,
+    exceptionType,
+    note: String(req.body?.note ?? ''),
+    actor: 'Oficina Salice',
+    decisionStatus: classifyInventoryProduct(product, null).status,
+    snapshotAt: data.meta.generatedAt,
+  });
+  return res.json({ review });
+});
+
+app.get('/api/product-vector-corrections/:productId', async (req, res) => {
+  const productId = String(req.params.productId ?? '').trim().slice(0, 160);
+  const data = await loadSnapshot();
+  if (!data.products.some((product) => product.id === productId)) return res.status(404).json({ error: 'Producto no encontrado.' });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    corrections: listProductVectorCorrections(productId),
+    history: listProductVectorCorrectionEvents(productId),
+  });
+});
+
+app.put('/api/product-vector-corrections/:productId/:key', async (req, res) => {
+  const productId = String(req.params.productId ?? '').trim().slice(0, 160);
+  const key = String(req.params.key ?? '') as VectorKey;
+  const value = Number(req.body?.value);
+  const reason = String(req.body?.reason ?? '').trim();
+  const data = await loadSnapshot();
+  if (!data.products.some((product) => product.id === productId)) return res.status(404).json({ error: 'Producto no encontrado.' });
+  if (!vectorKeys.has(key) || !Number.isFinite(value) || value < 0 || value > 100) return res.status(400).json({ error: 'Vector o valor inválido.' });
+  if (reason.length < 5) return res.status(400).json({ error: 'Indicá un motivo de al menos 5 caracteres.' });
+  const correction = saveProductVectorCorrection(productId, { key, value: Math.round(value), reason, actor: 'Oficina Salice' });
+  return res.json({ correction });
+});
+
+app.delete('/api/product-vector-corrections/:productId/:key', async (req, res) => {
+  const productId = String(req.params.productId ?? '').trim().slice(0, 160);
+  const key = String(req.params.key ?? '') as VectorKey;
+  const reason = String(req.body?.reason ?? '').trim();
+  if (!vectorKeys.has(key)) return res.status(400).json({ error: 'Vector inválido.' });
+  if (reason.length < 5) return res.status(400).json({ error: 'Indicá el motivo de la reversión.' });
+  const event = removeProductVectorCorrection(productId, key, reason, 'Oficina Salice');
+  if (!event) return res.status(404).json({ error: 'No existe una corrección activa para esa dimensión.' });
+  return res.json({ event });
 });
 
 app.get('/api/admin/receivables', (req, res) => {
@@ -650,7 +764,14 @@ app.get('/api/clients/:id/recommendations', async (req, res) => {
   const data = await loadSnapshot();
   const client = data.clients.find((item) => item.id === Number(req.params.id));
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  return res.json({ recommendations: recommendProducts(client, data.clients, data.products) });
+  return res.json({ recommendations: recommendProducts(client, data.clients, data.products, 12) });
+});
+
+app.get('/api/products/:id/client-opportunities', async (req, res) => {
+  const data = await loadSnapshot();
+  const product = data.products.find((item) => item.id === req.params.id);
+  if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+  return res.json({ opportunities: buildProductClientOpportunities(product, data.clients, data.products, data.clients.length) });
 });
 
 app.post('/api/routes/optimize', async (req, res) => {
@@ -676,6 +797,9 @@ app.patch('/api/clients/:id/note', async (req, res) => {
 
 if (process.env.NODE_ENV === 'production') {
   const dist = resolve(process.cwd(), 'dist');
+  app.use('/api', (_req, res) => res.status(404).json({
+    error: 'La función solicitada no está disponible en este proceso. Reiniciá Salice Inteligente para cargar la versión vigente.',
+  }));
   app.use(express.static(dist));
   app.use((_req, res) => res.sendFile(resolve(dist, 'index.html')));
 }
@@ -683,6 +807,8 @@ if (process.env.NODE_ENV === 'production') {
 await ensureSnapshot();
 rebuildAllReceivableCasesFromEvents();
 const startupSnapshot = await loadSnapshot();
+reconcileInventoryAlertReviews(startupSnapshot.products, startupSnapshot.meta.generatedAt);
+await initializeProductPriceHistory(startupSnapshot);
 const startupClients = new Map(startupSnapshot.clients.map((client) => [client.id, client]));
 for (const workflow of listReceivableCases()) {
   syncReceivablePaymentPromise(workflow.clientId, startupClients.get(workflow.clientId)?.seller ?? workflow.responsible);

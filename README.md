@@ -1,4 +1,4 @@
-# Salice Inteligente · v0.4.4
+# Salice Inteligente · v0.5.9
 
 Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, planificar y registrar gestiones comerciales, documentar promesas de pago, generar recomendaciones explicables, planificar visitas y consultar reportes de gestión.
 
@@ -17,25 +17,141 @@ pnpm run dev
 
 ## Estado de los datos
 
-La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 21/07/2026 a las 12:52 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal de Mar del Plata (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
+La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 22/07/2026 a las 14:02 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal `Mar del Plata [WPM]` (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
 
 Cobertura del snapshot actual:
 
-- 5.714 clientes conservados: 1.911 activos y 3.803 inactivos según el estado actual de GESI.
-- 2.469 clientes con coordenadas válidas, de los cuales 878 están activos; el mapa abre en Mar del Plata y zona.
-- 13.022 maestros de producto y 1.679 productos comercializables vectorizados.
-- 28.939 facturas únicas de los últimos 365 días; 6.269 dentro de la ventana analítica de 90 días.
-- 27.559 cobranzas y 26.736 pagos conciliados para calcular comportamiento de pago.
-- 952 comprobantes con saldo abierto.
-- 28.736 facturas con plazo válido entre compra/emisión y primer vencimiento; 203 quedan fuera porque GESI no informa el primer vencimiento.
-- 1.087 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
-- 1.496 productos con precio de referencia disponible.
+- 5.718 clientes conservados: 1.916 activos y 3.802 inactivos según el estado actual de GESI.
+- 2.471 clientes con coordenadas válidas, de los cuales 880 están activos; el mapa abre en Mar del Plata y zona.
+- 13.022 maestros de producto: 1.505 activos y 11.517 inactivos. El catálogo operativo contiene 2.156 productos explicables; 1.280 resultan comercializables con las señales actuales.
+- Existencias completas del depósito 2: 902 productos con U1 positiva, 12.072 en cero y 48 con disponibilidad negativa conservada como incidencia; no falta ningún código maestro.
+- 6.289 facturas dentro de la ventana analítica de 90 días.
+- 26.731 pagos conciliados para calcular comportamiento de pago.
+- 948 comprobantes con saldo abierto en el snapshot normalizado.
+- 28.729 facturas con plazo válido entre compra/emisión y primer vencimiento.
+- 1.089 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
+- 1.834 productos del catálogo operativo con precio de referencia disponible.
 
 GESI devuelve error para los maestros de zonas y tipos de cliente, y omitió el detalle de dos facturas. También anuncia 13.023 productos pero devuelve de forma estable 13.022; la captura admite esa diferencia de un registro dentro de la tolerancia de datos vivos. El sistema señala estas limitaciones y no inventa los datos faltantes.
 
-La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 557 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
+La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 562 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
+
+### Ciclo de incidencias de inventario · v0.5.9
+
+- Una revisión de producto ya no queda cerrada para siempre: cada snapshot vuelve a clasificar la señal de inventario sin modificar los valores recibidos de GESI.
+- Cuando un problema revisado desaparece, la incidencia se marca como resuelta. Si vuelve en una captura posterior, el producto retorna automáticamente a `Reabierto`, conserva la nota previa y aumenta su número de incidencia.
+- Cobertura crítica, baja o quiebre forman una misma familia; cobertura alta y stock sin movimiento forman otra. Cambios menores dentro de la misma familia no reabren trabajo innecesario, pero un tipo de problema diferente sí lo hace.
+- La bandeja y la ficha del producto distinguen `No revisado`, `Reabierto`, `En revisión` y `Revisado`. El detalle muestra un historial cronológico de revisiones, resoluciones y reaperturas.
+- El historial se guarda de forma append-only en `operations.sqlite`. Las revisiones existentes reciben una línea de base conservadora al migrar, sin reabrirse artificialmente.
+- La excepción humana `Discontinuado` conserva su significado y no se reabre automáticamente mientras siga vigente. Ningún cambio local altera stock, productos ni facturas en GESI.
+
+Las reglas compartidas están en `shared/inventory-decisions.ts`, la persistencia en `server/operational-store.ts` y la ficha completa en `docs/release-v0.5.9.md`.
+
+### Oportunidades comerciales de productos · v0.5.8
+
+- Productos suma `Oportunidades`, una superficie centrada en clientes activos con mix observable que separa faltantes recientes, adopción en cuentas comparables, sustitutos ante quiebres y artículos con stock alto que poseen afinidad comercial. Sin compras atribuibles no se inventa una sugerencia.
+- Los clientes comparables se ordenan por productos compartidos y señales disponibles de segmento, canal, localidad y zona. La adopción informa numerador, muestra y ejemplos navegables; no se presenta como probabilidad de venta.
+- Un sustituto sólo aparece cuando el producto original tuvo demanda reciente, no posee stock positivo y la alternativa coincide en uso y presentación sin incompatibilidades explícitas.
+- Toda recomendación exige producto comercializable con stock positivo. Clientes inactivos, maestros inactivos, inventario insuficiente e incompatibilidades explícitas quedan excluidos.
+- La afinidad se explica en lenguaje normal, la confianza es visible y la evidencia puede desplegarse. Cliente, vendedor, marca, producto sugerido, producto sustituido y ejemplos comparables son navegables.
+- La ficha del Catálogo invierte la misma lectura para cada producto: muestra las cinco mejores cuentas activas que todavía no lo compraron y permite abrir la lista completa, buscarla y navegar al cliente. No incorpora un segundo puntaje ni cambia las exclusiones existentes.
+- Las sugerencias no crean tareas ni registran gestiones. Una acción sólo se considera realizada cuando una persona guarda la gestión correspondiente.
+
+Las reglas ejecutables están en `shared/commercial-opportunities.ts`, sus contratos en `shared/models.ts` y la ficha completa en `docs/release-v0.5.8.md`.
+
+### Precios comparables e historia explícita · v0.5.7
+
+- Productos suma `Precios y evolución` y mantiene tres conceptos separados: referencia GESI, precio efectivo neto observado por U1 y precio normalizado por kilo cuando la presentación lo permite.
+- La referencia actual se compara contra el snapshot preservado anterior. La pantalla muestra valor previo, diferencia absoluta, variación porcentual y fecha del último cambio observado, sin reescribir observaciones pasadas.
+- El precio efectivo es importe neto facturado dividido por unidades U1 positivas. Usa ventanas equivalentes de 30, 90 o 180 días y publica ventas, unidades, compradores y días activos que sostienen cada resultado.
+- El precio por kilo sólo se calcula con contenido neto por U1 verificable. Un alimento seco sin peso inequívoco se marca como presentación ambigua; los demás artículos no comparables conservan el precio por U1.
+- Un cambio es fuerte desde ±15%. La referencia puede alertar al comparar dos snapshots; el precio efectivo exige además al menos 5 U1 y 3 días con venta en ambos períodos.
+- La historia de referencia se guarda de forma append-only en `operations.sqlite`. Al iniciar se recuperan snapshots GESI preservados en bundles y backups; cada actualización manual aprobada agrega la nueva observación.
+
+Las reglas ejecutables están en `shared/product-prices.ts`, el cálculo en `server/product-price-analysis.ts` y la ficha completa en `docs/release-v0.5.7.md`.
+
+### Demanda y rotación histórica de productos · v0.5.6
+
+- Productos suma `Demanda y rotación`, con ventanas móviles exactas de 30, 90 y 180 días terminadas en la última fecha comercial disponible. Cada ventana se compara con los mismos días inmediatamente anteriores.
+- El análisis puede agruparse por producto, marca, familia/rubro y grupo. Compradores se calcula de forma única dentro de cada dimensión y no se obtiene sumando filas que podrían repetir clientes.
+- Cada fila muestra unidades U1, compradores, rotación normalizada a 30 días, días desde la última venta y evolución equivalente. Aceleración comienza en +20%, caída en -20% y el intervalo intermedio queda estable.
+- La estabilidad usa el coeficiente de variación de unidades sobre tres subperíodos iguales. Distingue rotación estable, variable, intermitente y ausencia de base suficiente.
+- `Nuevo observado` significa que la primera venta disponible cae dentro de la ventana y existe un período anterior completo. No se presenta como fecha de alta del maestro porque GESI no entrega esa señal de forma confiable.
+- Falta de demanda e historia insuficiente son estados separados. La pantalla muestra los dos cortes comparados, el inicio real de cobertura y todas las reglas exactas, sin pronósticos ni clasificación opaca de IA.
+
+Las definiciones ejecutables están en `shared/product-demand.ts`, el cálculo histórico en `server/product-demand-analysis.ts` y la ficha completa en `docs/release-v0.5.6.md`.
+
+### Comparador operativo de productos · v0.5.5
+
+- Productos suma una sección `Comparar` para trabajar con entre dos y cuatro artículos. La selección puede armarse desde su buscador, el catálogo, una ficha o las alternativas recomendadas; cada columna se cambia o quita sin reiniciar.
+- Las sugerencias priorizan compatibilidad de uso, clasificación comercial y presentación. El porcentaje vectorial dejó de ser la única conclusión.
+- La tabla se divide en identidad, presentación, precio, inventario, ventas, características, compatibilidades y calidad de datos. Sus encabezados permanecen visibles dentro del desplazamiento.
+- `Mostrar sólo diferencias` reduce la tabla sin cambiar la selección. Las ventajas se resaltan únicamente cuando las unidades son comparables; precio por kilo y cobertura explican por qué no pueden contrastarse cuando falta información.
+- Cada alternativa se explica frente al producto base mediante compatibilidad de uso, clasificación comercial, presentación, posicionamiento de precio, comportamiento comercial y confianza.
+- La selección se conserva al abrir una ficha, regresar, cambiar de sección o recargar el navegador. El detalle de las 33 dimensiones queda detrás de un control técnico opcional.
+
+Las reglas y comprobaciones están en `shared/product-comparison.ts` y `docs/release-v0.5.5.md`.
+
+### Vectorización de productos v2.2 · v0.5.4
+
+- El motor conserva 33 dimensiones descriptivas y suma variantes observadas, negaciones, combinaciones explícitas de especie/etapa/porte y prioridad controlada de maestros estructurados.
+- El porte de la mascota se separa del tamaño o peso del envase. Las relaciones U2/U1 verificables tienen prioridad para el contenido; los casos ambiguos permanecen visibles.
+- La comparación previa cubrió 2.156 productos: perfiles con señal 1.857 → 1.906, perfiles vacíos 299 → 250 y contradicciones no declaradas 1 → 0.
+- Las correcciones humanas requieren dimensión, valor, motivo y autor, conservan historial inmutable y se reaplican después de cada actualización. Ninguna IA puede modificar automáticamente el vector.
+- La revisión de inventario permite volver expresamente a `No revisado`, además de `En revisión` y `Revisado`.
+
+Las reglas y comprobaciones están en `docs/product-vectorization-v2.md` y `docs/release-v0.5.4.md`.
+
+### Ficha administrativa de producto · v0.5.3
+
+- La ficha prioriza nombre, marca, presentación, precio, stock U1, rotación, compradores, venta atribuida y última venta. El estado de inventario reutiliza exactamente la clasificación compartida de la bandeja.
+- Una lectura rápida traduce las señales verificables a lenguaje cotidiano —por ejemplo, `Alimento seco para perros adultos, segmento premium`— sin completar atributos ausentes.
+- La evolución comercial separa los 90 días en tres ventanas móviles consecutivas de 30 días y muestra venta, unidades y compradores. La interfaz aclara que no son meses calendario completos.
+- Los clientes compradores se agregan desde los renglones detallados del snapshot, se ordenan por venta atribuida y abren su perfil completo. Marca y rubro/familia también mantienen navegación contextual.
+- El catálogo busca además por descripción, presentación, familia comercial y grupo. Suma filtros por línea, estado maestro e inventario, y órdenes por venta, compradores, última venta, stock, precio, rotación, nombre u orden original.
+- Las filas del catálogo muestran rotación, compradores, última venta, venta de 90 días, precio y stock para comparar artículos sin abrir cada ficha.
+- Las alternativas comerciales conservan una explicación en lenguaje normal. La similitud exacta, la matriz comparativa, los porcentajes, las evidencias y la confianza quedan dentro de `Ver análisis técnico`.
+- La ficha muestra el estado vigente de la revisión de oficina y su nota completa. En Clientes compradores, `Ver todos` abre la lista completa de cuentas, con búsqueda y navegación al perfil del cliente.
+- Las limitaciones de GESI permanecen visibles: no se infiere discontinuación y no se muestran costo, margen, proveedor ni reposición sin una fuente validada.
+
+Las definiciones, ventanas y comprobaciones están en `docs/release-v0.5.3.md`.
+
+### Bandeja de decisión de inventario · v0.5.2
+
+- Productos abre con una bandeja de inventario para la oficina. Cada artículo queda clasificado como sin stock con demanda, cobertura crítica, baja, adecuada o alta, stock sin movimiento, historia insuficiente, datos insuficientes o fuera de surtido/inactivo.
+- La clasificación reutiliza stock U1, rotación y cobertura de v0.5.1. Cada fila explica el motivo con valores exactos; una incidencia de calidad nunca se convierte en una recomendación de compra.
+- Los umbrales generales iniciales son explícitos: crítica por debajo de 0,5 mes, baja desde 0,5 hasta menos de 1, adecuada desde 1 hasta menos de 3 y alta desde 3 meses. La política admite futuras diferencias por familia, pero todavía no hay excepciones familiares configuradas.
+- Estado, marca, familia/rubro, grupo, actividad, rotación y revisión son filtros combinables. La tabla permite orden ascendente, descendente y original en sus columnas relevantes.
+- La bandeja incorpora indicadores por producto, marca y familia. Productos y marcas mantienen navegación contextual; seleccionar una familia concentra la bandeja en esa dimensión.
+- El indicador por producto se concentra en artículos con stock positivo o rotación en los últimos 90 días. El orden inicial deja primero los pendientes de mayor impacto —quiebre con demanda, cobertura crítica y cobertura baja—; los artículos sin ambas señales se buscan en el catálogo.
+- Un producto sin intervención figura como `No revisado`. Al registrar una revisión puede quedar `En revisión` o `Revisado`, con nota local. La bandeja muestra sólo un extracto de notas extensas y la ficha conserva el texto completo. Las excepciones `Estacional`, `Discontinuado` y `Stock reservado` se guardan en `operations.sqlite`, separadas de GESI. Stock reservado no descuenta unidades porque no se solicita ni inventa una cantidad.
+- Los vectores de la ficha quedaron detrás de un control técnico desplegable. El catálogo y las herramientas vectoriales siguen accesibles sin ocupar la vista operativa principal.
+- Bandeja, Catálogo y Herramientas técnicas comparten un único selector superior. En escritorio, el menú lateral inicia abierto y puede plegarse desde la barra superior para ampliar el área horizontal de trabajo.
+- Esta versión no genera órdenes de compra, no propone cantidades y no infiere proveedores, costos ni reposición.
+
+Las definiciones, precedencias y limitaciones están en `docs/release-v0.5.2.md`.
+
+### Base confiable de productos e inventario · v0.5.1
+
+- La captura de existencias consulta explícitamente productos sin existencia para distinguir un cero observado de una fila ausente. La API se consulta sin `estado=T`, porque el comportamiento real de ese filtro contradice el manual y devuelve un universo vacío.
+- Los 13.022 maestros forman el universo de auditoría. El catálogo operativo incluye solamente maestros activos, artículos con venta reciente o artículos con existencia no nula; cada producto conserva el motivo exacto por el que participa.
+- Estado de maestro, comercialización observable y discontinuación quedan separados. “Comercializable” significa maestro activo con precio observable. GESI no entrega una marca inequívoca de discontinuación, por lo que no se equipara automáticamente inactivo con discontinuado.
+- Stock U1 positivo, cero, negativo y ausente son señales distintas. Los negativos permanecen visibles como incidencia y se usa cero sólo para los cálculos operativos que no admiten disponibilidad negativa.
+- Rotación mensual, cobertura y última venta usan definiciones compartidas y auditables. La ficha muestra corte, empresa, sucursal, depósito y calidad de la señal.
+- La auditoría informa duplicados, maestros sin fila de existencia, unidades primarias ausentes y relaciones U2/U1 insuficientes.
+
+Las decisiones, universos y limitaciones de esta entrega están en `docs/release-v0.5.1.md`.
+
+### Pruebas estables y conciliaciones versionadas · v0.5.0
+
+- Las pruebas de los siete reportes dejan de esperar cifras del 20/07/2026 mientras consultan el snapshot activo. Los contratos cotidianos validan universos, filtros, cortes equivalentes, desgloses y reconciliaciones internas sobre cualquier captura aprobada.
+- Un fixture sintético pequeño, sin clientes ni movimientos reales, prueba cálculos determinísticos de Ventas Comercial, Mars, NutriPet, Baires, Cuentas no compradoras y Saldos Pendientes.
+- Las cifras testigo del 20/07/2026 se conservan en un fixture versionado con fecha, revisión y checksums. Sólo se ejecutan cuando está disponible exactamente el paquete histórico que les dio origen.
+- Ningún algoritmo, universo ni resultado GESI fue modificado para sanear la suite.
+
+El diseño, el alta de nuevos fixtures y las comprobaciones están en `docs/testing-and-reconciliation.md` y `docs/release-v0.5.0.md`.
 
 ### Priorización comercial y vencimientos · v0.4.4
 
@@ -89,7 +205,7 @@ Las definiciones y comprobaciones específicas están en `docs/release-v0.4.1.md
 - Objetivos comerciales administrables en `operations.sqlite`. El plan histórico se importa como versión inicial; las ediciones sólo ocurren en borradores clonados y una activación explícita archiva el plan anterior y cambia lo que consume Reporte General.
 - Vistas guardadas por superficie para recuperar filtros frecuentes. Pueden marcarse como favoritas, actualizarse con la combinación actual o eliminarse sin alterar datos de GESI.
 - Exportaciones con trazabilidad incluida: Ventas y Cuentas por cobrar en CSV/XLSX; Objetivos en XLSX y PDF A4. Cada archivo declara corte, universo, filtros y fuente.
-- Catálogo central ampliado a 20 métricas. El explorador incorpora comprobantes, ticket promedio y venta neta por kilo sin duplicar definiciones; Reporte General consume el mismo plan versionado que la administración de objetivos.
+- Catálogo central ampliado a 24 métricas en v0.5.1. El explorador incorpora comprobantes, ticket promedio y venta neta por kilo; inventario agrega stock U1, rotación, cobertura y última venta sin duplicar definiciones.
 - Tutorial ampliado a 25 pasos, interfaz responsive y tres pruebas de contrato específicas para cada módulo administrativo, además de las pruebas de persistencia y reconciliación.
 
 La definición técnica, los estados y las reglas de auditoría están en `docs/administrative-core-v0.4.md`.
@@ -99,10 +215,10 @@ La definición técnica, los estados y las reglas de auditoría están en `docs/
 - Cada actualización manual construye un paquete inmutable con snapshot, staging, base comercial y saldos pendientes. Los cuatro artefactos se auditan antes de publicar un único manifiesto activo mediante reemplazo atómico; una falla deja intacta la generación anterior.
 - El manifiesto registra corte, revisión, tamaño y checksum SHA-256 de cada artefacto. El servidor resuelve todos los módulos desde la misma generación y recarga automáticamente cuando cambia el manifiesto.
 - Las agregaciones canónicas de kilos, unidades, venta neta y clientes, junto con cumplimiento, variación y participación, se ejecutan desde helpers compartidos. Los universos principales poseen un contrato ejecutable alineado con el catálogo documental.
-- `pnpm run audit:vectors` genera cobertura por dimensión, contradicciones, cohortes de precio, cambios frente a la foto anterior, variaciones fuertes de precio por kilo y una muestra de recomendaciones con confianza insuficiente.
+- `pnpm run audit:vectors` genera cobertura por dimensión, combinaciones declaradas, contradicciones, perfiles de baja confianza, cohortes de precio, cambios frente a la foto anterior, variaciones fuertes de precio por kilo y una muestra de recomendaciones con confianza insuficiente. `pnpm run compare:vectors` contrasta v2.1 contra v2.2 antes de activar el motor nuevo.
 - `operations.sqlite` cuenta con verificación de integridad y backup consistente al abrir el programa. Se retienen diez copias fechadas por defecto; la restauración es explícita y crea una copia de seguridad previa.
 
-### Productos y vectorización v2.1 · v0.3.2
+### Productos y vectorización v2.2 · v0.5.4
 
 - Amplía el perfil de 20 a 33 dimensiones, organizadas en seis grupos: especie; edad y tamaño; posicionamiento; tipo de producto; necesidades específicas; proteína o sabor.
 - Conserva Cachorros, Adultos y Senior, y agrega porte pequeño, mediano y grande sólo cuando el nombre o un maestro identifica la mascota. El tamaño del envase y la línea `Grandes Animales` no se interpretan como porte.
@@ -110,9 +226,9 @@ La definición técnica, los estados y las reglas de auditoría están en `docs/
 - Desarrolla Económico y Premium con dos fuentes separadas: posicionamiento explícito en nombre/maestros y precio de referencia por kilo. El precio relativo se usa sólo en alimentos secos con peso inequívoco y una cohorte mínima de doce productos de igual especie y banda de presentación.
 - La similitud penaliza incompatibilidades explícitas de especie, etapa de vida y porte. Un producto sin señal suficiente conserva cero; no se completa por exclusión.
 
-- Corrige la clasificación del catálogo: `brand` ya no reutiliza el subrubro. La ficha muestra por separado marca, línea, rubro, subrubro, familia comercial y grupo tomados de los maestros GESI. En la foto actual hay marca verificable para 1.633 de los 1.679 productos y grupo para 1.513.
-- Vectorización determinística v2.1 con coincidencia por términos completos, prioridad de campos estructurados y evidencia visible. Se eliminaron valores por defecto que asignaban atributos sin una señal verificable.
-- Similitud v2.1 compuesta por perfil vectorial ponderado (80%) y clasificación comercial (20%). Especie, etapa de vida, porte y tipo de producto pesan más; las incompatibilidades explícitas reciben penalización. La ficha separa similitud, taxonomía y confianza para que el porcentaje sea auditable.
+- Corrige la clasificación del catálogo: `brand` ya no reutiliza el subrubro. La ficha muestra por separado marca, línea, rubro, subrubro, familia comercial y grupo tomados de los maestros GESI.
+- Vectorización determinística v2.2 con coincidencia por términos completos, negaciones, combinaciones declaradas, prioridad de campos estructurados y evidencia visible. Se eliminaron valores por defecto que asignaban atributos sin una señal verificable.
+- Similitud v2.2 compuesta por perfil vectorial ponderado (80%) y clasificación comercial (20%). Especie, etapa de vida, porte y tipo de producto pesan más; las incompatibilidades explícitas reciben penalización y las combinaciones declaradas no se tratan como contradicción.
 - Información útil por producto: precio de referencia, stock, unidades y venta atribuida de 90 días, clientes compradores, última venta observada y meses estimados de cobertura según rotación reciente.
 - Ficha contextual completa sin perder la pantalla de origen. Se abre desde la búsqueda global, recomendaciones, mix de compra de clientes, agenda y tablas de producto de Ventas · Comercial y NutriPet; permite recorrer alternativas cercanas y pasar al catálogo cuando se necesita.
 - Catálogo con filtro real por marca, búsqueda ampliada y explorador vectorial con evidencia por afinidad. Los 188 productos sin señales suficientes se conservan con vector vacío y perfil limitado, sin completar datos artificialmente.
@@ -122,7 +238,7 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 
 ### Consolidación v0.3.0
 
-- El catálogo central comenzó con 17 métricas canónicas y 9 universos de reporte; v0.4.0 lo amplía a 20 métricas. Cada definición declara fórmula, fuente, grano, fecha, consumidores y salvedades; puede consultarse en Configuración o mediante `GET /api/metrics/catalog`.
+- El catálogo central comenzó con 17 métricas canónicas y 9 universos de reporte; v0.4.0 lo amplió a 20 y v0.5.1 a 24. Cada definición declara fórmula, fuente, grano, fecha, consumidores y salvedades; puede consultarse en Configuración o mediante `GET /api/metrics/catalog`.
 - Cortes temporales compartidos para reportes mensuales, anuales, ventanas móviles y comparaciones equivalentes, con pruebas comunes para evitar desvíos entre pantallas.
 - Estado visible de datos y fuentes: frescura del snapshot, cobertura comercial, saldos pendientes, auditoría cruzada y limitaciones conocidas de GESI. El umbral predeterminado avisa a las 24 horas y marca desactualización a las 48 horas.
 - Flujo manual integral y recuperable: captura, auditoría de captura, reconstrucción comercial, auditoría comercial, normalización, activación y auditorías finales. Conserva la última foto válida, evita dos actualizaciones simultáneas y registra etapa, duración, resultado, advertencias y error.
@@ -165,15 +281,15 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 - Ficha contextual y perfil ampliado del cliente sin perder la pantalla de origen: ventas, señales administrativas, C/O/P, compras, comprobantes, comportamiento contra vencimiento, gestiones y notas persistentes.
 - Agenda de cobranzas con filtros, bandas de antigüedad, saldo pendiente real, fechas con año y condición de pago; conserva deuda aunque el cliente esté inactivo.
 - Plazo observado por factura calculado como fecha de compra/emisión → primer vencimiento. Cada cliente queda clasificado como sin muestra, muestra única, consistente, predominante o mixto.
-- Catálogo vectorizado en 33 dimensiones, filtros por rubro/marca/disponibilidad, orden comercial, comparador v2.1, stock y precio de referencia GESI.
+- Catálogo vectorizado en 33 dimensiones, filtros por rubro/marca/disponibilidad, orden comercial, comparador operativo de 2–4 productos, stock y precio de referencia GESI.
 - Explorador explicable de los 33 vectores: grupos, descripción, evidencia y ranking completo del catálogo de afinidad 100 a 0.
-- Recomendador explicable: perfil v2.1 ponderado por gasto, compatibilidad de especie, pares confirmados de Salice y confianza confiable/exploratoria/insuficiente.
+- Recomendador explicable: perfil v2.2 ponderado por gasto, compatibilidad de especie, pares confirmados de Salice y confianza confiable/exploratoria/insuficiente.
 - Puntajes separados: C para riesgo de cobranza, O para oportunidad comercial y P para prioridad combinada de visita.
 - Planificador por vendedor y corredor, con duración por visita, jornada máxima, factor vial visible, alertas de factibilidad y enlaces de navegación.
 - Búsqueda global de clientes/productos y bandeja dinámica de promesas exigibles y riesgos de cobranza altos.
 - Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas, tareas, gestiones, promesas y ejecuciones de sincronización.
 
-La IA no interviene en la operación diaria de esta versión. La clasificación de productos se construye mediante reglas reproducibles sobre nombre, descripción, rubro, subrubro, marca, línea, familia comercial, grupo y presentación. Cada afinidad positiva conserva su evidencia; la ausencia de evidencia permanece en cero. Una futura revisión asistida podrá proponer ajustes, pero no modificaría automáticamente los vectores ni los algoritmos operativos.
+La IA no interviene en la operación diaria de esta versión. La clasificación se construye mediante reglas reproducibles y cada afinidad positiva conserva evidencia. Las correcciones de oficina son acciones humanas explícitas con motivo, autor e historial; ninguna IA modifica automáticamente vectores ni algoritmos operativos.
 
 ## Capturar y activar una nueva foto manual
 
@@ -210,7 +326,7 @@ data/bundles/<ejecución>/               candidato aislado
               ▼
 data/active-bundle.json                 único puntero activo
 
-data/operations.sqlite                  notas, agenda, seguimientos, vistas y objetivos
+data/operations.sqlite                  trabajo humano e historia append-only de precios
 data/operations-backups/                copias consistentes de información humana
 data/reference/spt-pbix.sqlite          referencia opcional de conciliación
 ```
@@ -246,7 +362,7 @@ La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` 
 - El saldo del cliente conserva créditos y anticipos; la agenda muestra únicamente documentos con saldo positivo.
 - Como los límites de crédito llegan en cero para toda la cartera activa, la interfaz no presenta porcentajes ficticios de utilización.
 - El precio de referencia prioriza el canal especializado de GESI, luego el canal general y finalmente cualquier precio positivo disponible.
-- La cobertura de stock de un producto es `stock disponible ÷ unidades medias mensuales de los últimos 90 días`; si no existe rotación suficiente, se muestra como no calculable y no se infiere demanda.
+- La cobertura de stock de un producto es `stock disponible U1 positivo ÷ (unidades U1 vendidas en 90 días / 3)`. No se redondea la rotación antes de dividir; con stock cero, negativo o ausente, o sin rotación positiva, se muestra como no calculable y no se infiere demanda.
 - La similitud de producto no es probabilidad de venta. Combina afinidad vectorial y coincidencias del maestro, mientras que la confianza expresa únicamente la calidad de las señales disponibles.
 - Los recorridos parten y regresan al centro de distribución de Eduardo Bradley 1450, Mar del Plata (`-37.9457069, -57.5823923`), estiman distancia vial con un factor explícito y controlan duración de visita/jornada. Todavía no incorporan tránsito ni ventanas horarias.
 - Una tarea sólo cuenta como realizada cuando una persona guarda la gestión. La ubicación y la fecha sugerida no se usan para inferir productividad.
@@ -320,12 +436,15 @@ El snapshot JSON sigue siendo adecuado para la foto analítica monousuario; SQLi
 
 ```bash
 pnpm test
+pnpm run test:reconciliation
 pnpm run build
 pnpm run audit:data
 pnpm run audit:spt-gesi
 pnpm run audit:platform
 pnpm run audit:vectors
+pnpm run compare:vectors
+pnpm run audit:prices
 pnpm run audit:operations
 ```
 
-Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, promesas vencidas, registro explícito de gestiones, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliación de cifras testigo. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.
+Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, promesas vencidas, registro explícito de gestiones, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Store, Target, Users, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PackageSearch, PanelLeftClose, PanelLeftOpen, PawPrint, RefreshCw, Route, Search, Settings2, ShoppingBag, ShoppingBasket, Sparkles, Store, Target, Users, WalletCards, X } from 'lucide-react';
 import { APP_VERSION, VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product } from '../shared/models';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
@@ -47,7 +47,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   clients: { title: 'Clientes', subtitle: 'Toda la cartera comercial en una sola vista' },
   sellers: { title: 'Vendedores', subtitle: 'Carteras, desempeño, cobranza y prioridades por responsable' },
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
-  products: { title: 'Inteligencia de producto', subtitle: 'Catálogo vectorizado para comparar y recomendar' },
+  products: { title: 'Inteligencia de producto', subtitle: 'Inventario, catálogo y oportunidades con análisis avanzados agrupados' },
   brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
   routes: { title: 'Planificación de rutas', subtitle: 'Recorridos comerciales priorizados y explicables' },
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
@@ -91,6 +91,7 @@ export default function App() {
   const [routeClientId, setRouteClientId] = useState<number | null>(null);
   const [clientQuery, setClientQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
@@ -99,7 +100,15 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [productFocusId, setProductFocusId] = useState<string | null>(null);
+  const [productFamilyFocus, setProductFamilyFocus] = useState('');
   const [productProfileOpen, setProductProfileOpen] = useState(false);
+  const [productComparisonIds, setProductComparisonIds] = useState<string[]>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('salice-product-comparison-v055') ?? '[]');
+      return Array.isArray(stored) ? [...new Set(stored.map(String))].slice(0, 4) : [];
+    } catch { return []; }
+  });
+  const [productComparisonRequest, setProductComparisonRequest] = useState(0);
   const [brandFocus, setBrandFocus] = useState('');
   const [invoiceFocusId, setInvoiceFocusId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -209,6 +218,10 @@ export default function App() {
   useEffect(refreshNotifications, []);
 
   useEffect(() => {
+    localStorage.setItem('salice-product-comparison-v055', JSON.stringify(productComparisonIds));
+  }, [productComparisonIds]);
+
+  useEffect(() => {
     const section = viewSection[view];
     setSidebarSections((current) => current[section] ? current : { ...current, [section]: true });
   }, [view]);
@@ -250,8 +263,17 @@ export default function App() {
   const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openClientById = (clientId: number) => { const client = data?.clients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
+  const addProductToComparison = (product: Product) => {
+    setProductComparisonIds((current) => current.includes(product.id) ? current : current.length < 4 ? [...current, product.id] : current);
+    setProductFocusId(null);
+    setProductProfileOpen(false);
+    setClientProfileOpen(false);
+    setView('products');
+    setProductComparisonRequest((current) => current + 1);
+  };
   const openBrand = (brand: string) => { if (!brand || brand.startsWith('Sin ')) return; setBrandFocus(brand); setView('brands'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
   const openProductCatalog = (product: Product) => { setProductFocusId(product.id); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
+  const openProductFamily = (family: string) => { if (!family || family.startsWith('Sin ')) return; setProductFamilyFocus(family); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
   const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openInvoice = (invoiceId: string) => { setInvoiceFocusId(invoiceId); setSearchOpen(false); setNotificationsOpen(false); };
   const selectView = (next: View) => { setView(next); setSidebarOpen(false); setClientProfileOpen(false); setProductProfileOpen(false); if (next !== 'map') setSelectedId(null); };
@@ -300,7 +322,7 @@ export default function App() {
   const snapshotLabel = `${snapshotDay} · ${snapshotTime}`;
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="brand"><div className="brand-mark"><span>S</span></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
         <div className="sidebar-scroll">
           <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection('operations')}><span>Centro operativo</span>{sidebarSections.operations ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
@@ -322,6 +344,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <button className="mobile-menu" aria-label="Abrir menú" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+          <button className="desktop-sidebar-toggle" aria-label={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} title={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} aria-pressed={sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button>
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
             <div className={`global-search ${searchOpen ? 'open' : ''}`}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
@@ -348,7 +371,7 @@ export default function App() {
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
-          {view === 'products' && <ProductsView products={data.products} focusProductId={productFocusId} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} onOpenBrand={openBrand} />}
+          {view === 'products' && <ProductsView products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
           {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
           {view === 'routes' && <RoutesView clients={activeClients} initialClientId={routeClientId} onOpenClient={openClient} onOpenSeller={openSeller} />}
           {view === 'sales-explorer' && <SalesExplorerView clients={data.clients} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
@@ -365,8 +388,8 @@ export default function App() {
           {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
         </Suspense></div>
       </main>
-      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
-      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} /></div>}
+      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
+      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></div>}
       {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} />}
       {tutorialStep != null && <TutorialOverlay stepIndex={tutorialStep} onBack={() => setTutorialStep((value) => value == null ? null : Math.max(0, value - 1))} onNext={nextTutorialStep} onClose={() => setTutorialStep(null)} />}
     </div>

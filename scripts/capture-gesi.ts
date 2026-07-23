@@ -70,6 +70,19 @@ const documentIdentity = (row: GesiRow) => [
 ].join(':');
 const optionalEndpointWarnings: string[] = [];
 
+function uniqueInventoryRows(rows: GesiRow[]) {
+  const byProduct = new Map<string, GesiRow>();
+  let duplicateRows = 0;
+  let invalidRows = 0;
+  for (const row of rows) {
+    const id = String(row.productoID ?? '').trim();
+    if (!id) { invalidRows += 1; continue; }
+    if (byProduct.has(id)) duplicateRows += 1;
+    else byProduct.set(id, row);
+  }
+  return { rows: [...byProduct.values()], duplicateRows, invalidRows };
+}
+
 const chunks = <T>(items: T[], size: number) => {
   const result: T[][] = [];
   for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
@@ -220,7 +233,9 @@ const [
 ] = await Promise.all([
   tracked('Clientes', client.getAll<GesiRow>('/api/Maestros/Clientes/GetList?sucursales=S&contactos=N&definicionesSucursal=S', 'clientes')),
   tracked('Productos', previousCapture ? Promise.resolve(previousCapture.products) : client.getAll<GesiRow>('/api/Maestros/Productos/GetList?precios=N&stock=N&imagenes=N&costos=N&incluirSucursalesHabilitadas=S', 'productos')),
-  tracked('Existencias positivas', previousCapture ? Promise.resolve(previousCapture.stocks) : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=N`, 'existencias', 1000)),
+  tracked('Existencias completas (incluye cero)', previousCapture?.captureMeta.inventoryIncludesZeroStock
+    ? Promise.resolve(previousCapture.stocks)
+    : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000)),
   tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos')),
   tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000)),
   tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000)),
@@ -238,6 +253,11 @@ const [
   tracked('Tipos de cliente', safeMaster('/api/Maestros/TiposDeCliente/GetList', 'tiposDeCliente', 'Tipos de cliente no disponibles')),
   tracked('Zonas', safeMaster('/api/Maestros/Zonas/GetList', 'zonas', 'Zonas no disponibles')),
 ]);
+
+const inventory = uniqueInventoryRows(stocks);
+if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y depósito; se conservó una por producto.`);
+if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.invalidRows} fila(s) sin productoID; se excluyeron del universo de productos y quedaron contabilizadas.`);
+const normalizedStocks = inventory.rows;
 
 await client.login();
 const invoiceDetails = await fetchDocumentDetails(
@@ -266,10 +286,12 @@ const collectionDetails = await fetchDocumentDetails(
 );
 
 const catalogProductIDs = [...new Set([
-  ...stocks.map((row) => String(row.productoID ?? '')).filter(Boolean),
+  ...normalizedStocks.filter((row) => Number(row.unidad1Disponible) !== 0 || Number(row.unidad2Disponible) !== 0)
+    .map((row) => String(row.productoID ?? '')).filter(Boolean),
+  ...products.filter((row) => String(row.estado ?? '').trim() === 'A')
+    .map((row) => String(row.productoID ?? '')).filter(Boolean),
   ...invoiceDetails.flatMap((invoice) => Array.isArray(invoice.detalleItems) ? invoice.detalleItems as GesiRow[] : [])
-    .map((item) => String(item.codigoDeItem ?? '')).filter(Boolean),
-  ...creditNoteDetails.flatMap((creditNote) => Array.isArray(creditNote.detalleItems) ? creditNote.detalleItems as GesiRow[] : [])
+    .filter((item) => String(item.tipoDeItem ?? '').trim() === 'P')
     .map((item) => String(item.codigoDeItem ?? '')).filter(Boolean),
 ])].sort();
 const prices = previousCapture?.prices ?? await fetchPrices(catalogProductIDs);
@@ -311,6 +333,10 @@ const capture: GesiRawCapture = {
     empresaID,
     sucursalID,
     almacenPrincipalID,
+    almacenPrincipal: String(normalizedStocks.find((row) => row.almacen)?.almacen ?? `Depósito ${almacenPrincipalID}`),
+    inventoryIncludesZeroStock: true,
+    inventoryDuplicateRows: inventory.duplicateRows,
+    inventoryInvalidRows: inventory.invalidRows,
     historyFrom,
     salesHistoryFrom: sptCoverageFrom,
     sptFetchFrom: salesHistoryFrom,
@@ -322,7 +348,7 @@ const capture: GesiRawCapture = {
   clients,
   products,
   prices,
-  stocks,
+  stocks: normalizedStocks,
   balances,
   invoices,
   creditNotes,
@@ -348,7 +374,12 @@ console.log(JSON.stringify({
   products: products.length,
   catalogProductsWithStockOrSales: catalogProductIDs.length,
   priceDefinitions: prices.length,
-  positiveStocks: stocks.length,
+  inventoryRows: normalizedStocks.length,
+  positiveUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) > 0).length,
+  zeroUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) === 0).length,
+  negativeUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) < 0).length,
+  inventoryDuplicateRows: inventory.duplicateRows,
+  inventoryInvalidRows: inventory.invalidRows,
   balances: balances.length,
   salesHistoryFrom: sptCoverageFrom,
   sptFetchFrom: salesHistoryFrom,

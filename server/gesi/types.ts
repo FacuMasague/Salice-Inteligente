@@ -6,6 +6,10 @@ export interface GesiRawCapture {
     empresaID: number;
     sucursalID: number;
     almacenPrincipalID: number;
+    almacenPrincipal?: string;
+    inventoryIncludesZeroStock?: boolean;
+    inventoryDuplicateRows?: number;
+    inventoryInvalidRows?: number;
     historyFrom: string;
     salesHistoryFrom: string;
     sptFetchFrom: string;

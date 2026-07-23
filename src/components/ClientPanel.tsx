@@ -18,6 +18,7 @@ interface ClientPanelProps {
   onExpand?: () => void;
   onOpenSeller?: (seller: string) => void;
   onOpenProduct?: (product: Product) => void;
+  onOpenBrand?: (brand: string) => void;
   onOpenInvoice?: (invoiceId: string) => void;
 }
 
@@ -47,7 +48,7 @@ function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapsho
   </section>;
 }
 
-export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct, onOpenInvoice }: ClientPanelProps) {
+export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct, onOpenBrand, onOpenInvoice }: ClientPanelProps) {
   const [tab, setTab] = useState<'summary' | 'purchases' | 'account' | 'operations'>('summary');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
@@ -195,7 +196,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                 <div><span className="section-kicker"><Sparkles size={14} /> Motor de oportunidades</span><h3>Qué ofrecer en la próxima visita</h3></div>
                 <span className="algorithm-pill">Algorítmico</span>
               </div>
-              <p className="section-description">Afinidad vectorial, adopción en pares confirmados de Salice, zona y rotación. El gasto pondera el perfil para no mezclar unidades incompatibles.</p>
+              <p className="section-description">Faltantes del mix reciente, adopción en clientes comparables, sustitutos ante quiebres y stock alto con afinidad. Sólo incluye productos compatibles y con stock positivo.</p>
               <div className="recommendation-list">
                 {recommendationLoading && <p className="section-description">Calculando sugerencias para este cliente…</p>}
                 {recommendationError && <p className="form-error">{recommendationError}</p>}
@@ -205,7 +206,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                     <div className="recommendation-copy">
                       <button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(recommendation.product)}>{recommendation.product.name}<ChevronRight size={12} /></button>
                       <span>{recommendation.reason}</span>
-                      <small>{recommendation.product.price > 0 ? money(recommendation.product.price) : 'Sin precio'} · Stock {recommendation.product.stock} · <span className={`confidence ${recommendation.confidence}`}>{recommendation.confidence === 'reliable' ? 'Confiable' : recommendation.confidence === 'exploratory' ? 'Exploratoria' : 'Datos insuficientes'}</span></small>
+                      <span className="recommendation-affinity-copy">{recommendation.affinityExplanation}</span>
+                      <small>{recommendation.product.price > 0 ? money(recommendation.product.price) : 'Sin precio'} · Stock {recommendation.product.stock} · {onOpenBrand ? <button className="entity-link inline-entity" onClick={() => onOpenBrand(recommendation.product.brand)}>{recommendation.product.brand}</button> : recommendation.product.brand} · <span className={`confidence ${recommendation.confidence}`}>{recommendation.confidence === 'reliable' ? 'Confianza alta' : recommendation.confidence === 'exploratory' ? 'Confianza media' : 'Confianza limitada'}</span></small>
                     </div>
                     <div className="score-ring" style={{ '--score': recommendation.score } as React.CSSProperties}>
                       <span>{recommendation.score}</span>
@@ -213,6 +215,7 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
                   </article>
                 ))}
               </div>
+              <p className="section-description recommendation-human-rule">Las sugerencias no crean tareas ni registran una gestión como realizada.</p>
             </section> : <section className="panel-section"><div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Motor de oportunidades</span><h3>Recomendaciones pausadas</h3></div></div><p className="section-description inactive-recommendation-copy">Los clientes inactivos no participan de comparaciones, recomendaciones ni recorridos. Podés consultar sus compras y su cuenta corriente desde las otras pestañas.</p></section>}
 
             <section className="panel-section next-action">

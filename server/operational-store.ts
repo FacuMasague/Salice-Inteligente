@@ -17,17 +17,80 @@ import type {
   DashboardData,
   PaymentPromise,
   PaymentPromiseStatus,
+  Product,
+  ProductVectorCorrection,
+  ProductVectorCorrectionEvent,
   ReceivableCase,
   ReceivableCaseEvent,
   ReceivableCaseStatus,
   SavedView,
+  VectorKey,
 } from '../shared/models.js';
 import { STATUS_TARGET_SOURCE, STATUS_TARGETS } from './data/status-targets.js';
+import {
+  classifyInventoryProduct,
+  evaluateInventoryReviewLifecycle,
+  inventoryIncidentKind,
+  type InventoryAlertReview,
+  type InventoryAlertReviewEvent,
+  type InventoryDecisionStatus,
+  type InventoryExceptionType,
+  type InventoryReviewEventType,
+  type InventoryReviewStatus,
+} from '../shared/inventory-decisions.js';
+import { assessPricePerKg, effectiveUnitPrice, type ProductPriceSnapshotPoint, type PricePerKgStatus } from '../shared/product-prices.js';
 
 const databasePath = process.env.SALICE_OPERATIONS_DB_PATH
   ? resolve(process.env.SALICE_OPERATIONS_DB_PATH)
   : resolve(process.cwd(), 'data/operations.sqlite');
 let database: DatabaseSync | null = null;
+
+function migrateInventoryReviewStatuses(store: DatabaseSync) {
+  const row = store.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_alert_reviews'").get();
+  const definition = String(row?.sql ?? '');
+  if (!definition || definition.includes("'unreviewed'")) return;
+  try {
+    store.exec(`
+      BEGIN IMMEDIATE;
+      DROP INDEX IF EXISTS idx_inventory_alert_reviews_status;
+      ALTER TABLE inventory_alert_reviews RENAME TO inventory_alert_reviews_legacy;
+      CREATE TABLE inventory_alert_reviews (
+        product_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'unreviewed',
+        note TEXT NOT NULL DEFAULT '',
+        exception_type TEXT NOT NULL DEFAULT 'none',
+        updated_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        CHECK (status IN ('unreviewed', 'in_review', 'reviewed')),
+        CHECK (exception_type IN ('none', 'seasonal', 'discontinued', 'reserved_stock'))
+      );
+      INSERT INTO inventory_alert_reviews (product_id, status, note, exception_type, updated_at, updated_by)
+        SELECT product_id, CASE
+          WHEN status = 'reviewed' THEN 'reviewed'
+          WHEN status = 'in_review' THEN 'in_review'
+          ELSE 'unreviewed'
+        END,
+          note, exception_type, updated_at, updated_by
+        FROM inventory_alert_reviews_legacy;
+      DROP TABLE inventory_alert_reviews_legacy;
+      CREATE INDEX idx_inventory_alert_reviews_status ON inventory_alert_reviews(status, updated_at DESC);
+      COMMIT;
+    `);
+  } catch (error) {
+    try { store.exec('ROLLBACK'); } catch { /* la sentencia fallida puede haber cerrado la transacción */ }
+    throw error;
+  }
+}
+
+function migrateInventoryReviewLifecycle(store: DatabaseSync) {
+  const columns = new Set(store.prepare('PRAGMA table_info(inventory_alert_reviews)').all().map((row) => String(row.name)));
+  if (!columns.has('decision_status')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN decision_status TEXT');
+  if (!columns.has('decision_snapshot_at')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN decision_snapshot_at TEXT');
+  if (!columns.has('resolved_at')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN resolved_at TEXT');
+  if (!columns.has('resolved_snapshot_at')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN resolved_snapshot_at TEXT');
+  if (!columns.has('reopened_at')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN reopened_at TEXT');
+  if (!columns.has('incident_number')) store.exec('ALTER TABLE inventory_alert_reviews ADD COLUMN incident_number INTEGER NOT NULL DEFAULT 1');
+}
 
 function seedCommercialGoals(store: DatabaseSync) {
   const existing = Number(store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total ?? 0);
@@ -191,6 +254,82 @@ function db() {
       CHECK (direction IN ('growth', 'decline'))
     );
     CREATE INDEX IF NOT EXISTS idx_client_trend_reviews_direction ON client_trend_reviews(direction, reviewed_at DESC);
+    CREATE TABLE IF NOT EXISTS inventory_alert_reviews (
+      product_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'unreviewed',
+      note TEXT NOT NULL DEFAULT '',
+      exception_type TEXT NOT NULL DEFAULT 'none',
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      decision_status TEXT,
+      decision_snapshot_at TEXT,
+      resolved_at TEXT,
+      resolved_snapshot_at TEXT,
+      reopened_at TEXT,
+      incident_number INTEGER NOT NULL DEFAULT 1,
+      CHECK (status IN ('unreviewed', 'in_review', 'reviewed')),
+      CHECK (exception_type IN ('none', 'seasonal', 'discontinued', 'reserved_stock'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_alert_reviews_status ON inventory_alert_reviews(status, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS inventory_alert_review_events (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      review_status TEXT NOT NULL,
+      decision_status TEXT,
+      incident_kind TEXT,
+      incident_number INTEGER NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      exception_type TEXT NOT NULL DEFAULT 'none',
+      snapshot_at TEXT,
+      actor TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      CHECK (event_type IN ('review_saved', 'resolved', 'reopened')),
+      CHECK (review_status IN ('unreviewed', 'in_review', 'reviewed')),
+      CHECK (exception_type IN ('none', 'seasonal', 'discontinued', 'reserved_stock'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_alert_review_events_product ON inventory_alert_review_events(product_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS product_vector_corrections (
+      product_id TEXT NOT NULL,
+      vector_key TEXT NOT NULL,
+      value REAL NOT NULL,
+      reason TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      PRIMARY KEY (product_id, vector_key),
+      CHECK (value >= 0 AND value <= 100)
+    );
+    CREATE TABLE IF NOT EXISTS product_vector_correction_events (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      vector_key TEXT NOT NULL,
+      value REAL NOT NULL,
+      reason TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      CHECK (value >= 0 AND value <= 100),
+      CHECK (event_type IN ('set', 'removed'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_vector_corrections_product ON product_vector_corrections(product_id);
+    CREATE INDEX IF NOT EXISTS idx_product_vector_correction_events_product ON product_vector_correction_events(product_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS product_price_snapshots (
+      snapshot_at TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      reference_price REAL,
+      effective_price_90d REAL,
+      effective_units_90d REAL NOT NULL,
+      effective_sales_90d REAL NOT NULL,
+      content_kg REAL,
+      reference_price_per_kg REAL,
+      price_per_kg_status TEXT NOT NULL,
+      source_label TEXT NOT NULL,
+      recorded_at TEXT NOT NULL,
+      PRIMARY KEY (snapshot_at, product_id),
+      CHECK (price_per_kg_status IN ('reliable', 'ambiguous_presentation', 'not_applicable', 'no_reference'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_price_snapshots_product ON product_price_snapshots(product_id, snapshot_at);
     CREATE TABLE IF NOT EXISTS saved_views (
       id TEXT PRIMARY KEY,
       view_key TEXT NOT NULL,
@@ -249,7 +388,27 @@ function db() {
     CREATE TRIGGER IF NOT EXISTS prevent_goal_change_delete
       BEFORE DELETE ON commercial_goal_changes
       BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_vector_correction_event_update
+      BEFORE UPDATE ON product_vector_correction_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de correcciones vectoriales es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_vector_correction_event_delete
+      BEFORE DELETE ON product_vector_correction_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de correcciones vectoriales es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_product_price_snapshot_update
+      BEFORE UPDATE ON product_price_snapshots
+      BEGIN SELECT RAISE(ABORT, 'El historial de precios por snapshot es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_product_price_snapshot_delete
+      BEFORE DELETE ON product_price_snapshots
+      BEGIN SELECT RAISE(ABORT, 'El historial de precios por snapshot es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_inventory_review_event_update
+      BEFORE UPDATE ON inventory_alert_review_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de revisiones de inventario es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_inventory_review_event_delete
+      BEFORE DELETE ON inventory_alert_review_events
+      BEGIN SELECT RAISE(ABORT, 'El historial de revisiones de inventario es append-only'); END;
   `);
+  migrateInventoryReviewStatuses(database);
+  migrateInventoryReviewLifecycle(database);
   const caseColumns = new Set(database.prepare('PRAGMA table_info(receivable_cases)').all().map((row) => String(row.name)));
   if (!caseColumns.has('promise_amount')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_amount REAL');
   if (!caseColumns.has('promise_due_at')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_due_at TEXT');
@@ -406,6 +565,40 @@ function clientTrendReviewFromRow(row: Record<string, unknown>): ClientTrendRevi
   };
 }
 
+function inventoryAlertReviewFromRow(row: Record<string, unknown>): InventoryAlertReview {
+  return {
+    productId: textValue(row.product_id),
+    status: textValue(row.status) as InventoryReviewStatus,
+    note: textValue(row.note),
+    exceptionType: textValue(row.exception_type) as InventoryExceptionType,
+    updatedAt: textValue(row.updated_at),
+    updatedBy: textValue(row.updated_by),
+    decisionStatus: nullableText(row.decision_status) as InventoryDecisionStatus | null,
+    decisionSnapshotAt: nullableText(row.decision_snapshot_at),
+    resolvedAt: nullableText(row.resolved_at),
+    resolvedSnapshotAt: nullableText(row.resolved_snapshot_at),
+    reopenedAt: nullableText(row.reopened_at),
+    incidentNumber: Math.max(1, Number(row.incident_number ?? 1)),
+  };
+}
+
+function inventoryAlertReviewEventFromRow(row: Record<string, unknown>): InventoryAlertReviewEvent {
+  return {
+    id: textValue(row.id),
+    productId: textValue(row.product_id),
+    eventType: textValue(row.event_type) as InventoryReviewEventType,
+    reviewStatus: textValue(row.review_status) as InventoryReviewStatus,
+    decisionStatus: nullableText(row.decision_status) as InventoryDecisionStatus | null,
+    incidentKind: nullableText(row.incident_kind) as InventoryAlertReviewEvent['incidentKind'],
+    incidentNumber: Math.max(1, Number(row.incident_number ?? 1)),
+    note: textValue(row.note),
+    exceptionType: textValue(row.exception_type) as InventoryExceptionType,
+    snapshotAt: nullableText(row.snapshot_at),
+    actor: textValue(row.actor),
+    createdAt: textValue(row.created_at),
+  };
+}
+
 function savedViewFromRow(row: Record<string, unknown>): SavedView {
   return {
     id: textValue(row.id),
@@ -482,10 +675,23 @@ export function mergeOperationalData(snapshot: DashboardData): DashboardData {
     db().prepare('SELECT client_id, note FROM client_notes').all()
       .map((row) => [Number(row.client_id), String(row.note)]),
   );
-  if (!notes.size) return snapshot;
+  const corrections = listProductVectorCorrections();
+  const correctionsByProduct = new Map<string, ProductVectorCorrection[]>();
+  corrections.forEach((correction) => correctionsByProduct.set(correction.productId, [...(correctionsByProduct.get(correction.productId) ?? []), correction]));
   return {
     ...snapshot,
     clients: snapshot.clients.map((client) => notes.has(client.id) ? { ...client, note: notes.get(client.id)! } : client),
+    products: snapshot.products.map((product) => {
+      const productCorrections = correctionsByProduct.get(product.id);
+      if (!productCorrections?.length) return product;
+      const vector = { ...product.vector };
+      const evidence = { ...product.vectorMeta.evidence };
+      productCorrections.forEach((correction) => {
+        vector[correction.key] = correction.value;
+        evidence[correction.key] = [`Corrección de oficina: ${correction.reason}`, ...(evidence[correction.key] ?? [])].slice(0, 4);
+      });
+      return { ...product, vector, vectorMeta: { ...product.vectorMeta, evidence } };
+    }),
   };
 }
 
@@ -685,6 +891,230 @@ export function setClientTrendReviewed(clientId: number, direction: ClientTrendD
   }
   db().prepare('DELETE FROM client_trend_reviews WHERE client_id = ? AND direction = ?').run(clientId, direction);
   return null;
+}
+
+export function listInventoryAlertReviews() {
+  return db().prepare('SELECT * FROM inventory_alert_reviews ORDER BY updated_at DESC').all()
+    .map((row) => inventoryAlertReviewFromRow(row));
+}
+
+export function listInventoryAlertReviewEvents(productId?: string) {
+  const rows = productId
+    ? db().prepare('SELECT * FROM inventory_alert_review_events WHERE product_id = ? ORDER BY created_at DESC, rowid DESC').all(productId)
+    : db().prepare('SELECT * FROM inventory_alert_review_events ORDER BY created_at DESC, rowid DESC').all();
+  return rows.map((row) => inventoryAlertReviewEventFromRow(row));
+}
+
+function appendInventoryReviewEvent(input: {
+  productId: string;
+  eventType: InventoryReviewEventType;
+  reviewStatus: InventoryReviewStatus;
+  decisionStatus: InventoryDecisionStatus | null;
+  incidentNumber: number;
+  note: string;
+  exceptionType: InventoryExceptionType;
+  snapshotAt: string | null;
+  actor: string;
+  createdAt: string;
+}) {
+  db().prepare(`
+    INSERT INTO inventory_alert_review_events (
+      id, product_id, event_type, review_status, decision_status, incident_kind,
+      incident_number, note, exception_type, snapshot_at, actor, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(), input.productId, input.eventType, input.reviewStatus, input.decisionStatus,
+    inventoryIncidentKind(input.decisionStatus), input.incidentNumber, input.note, input.exceptionType,
+    input.snapshotAt, input.actor, input.createdAt,
+  );
+}
+
+export function saveInventoryAlertReview(productId: string, input: {
+  status: InventoryReviewStatus;
+  note: string;
+  exceptionType: InventoryExceptionType;
+  actor: string;
+  decisionStatus: InventoryDecisionStatus;
+  snapshotAt: string;
+}) {
+  const updatedAt = new Date().toISOString();
+  const note = input.note.trim().slice(0, 2000);
+  const actor = input.actor.trim().slice(0, 120);
+  const previous = db().prepare('SELECT * FROM inventory_alert_reviews WHERE product_id = ?').get(productId);
+  const incidentNumber = Math.max(1, Number(previous?.incident_number ?? 1));
+  const reopenedAt = nullableText(previous?.reopened_at);
+  db().exec('BEGIN IMMEDIATE');
+  try {
+    db().prepare(`
+      INSERT INTO inventory_alert_reviews (
+        product_id, status, note, exception_type, updated_at, updated_by,
+        decision_status, decision_snapshot_at, resolved_at, resolved_snapshot_at, reopened_at, incident_number
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+      ON CONFLICT(product_id) DO UPDATE SET
+        status = excluded.status,
+        note = excluded.note,
+        exception_type = excluded.exception_type,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by,
+        decision_status = excluded.decision_status,
+        decision_snapshot_at = excluded.decision_snapshot_at,
+        resolved_at = NULL,
+        resolved_snapshot_at = NULL,
+        reopened_at = excluded.reopened_at,
+        incident_number = excluded.incident_number
+    `).run(
+      productId, input.status, note, input.exceptionType, updatedAt, actor,
+      input.decisionStatus, input.snapshotAt, reopenedAt, incidentNumber,
+    );
+    appendInventoryReviewEvent({
+      productId, eventType: 'review_saved', reviewStatus: input.status, decisionStatus: input.decisionStatus,
+      incidentNumber, note, exceptionType: input.exceptionType, snapshotAt: input.snapshotAt, actor, createdAt: updatedAt,
+    });
+    db().exec('COMMIT');
+  } catch (error) {
+    db().exec('ROLLBACK');
+    throw error;
+  }
+  return inventoryAlertReviewFromRow(db().prepare('SELECT * FROM inventory_alert_reviews WHERE product_id = ?').get(productId)!);
+}
+
+export function reconcileInventoryAlertReviews(products: Product[], snapshotAt: string) {
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const reviews = listInventoryAlertReviews();
+  const now = new Date().toISOString();
+  const result = { baselined: 0, resolved: 0, reopened: 0 };
+  db().exec('BEGIN IMMEDIATE');
+  try {
+    for (const review of reviews) {
+      const product = productsById.get(review.productId);
+      if (!product) continue;
+      const currentDecision = classifyInventoryProduct(product, null).status;
+      const action = evaluateInventoryReviewLifecycle(review, currentDecision);
+      if (action === 'none') continue;
+      if (action === 'baseline') {
+        db().prepare(`UPDATE inventory_alert_reviews SET decision_status = ?, decision_snapshot_at = ? WHERE product_id = ?`)
+          .run(currentDecision, snapshotAt, review.productId);
+        result.baselined += 1;
+        continue;
+      }
+      if (action === 'resolved') {
+        db().prepare(`UPDATE inventory_alert_reviews SET resolved_at = ?, resolved_snapshot_at = ? WHERE product_id = ?`)
+          .run(now, snapshotAt, review.productId);
+        appendInventoryReviewEvent({
+          productId: review.productId, eventType: 'resolved', reviewStatus: 'reviewed', decisionStatus: currentDecision,
+          incidentNumber: review.incidentNumber, note: review.note, exceptionType: review.exceptionType,
+          snapshotAt, actor: 'Sistema Salice', createdAt: now,
+        });
+        result.resolved += 1;
+        continue;
+      }
+      const incidentNumber = review.incidentNumber + 1;
+      db().prepare(`
+        UPDATE inventory_alert_reviews SET
+          status = 'unreviewed', decision_status = ?, decision_snapshot_at = ?,
+          resolved_at = NULL, resolved_snapshot_at = NULL, reopened_at = ?, incident_number = ?,
+          updated_at = ?, updated_by = 'Sistema Salice'
+        WHERE product_id = ?
+      `).run(currentDecision, snapshotAt, now, incidentNumber, now, review.productId);
+      appendInventoryReviewEvent({
+        productId: review.productId, eventType: 'reopened', reviewStatus: 'unreviewed', decisionStatus: currentDecision,
+        incidentNumber, note: review.note, exceptionType: review.exceptionType,
+        snapshotAt, actor: 'Sistema Salice', createdAt: now,
+      });
+      result.reopened += 1;
+    }
+    db().exec('COMMIT');
+  } catch (error) {
+    db().exec('ROLLBACK');
+    throw error;
+  }
+  return result;
+}
+
+function productVectorCorrectionFromRow(row: Record<string, unknown>): ProductVectorCorrection {
+  return {
+    productId: textValue(row.product_id),
+    key: textValue(row.vector_key) as VectorKey,
+    value: Number(row.value),
+    reason: textValue(row.reason),
+    updatedAt: textValue(row.updated_at),
+    updatedBy: textValue(row.updated_by),
+  };
+}
+
+function productVectorCorrectionEventFromRow(row: Record<string, unknown>): ProductVectorCorrectionEvent {
+  return {
+    id: textValue(row.id),
+    ...productVectorCorrectionFromRow(row),
+    eventType: textValue(row.event_type) as ProductVectorCorrectionEvent['eventType'],
+  };
+}
+
+export function listProductVectorCorrections(productId?: string) {
+  const rows = productId
+    ? db().prepare('SELECT * FROM product_vector_corrections WHERE product_id = ? ORDER BY vector_key').all(productId)
+    : db().prepare('SELECT * FROM product_vector_corrections ORDER BY product_id, vector_key').all();
+  return rows.map((row) => productVectorCorrectionFromRow(row));
+}
+
+export function listProductVectorCorrectionEvents(productId: string) {
+  return db().prepare('SELECT * FROM product_vector_correction_events WHERE product_id = ? ORDER BY updated_at DESC, rowid DESC').all(productId)
+    .map((row) => productVectorCorrectionEventFromRow(row));
+}
+
+export function saveProductVectorCorrection(productId: string, input: {
+  key: VectorKey;
+  value: number;
+  reason: string;
+  actor: string;
+}) {
+  const store = db();
+  const updatedAt = new Date().toISOString();
+  const reason = input.reason.trim().slice(0, 1000);
+  const actor = input.actor.trim().slice(0, 120);
+  const eventId = randomUUID();
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO product_vector_corrections (product_id, vector_key, value, reason, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(product_id, vector_key) DO UPDATE SET
+        value = excluded.value, reason = excluded.reason,
+        updated_at = excluded.updated_at, updated_by = excluded.updated_by
+    `).run(productId, input.key, input.value, reason, updatedAt, actor);
+    store.prepare(`
+      INSERT INTO product_vector_correction_events
+        (id, product_id, vector_key, value, reason, updated_at, updated_by, event_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'set')
+    `).run(eventId, productId, input.key, input.value, reason, updatedAt, actor);
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return productVectorCorrectionFromRow(store.prepare('SELECT * FROM product_vector_corrections WHERE product_id = ? AND vector_key = ?').get(productId, input.key)!);
+}
+
+export function removeProductVectorCorrection(productId: string, key: VectorKey, reason: string, actor: string) {
+  const store = db();
+  const current = store.prepare('SELECT * FROM product_vector_corrections WHERE product_id = ? AND vector_key = ?').get(productId, key);
+  if (!current) return null;
+  const updatedAt = new Date().toISOString();
+  const eventId = randomUUID();
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare('DELETE FROM product_vector_corrections WHERE product_id = ? AND vector_key = ?').run(productId, key);
+    store.prepare(`
+      INSERT INTO product_vector_correction_events
+        (id, product_id, vector_key, value, reason, updated_at, updated_by, event_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'removed')
+    `).run(eventId, productId, key, Number(current.value), reason.trim().slice(0, 1000), updatedAt, actor.trim().slice(0, 120));
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return productVectorCorrectionEventFromRow(store.prepare('SELECT * FROM product_vector_correction_events WHERE id = ?').get(eventId)!);
 }
 
 const receivablePromiseId = (clientId: number) => `receivable-case:${clientId}`;
@@ -1248,10 +1678,88 @@ export function activateCommercialGoalVersion(versionId: string, actor = 'Oficin
 }
 
 export function recordSuccessfulSync(snapshot: DashboardData) {
+  recordProductPriceSnapshot(snapshot, 'Actualización manual aprobada');
   db().prepare(`
     INSERT INTO sync_runs (completed_at, snapshot_at, status, clients, products)
     VALUES (?, ?, 'success', ?, ?)
   `).run(new Date().toISOString(), snapshot.meta.generatedAt, snapshot.clients.length, snapshot.products.length);
+}
+
+function productPriceSnapshotFromRow(row: Record<string, unknown>): ProductPriceSnapshotPoint {
+  return {
+    snapshotAt: textValue(row.snapshot_at),
+    productId: textValue(row.product_id),
+    productName: textValue(row.product_name),
+    referencePrice: row.reference_price == null ? null : Number(row.reference_price),
+    effectivePrice90d: row.effective_price_90d == null ? null : Number(row.effective_price_90d),
+    effectiveUnits90d: Number(row.effective_units_90d ?? 0),
+    effectiveSales90d: Number(row.effective_sales_90d ?? 0),
+    contentKg: row.content_kg == null ? null : Number(row.content_kg),
+    referencePricePerKg: row.reference_price_per_kg == null ? null : Number(row.reference_price_per_kg),
+    pricePerKgStatus: textValue(row.price_per_kg_status) as PricePerKgStatus,
+    sourceLabel: textValue(row.source_label),
+  };
+}
+
+export function recordProductPriceSnapshot(snapshot: DashboardData, sourceLabel = 'Snapshot GESI preservado') {
+  if (snapshot.meta.source !== 'gesi' || !snapshot.meta.generatedAt) return { inserted: 0, products: 0 };
+  const store = db();
+  const insert = store.prepare(`
+    INSERT OR IGNORE INTO product_price_snapshots (
+      snapshot_at, product_id, product_name, reference_price, effective_price_90d,
+      effective_units_90d, effective_sales_90d, content_kg, reference_price_per_kg,
+      price_per_kg_status, source_label, recorded_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const recordedAt = new Date().toISOString();
+  let inserted = 0;
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    for (const product of snapshot.products) {
+      const pricePerKg = assessPricePerKg(product);
+      const result = insert.run(
+        snapshot.meta.generatedAt,
+        product.id,
+        product.name,
+        product.price > 0 ? product.price : null,
+        effectiveUnitPrice(product.sales90d, product.units90d),
+        Math.max(0, product.units90d || 0),
+        Math.max(0, product.sales90d || 0),
+        product.contentKg && product.contentKg > 0 ? product.contentKg : null,
+        product.referencePricePerKg && product.referencePricePerKg > 0 ? product.referencePricePerKg : null,
+        pricePerKg.status,
+        sourceLabel.slice(0, 160),
+        recordedAt,
+      );
+      inserted += Number(result.changes ?? 0);
+    }
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return { inserted, products: snapshot.products.length };
+}
+
+export function listProductPriceSnapshots(productId?: string): ProductPriceSnapshotPoint[] {
+  const rows = productId
+    ? db().prepare('SELECT * FROM product_price_snapshots WHERE product_id = ? ORDER BY snapshot_at').all(productId)
+    : db().prepare('SELECT * FROM product_price_snapshots ORDER BY snapshot_at, product_id').all();
+  return rows.map((row) => productPriceSnapshotFromRow(row));
+}
+
+export function productPriceHistoryStats() {
+  const store = db();
+  const row = store.prepare(`SELECT COUNT(*) observations, COUNT(DISTINCT snapshot_at) snapshots,
+    COUNT(DISTINCT product_id) products, MIN(snapshot_at) first_snapshot, MAX(snapshot_at) last_snapshot
+    FROM product_price_snapshots`).get();
+  return {
+    observations: Number(row?.observations ?? 0),
+    snapshots: Number(row?.snapshots ?? 0),
+    products: Number(row?.products ?? 0),
+    firstSnapshotAt: nullableText(row?.first_snapshot),
+    lastSnapshotAt: nullableText(row?.last_snapshot),
+  };
 }
 
 export type RefreshRunStatus = 'running' | 'success' | 'failed';
@@ -1369,6 +1877,8 @@ export function operationalStatus() {
   const agendaCount = Number((store.prepare("SELECT COUNT(*) AS total FROM agenda_items WHERE status = 'pending'").get()?.total) ?? 0);
   const receivableCaseCount = Number((store.prepare('SELECT COUNT(*) AS total FROM receivable_cases').get()?.total) ?? 0);
   const savedViewCount = Number((store.prepare('SELECT COUNT(*) AS total FROM saved_views').get()?.total) ?? 0);
+  const inventoryReviewCount = Number((store.prepare("SELECT COUNT(*) AS total FROM inventory_alert_reviews WHERE status = 'reviewed'").get()?.total) ?? 0);
+  const priceHistory = productPriceHistoryStats();
   const goalVersionCount = Number((store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_versions').get()?.total) ?? 0);
   const lastSync = store.prepare('SELECT completed_at, snapshot_at, status FROM sync_runs ORDER BY id DESC LIMIT 1').get();
   const refreshRuns = listRefreshRuns(6);
@@ -1382,6 +1892,8 @@ export function operationalStatus() {
     pendingAgendaItems: agendaCount,
     receivableCases: receivableCaseCount,
     savedViews: savedViewCount,
+    inventoryReviews: inventoryReviewCount,
+    priceHistory,
     goalVersions: goalVersionCount,
     lastSync: lastSync ? {
       completedAt: String(lastSync.completed_at),

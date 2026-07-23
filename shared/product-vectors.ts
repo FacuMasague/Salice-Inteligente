@@ -123,7 +123,7 @@ const compactEvidence = (evidence: EvidenceAccumulator): ProductVectorMeta['evid
   Object.entries(evidence).map(([key, items]) => [key, [...new Set(items?.map((item) => item.label) ?? [])].slice(0, 4)]),
 ) as ProductVectorMeta['evidence'];
 
-export function inferProductVectorV2(input: ProductVectorInput): {
+export function inferProductVectorV21(input: ProductVectorInput): {
   vector: Record<VectorKey, number>;
   meta: ProductVectorMeta;
 } {
@@ -250,11 +250,170 @@ export function inferProductVectorV2(input: ProductVectorInput): {
   };
 }
 
+const V22_FORM_TERMS = [
+  'comprimido', 'comprimidos', 'comp', 'iny', 'inyectable', 'inyectables',
+  'jarabe', 'colirio', 'gotas', 'capsula', 'capsulas', 'pomada', 'crema dermica',
+  'solucion oral', 'suspension oral', 'antibiotico', 'antiinflamatorio', 'eutanasico',
+];
+
+const V22_INSTRUMENT_TERMS = [
+  'aguja', 'agujas', 'jeringa', 'jeringas', 'bisturi', 'cateter', 'cateteres',
+  'guante', 'guantes', 'peladora', 'pelad', 'secador', 'soplador', 'electrificador',
+  'arreador', 'caravana', 'caravanas', 'comedero', 'bebedero', 'transportadora',
+];
+
+const negatesTerm = (source: string, term: string) => {
+  const normalizedTerm = normalize(term);
+  return [
+    `sin ${normalizedTerm}`,
+    `no ${normalizedTerm}`,
+    `no apto para ${normalizedTerm}`,
+    `no usar en ${normalizedTerm}`,
+    `excepto ${normalizedTerm}`,
+    `libre de ${normalizedTerm}`,
+  ].some((phrase) => hasTerm(source, phrase));
+};
+
+/**
+ * Motor descriptivo v2.2. Parte de v2.1 para que la comparación sea explícita
+ * y aplica únicamente reglas determinísticas relevadas en el catálogo Salice.
+ */
+export function inferProductVectorV22(input: ProductVectorInput): {
+  vector: Record<VectorKey, number>;
+  meta: ProductVectorMeta;
+} {
+  const baseline = inferProductVectorV21(input);
+  const vector = { ...baseline.vector };
+  const evidence = structuredClone(baseline.meta.evidence);
+  const normalized = Object.fromEntries((Object.keys(SOURCE_LABELS) as SourceKey[]).map((key) => [key, normalize(input[key])])) as Record<SourceKey, string>;
+  const declaredCombinations: NonNullable<ProductVectorMeta['declaredCombinations']> = {};
+  const addedReliability: number[] = [];
+
+  const add = (key: VectorKey, score: number, label: string, reliability = score) => {
+    vector[key] = Math.max(vector[key], score);
+    evidence[key] = [...new Set([...(evidence[key] ?? []), label])].slice(0, 4);
+    addedReliability.push(reliability);
+  };
+  const clear = (key: VectorKey) => {
+    vector[key] = 0;
+    delete evidence[key];
+  };
+  const rawLabel = (source: SourceKey) => `${SOURCE_LABELS[source]}: ${input[source] ?? ''}`;
+  const anySourceHas = (terms: string[], sourceKeys: SourceKey[]) => sourceKeys.some((source) => terms.some((term) => hasTerm(normalized[source], term) && !negatesTerm(normalized[source], term)));
+  const addFromSources = (key: VectorKey, terms: string[], sourceKeys: SourceKey[], score?: number) => {
+    for (const source of sourceKeys) {
+      if (!terms.some((term) => hasTerm(normalized[source], term) && !negatesTerm(normalized[source], term))) continue;
+      const resolved = score ?? SOURCE_RELIABILITY[source];
+      add(key, resolved, rawLabel(source), resolved);
+    }
+  };
+
+  // Variantes observadas y seguras: se mantienen palabras/frases completas.
+  addFromSources('otras_especies', ['canario', 'canarios', 'paloma', 'palomas', 'hamster', 'cobayo', 'cobayos', 'tortuga', 'tortugas', 'peces ornamentales'], ['name', 'description', 'category', 'subcategory', 'line']);
+  addFromSources('cachorros', ['starter', 'growth', 'destete'], ['name', 'description', 'line', 'commercialFamily']);
+  addFromSources('senior', ['adulto mayor', 'adultos mayores', 'ageing', 'aging', '8+', '10+'], ['name', 'description', 'line', 'commercialFamily']);
+  const petContext = (vector.perros >= 55 || vector.gatos >= 55)
+    && (vector.alimento_seco >= 55 || vector.alimento_humedo >= 55 || vector.snacks >= 55 || vector.farmacia >= 55);
+  if (petContext) {
+    addFromSources('control_peso', ['reducido en calorias', 'bajo en calorias', 'weight management', 'satiety'], ['name', 'description', 'line', 'commercialFamily']);
+    addFromSources('salud_digestiva', ['intestinal', 'sensitive digestion', 'probiotico', 'probioticos'], ['name', 'description', 'line', 'commercialFamily']);
+    addFromSources('piel_pelaje', ['skin', 'coat', 'dermico', 'dermica'], ['name', 'description', 'line', 'subcategory']);
+  }
+
+  // Negaciones: una mención explícita de ausencia no constituye sabor/especie.
+  const negationSources: SourceKey[] = ['name', 'description', 'line'];
+  const removeWhenOnlyNegated = (key: VectorKey, terms: string[]) => {
+    const hasPositive = negationSources.some((source) => terms.some((term) => hasTerm(normalized[source], term) && !negatesTerm(normalized[source], term)));
+    const hasNegation = negationSources.some((source) => terms.some((term) => negatesTerm(normalized[source], term)));
+    if (hasNegation && !hasPositive) clear(key);
+  };
+  removeWhenOnlyNegated('sabor_pollo', ['pollo', 'chicken']);
+  removeWhenOnlyNegated('sabor_carne', ['carne', 'carne vacuna', 'beef']);
+  removeWhenOnlyNegated('sabor_pescado', ['pescado', 'atun', 'salmon', 'fish', 'tuna']);
+  removeWhenOnlyNegated('sabor_cordero', ['cordero', 'lamb']);
+  removeWhenOnlyNegated('perros', ['perro', 'perros', 'canino', 'caninos', 'dog']);
+  removeWhenOnlyNegated('gatos', ['gato', 'gatos', 'felino', 'felinos', 'cat']);
+
+  const explicitlyDog = anySourceHas(['perro', 'perros', 'canino', 'caninos', 'dog'], ['name', 'description']);
+  const explicitlyCat = anySourceHas(['gato', 'gatos', 'felino', 'felinos', 'cat'], ['name', 'description']);
+  if (explicitlyDog && !explicitlyCat && normalized.line === 'cat') clear('gatos');
+  if (explicitlyCat && !explicitlyDog && ['adulto', 'puppy'].includes(normalized.line)) clear('perros');
+
+  const multiSpecies = ['perros y gatos', 'perro y gato', 'caninos y felinos', 'dogs and cats'].find((term) => anySourceHas([term], ['name', 'description', 'line']));
+  if (multiSpecies) {
+    add('perros', 96, `Combinación explícita v2.2: ${multiSpecies}`, 96);
+    add('gatos', 96, `Combinación explícita v2.2: ${multiSpecies}`, 96);
+    declaredCombinations.species = multiSpecies;
+  }
+  const allStages = ['todas las edades', 'toda edad', 'all life stages'].find((term) => anySourceHas([term], ['name', 'description', 'line', 'commercialFamily']));
+  if (allStages) {
+    add('cachorros', 88, `Combinación explícita v2.2: ${allStages}`, 88);
+    add('adultos', 88, `Combinación explícita v2.2: ${allStages}`, 88);
+    add('senior', 88, `Combinación explícita v2.2: ${allStages}`, 88);
+    declaredCombinations.lifeStage = allStages;
+  }
+  if (anySourceHas(['medium large', 'mediana y grande', 'medianos y grandes'], ['name', 'description', 'line', 'commercialFamily'])) {
+    declaredCombinations.petSize = 'Mediano y grande explícito';
+  }
+
+  // El porte nunca se toma de Presentación ni de pesos. Sólo expresiones que
+  // califican a la mascota pueden sostener estas dimensiones.
+  const petSizeSources: SourceKey[] = ['name', 'description', 'line', 'commercialFamily'];
+  if (!anySourceHas(['raza pequena', 'razas pequenas', 'r pequena', 'small breed', 'mini breed', 'mini small', 'mordida pequena', 'perro pequeno', 'perros pequenos', 'perro chico'], petSizeSources)) clear('tamano_pequeno');
+  if (!anySourceHas(['raza mediana', 'razas medianas', 'medium breed', 'medium large', 'mordida mediana', 'perro mediano', 'perros medianos', 'perro med', 'mediana y grande'], petSizeSources)) clear('tamano_mediano');
+  if (!anySourceHas(['raza grande', 'razas grandes', 'large breed', 'large giant', 'medium large', 'mordida grande', 'perro grande', 'perros grandes', 'perro gigante', 'giant breed', 'perro gde', 'perro xl', 'mediana y grande'], petSizeSources)) clear('tamano_grande');
+
+  const drovetContext = hasTerm(normalized.group, 'drovet');
+  const structuredFood = hasTerm(normalized.category, 'alimentos balanceados');
+  const explicitPetFood = anySourceHas(['balanceado', 'croqueta', 'alimento para perro', 'alimento para gato', 'dog food', 'cat food'], ['name', 'description', 'line', 'commercialFamily'])
+    || ((explicitlyDog || explicitlyCat) && anySourceHas(['adulto', 'cachorro', 'puppy', 'kitten', 'senior', 'sabor'], ['name', 'description', 'line']));
+  // En el legado Drovet, Rubro=Alimentos Balanceados aparece en fármacos,
+  // gasas y líquidos. Exige una segunda señal antes de tratarlo como alimento.
+  if (drovetContext && structuredFood && !explicitPetFood) clear('alimento_seco');
+
+  const veterinaryCategory = anySourceHas(['farmacos', 'biologicos', 'antiparasitario interno', 'antiparasitario externo', 'alimentos suplementos y sustitutos'], ['category']);
+  if (veterinaryCategory) add('farmacia', 100, rawLabel('category'), 100);
+  const instrumentCategory = anySourceHas(['identificacion animal', 'instrumental', 'accesorios'], ['category']);
+  if (instrumentCategory) add('accesorios', 100, rawLabel('category'), 100);
+  if (drovetContext && anySourceHas(V22_FORM_TERMS, ['name'])) add('farmacia', 84, `Regla contextual v2.2 · Grupo Drovet + forma farmacéutica: ${input.name}`, 84);
+  if (drovetContext && anySourceHas(V22_INSTRUMENT_TERMS, ['name'])) add('accesorios', 84, `Regla contextual v2.2 · Grupo Drovet + instrumental: ${input.name}`, 84);
+  if (hasTerm(normalized.line, 'grandes animales')) add('otras_especies', 92, rawLabel('line'), 92);
+
+  // Un maestro de tipo explícito prevalece sobre palabras incidentales del
+  // nombre, sin borrar afinidades compatibles (p. ej. collar antiparasitario).
+  const primaryType = veterinaryCategory || (drovetContext && anySourceHas(V22_FORM_TERMS, ['name'])) ? 'farmacia'
+    : instrumentCategory || (drovetContext && anySourceHas(V22_INSTRUMENT_TERMS, ['name'])) ? 'accesorios'
+      : anySourceHas(['sanitarios', 'higiene'], ['category']) ? 'higiene'
+        : anySourceHas(['almacen', 'refrigerados', 'congelados', 'bebidas', 'consumo humano'], ['category']) ? 'consumo_humano'
+          : null;
+  if (primaryType) {
+    if (primaryType === 'farmacia' || primaryType === 'accesorios' || primaryType === 'higiene') {
+      (['alimento_seco', 'alimento_humedo', 'snacks', 'consumo_humano'] as VectorKey[]).forEach(clear);
+    } else if (primaryType === 'consumo_humano') {
+      (['alimento_seco', 'alimento_humedo', 'snacks'] as VectorKey[]).forEach(clear);
+    }
+  }
+
+  const confidenceBoost = addedReliability.length ? addedReliability.sort((a, b) => b - a).slice(0, 4).reduce((sum, value) => sum + value, 0) / Math.min(4, addedReliability.length) : 0;
+  return {
+    vector,
+    meta: {
+      version: '2.2',
+      confidence: Math.round(Math.min(99, Math.max(baseline.meta.confidence, confidenceBoost * .78 + baseline.meta.sourceCoverage * .22))),
+      sourceCoverage: baseline.meta.sourceCoverage,
+      evidence,
+      ...(Object.keys(declaredCombinations).length ? { declaredCombinations } : {}),
+    },
+  };
+}
+
+export const inferProductVectorV2 = inferProductVectorV22;
+
 /**
  * Extrae el contenido de una presentación vendible cuando el texto expresa un
  * peso inequívoco. No intenta convertir cajas, dosis, litros ni unidades.
  */
-export function estimateContentKg(...values: (string | undefined)[]) {
+export function estimateContentKgV21(...values: (string | undefined)[]) {
   const source = values.filter(Boolean).join(' ')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -273,6 +432,48 @@ export function estimateContentKg(...values: (string | undefined)[]) {
   const grams = [...source.matchAll(/(\d+(?:\.\d+)?)\s*(?:g|gr|grs|gramo|gramos)\b/g)]
     .map((match) => Number(match[1]) / 1000).filter((value) => value >= .1 && value <= 50);
   return grams.length ? Math.round(Math.max(...grams) * 1000) / 1000 : null;
+}
+
+export function estimateContentKg(...values: (string | undefined)[]) {
+  const source = values.filter(Boolean).join(' ')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/,/g, '.')
+    .replace(/[^a-z0-9.+x]+/g, ' ')
+    .trim();
+  const unitToKg = (value: number, unit: string) => unit.startsWith('k') ? value : value / 1000;
+  const valid = (value: number) => value > 0 && value <= 50 ? Math.round(value * 1000) / 1000 : null;
+  const bonus = source.match(/(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)\s*(kg|kgs|kgr|kilo|kilos)\b/);
+  if (bonus) return valid(Number(bonus[1]) + Number(bonus[2]));
+  const countFirst = source.match(/(?<!\+)\b(\d{1,3})\s*x\s*(\d+(?:\.\d+)?)\s*(kg|kgs|kgr|kilo|kilos|g|gr|grs|gramo|gramos)\b/);
+  if (countFirst) {
+    const total = Number(countFirst[1]) * unitToKg(Number(countFirst[2]), countFirst[3]);
+    const resolved = valid(total);
+    if (resolved != null) return resolved;
+  }
+  const weightFirst = source.match(/\b(\d+(?:\.\d+)?)\s*(kg|kgs|kgr|kilo|kilos|g|gr|grs|gramo|gramos)\s*x\s*(\d{1,3})(?:\s*u)?\b/);
+  if (weightFirst) {
+    const total = unitToKg(Number(weightFirst[1]), weightFirst[2]) * Number(weightFirst[3]);
+    const resolved = valid(total);
+    if (resolved != null) return resolved;
+  }
+  return estimateContentKgV21(...values);
+}
+
+export function resolveProductContentKg(input: {
+  unit1?: string;
+  unit2?: string;
+  unit2PerUnit1?: number | null;
+  descriptions: (string | undefined)[];
+}) {
+  const unit1 = normalize(input.unit1);
+  const unit2 = normalize(input.unit2);
+  const ratio = Number(input.unit2PerUnit1 ?? 0);
+  if (['un', 'unidad', 'u'].includes(unit1) && ['kg', 'kgs', 'kgr', 'kilo', 'kilos'].includes(unit2) && ratio > 0 && ratio <= 50) {
+    return Math.round(ratio * 1000) / 1000;
+  }
+  return estimateContentKg(...input.descriptions);
 }
 
 const priceCohort = (product: Product) => {

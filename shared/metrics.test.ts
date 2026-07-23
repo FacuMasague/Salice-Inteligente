@@ -16,7 +16,7 @@ describe('catálogo central de métricas y universos', () => {
   });
 
   it('versiona el contrato expuesto por la API', () => {
-    expect(metricCatalogSummary().version).toBe('1.2.0');
+    expect(metricCatalogSummary().version).toBe('1.6.0');
   });
 
   it('vincula cada endpoint con identificadores canónicos existentes', () => {

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "gesi-salice-2026-07-20-r8",
+  "capturedAt": "2026-07-20T13:05:02.525Z",
+  "snapshotRevision": 8,
+  "artifacts": {
+    "commercialSha256": "e48befc3063d471c47c30b3119fa75e4b020a02cb05d5bd6f7d2b70d3b704688",
+    "pendingBalancesSha256": "f1961b10e8a6e6e20d63a5071d860a425b27a97bb98f17093160e8d7ff3ada19"
+  },
+  "witnesses": {
+    "general": {
+      "month": "2026-07",
+      "coreActual": 116871.162,
+      "strategicActual": 4294,
+      "autoserviceActual": 45810772.354,
+      "reventasActual": 5186.664
+    },
+    "commercialSales": {
+      "maxDate": "2026-07-20",
+      "cutoffDay": 20,
+      "annualPeriodEnd": "2026-07-20",
+      "annualComparisonEnd": "2025-07-20"
+    },
+    "mars": {
+      "maxDate": "2026-07-20",
+      "p07Kilos": 37375.825,
+      "p07Accounts": 491,
+      "p07ClientBranches": 520,
+      "p08ElapsedDays": 9
+    },
+    "nutripet": {
+      "rowCount": 32494,
+      "maxDate": "2026-07-20",
+      "julyElapsedDays": 20,
+      "julySpecializedKilos": 22085.1,
+      "julySpecializedClients": 135,
+      "maxPetCatJuneKilos": 15
+    },
+    "baires": {
+      "rowCount": 49252,
+      "maxDate": "2026-07-20",
+      "julyElapsedDays": 20,
+      "julyKilos": 70886,
+      "julyClients": 350,
+      "mayKilos": 143158,
+      "mayClients": 430
+    },
+    "nonBuyers": {
+      "maxDate": "2026-07-20",
+      "accountsUniverse90": 771,
+      "accountsNonBuyers30": 212,
+      "brandsUniverse90": 67,
+      "brandsNonBuyers30": 15,
+      "brandSellerCounts": [13, 9, 8, 7, 5, 2]
+    },
+    "pendingBalances": {
+      "asOfDate": "2026-07-20",
+      "salesFrom": "2026-06-21",
+      "edgardoPending": 107437498.35,
+      "edgardoOverdue": 31597928.53,
+      "edgardoOverdueShare": 29.41
+    }
+  }
+}

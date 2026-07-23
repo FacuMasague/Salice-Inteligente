@@ -1,51 +1,127 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, Boxes, ChevronRight, ListFilter, Search } from 'lucide-react';
-import { VECTOR_DESCRIPTIONS, VECTOR_GROUPS, VECTOR_LABELS, type Product, type VectorKey } from '../../shared/models';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, Boxes, ChevronDown, ChevronRight, ListFilter, Search, SlidersHorizontal } from 'lucide-react';
+import { classifyInventoryProduct, type InventoryAlertReview } from '../../shared/inventory-decisions';
+import { productPresentationLabel } from '../../shared/product-insights';
+import { VECTOR_DESCRIPTIONS, VECTOR_GROUPS, VECTOR_LABELS, type Client, type Product, type VectorKey } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { InventoryDecisionTray } from '../components/InventoryDecisionTray';
 import { ProductPanel } from '../components/ProductPanel';
+import { ProductComparisonWorkspace } from '../components/ProductComparisonWorkspace';
+import { ProductDemandAnalysis } from '../components/ProductDemandAnalysis';
+import { ProductPriceAnalysis } from '../components/ProductPriceAnalysis';
+import { CommercialOpportunitiesWorkspace } from '../components/CommercialOpportunitiesWorkspace';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
-import { money, number } from '../lib/format';
+import { money, number, shortDate } from '../lib/format';
 
 const vectorKeys = Object.keys(VECTOR_LABELS) as VectorKey[];
 
-export function ProductsView({ products, tutorialVectorMode = false, focusProductId = null, onOpenBrand }: { products: Product[]; tutorialVectorMode?: boolean; focusProductId?: string | null; onOpenBrand: (brand: string) => void }) {
-  const [mode, setMode] = useState<'catalog' | 'vectors'>('catalog');
+type CatalogSort = 'rotation' | 'sales' | 'buyers' | 'stock' | 'price' | 'lastSale' | 'name' | 'original';
+type ProductMode = 'inventory' | 'demand' | 'prices' | 'opportunities' | 'catalog' | 'compare' | 'vectors';
+
+export function ProductsView({ products, clients, snapshotDate, tutorialVectorMode = false, focusProductId = null, focusFamily = '', comparisonProductIds, comparisonRequest = 0, onComparisonChange, onFocusFamilyConsumed, onOpenProduct, onOpenBrand, onOpenClient, onOpenSeller, onDataChanged }: {
+  products: Product[];
+  clients: Client[];
+  snapshotDate: string;
+  tutorialVectorMode?: boolean;
+  focusProductId?: string | null;
+  focusFamily?: string;
+  comparisonProductIds: string[];
+  comparisonRequest?: number;
+  onComparisonChange: (ids: string[]) => void;
+  onFocusFamilyConsumed?: () => void;
+  onOpenProduct: (product: Product) => void;
+  onOpenBrand: (brand: string) => void;
+  onOpenClient: (client: Client) => void;
+  onOpenSeller: (seller: string) => void;
+  onDataChanged?: () => void | Promise<void>;
+}) {
+  const [mode, setMode] = useState<ProductMode>('inventory');
+  const analysisMenuRef = useRef<HTMLDetailsElement>(null);
   const [selectedId, setSelectedId] = useState(() => [...products].sort((a, b) => b.monthlyUnits - a.monthlyUnits)[0]?.id || '');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [family, setFamily] = useState('');
   const [brand, setBrand] = useState('');
+  const [line, setLine] = useState('');
+  const [masterStatus, setMasterStatus] = useState('');
+  const [inventoryStatus, setInventoryStatus] = useState('');
   const [availability, setAvailability] = useState<'commercial' | 'stock' | 'all'>('commercial');
-  const [sort, setSort] = useState<'rotation' | 'stock' | 'price' | 'name'>('rotation');
+  const [sort, setSort] = useState<CatalogSort>('rotation');
   const [selectedVector, setSelectedVector] = useState<VectorKey>('perros');
   const [vectorPage, setVectorPage] = useState(1);
+  const [inventoryReviews, setInventoryReviews] = useState<Record<string, InventoryAlertReview>>({});
+  const [inventoryReviewsLoaded, setInventoryReviewsLoaded] = useState(false);
+  const [inventoryReviewLoadError, setInventoryReviewLoadError] = useState('');
   const pageSize = 100;
+
+  useEffect(() => {
+    fetch('/api/inventory-alert-reviews')
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error()))
+      .then((payload: { reviews: InventoryAlertReview[] }) => setInventoryReviews(Object.fromEntries(payload.reviews.map((review) => [review.productId, review]))))
+      .catch(() => setInventoryReviewLoadError('No se pudieron recuperar las revisiones locales de inventario. Las señales GESI siguen visibles.'))
+      .finally(() => setInventoryReviewsLoaded(true));
+  }, []);
 
   useEffect(() => {
     if (tutorialVectorMode) setMode('vectors');
   }, [tutorialVectorMode]);
 
   useEffect(() => {
+    if (comparisonRequest > 0) setMode('compare');
+  }, [comparisonRequest]);
+
+  useEffect(() => {
+    const availableIds = new Set(products.map((product) => product.id));
+    const validIds = comparisonProductIds.filter((id) => availableIds.has(id)).slice(0, 4);
+    if (validIds.length !== comparisonProductIds.length || validIds.some((id, index) => id !== comparisonProductIds[index])) {
+      onComparisonChange(validIds);
+    }
+  }, [comparisonProductIds, onComparisonChange, products]);
+
+  useEffect(() => {
     if (focusProductId && products.some((product) => product.id === focusProductId)) {
       setSelectedId(focusProductId);
-      setMode('catalog');
+      if (mode !== 'compare' && mode !== 'demand' && mode !== 'prices' && mode !== 'opportunities') setMode('catalog');
     }
   }, [focusProductId, products]);
+
+  useEffect(() => {
+    if (!focusFamily) return;
+    setFamily(focusFamily);
+    setMode('catalog');
+    setPage(1);
+    onFocusFamilyConsumed?.();
+  }, [focusFamily, onFocusFamilyConsumed]);
 
   const selected = products.find((product) => product.id === selectedId) || products[0];
   const families = useMemo(() => [...new Set(products.map((product) => product.family))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const brands = useMemo(() => [...new Set(products.map((product) => product.brand).filter((value) => !value.startsWith('Sin ')))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const lines = useMemo(() => [...new Set(products.map((product) => product.line).filter((value) => value && !value.startsWith('Sin ')))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const filtered = products
-    .filter((product) => `${product.name} ${product.family} ${product.subcategory} ${product.brand} ${product.line} ${product.group} ${product.sku}`.toLowerCase().includes(query.toLowerCase()))
-    .filter((product) => matchesMultiFilter(product.family, family))
-    .filter((product) => matchesMultiFilter(product.brand, brand))
-    .filter((product) => availability === 'all' || (availability === 'stock' ? product.stock > 0 : product.stock > 0 && product.price > 0))
-    .sort((a, b) => sort === 'stock' ? b.stock - a.stock
-      : sort === 'price' ? b.price - a.price
-        : sort === 'name' ? a.name.localeCompare(b.name, 'es')
-          : b.monthlyUnits - a.monthlyUnits || b.stock - a.stock);
+    .map((product, originalIndex) => ({ product, originalIndex, inventoryDecision: classifyInventoryProduct(product) }))
+    .filter(({ product }) => `${product.name} ${product.description} ${product.family} ${product.subcategory} ${product.brand} ${product.line} ${product.commercialFamily} ${product.group} ${product.pack} ${productPresentationLabel(product)} ${product.sku}`.toLocaleLowerCase('es').includes(normalizedQuery))
+    .filter(({ product }) => matchesMultiFilter(product.family, family))
+    .filter(({ product }) => matchesMultiFilter(product.brand, brand))
+    .filter(({ product }) => matchesMultiFilter(product.line, line))
+    .filter(({ product }) => matchesMultiFilter(product.masterStatus, masterStatus))
+    .filter(({ inventoryDecision }) => matchesMultiFilter(inventoryDecision.status, inventoryStatus))
+    .filter(({ product }) => availability === 'all' || (availability === 'stock' ? product.inventory?.status === 'positive' || product.stock > 0 : product.commercialStatus ? product.commercialStatus === 'commercializable' : product.stock > 0 && product.price > 0))
+    .sort((left, right) => {
+      const a = left.product;
+      const b = right.product;
+      if (sort === 'stock') return b.stock - a.stock || b.monthlyUnits - a.monthlyUnits;
+      if (sort === 'price') return b.price - a.price || a.name.localeCompare(b.name, 'es');
+      if (sort === 'sales') return b.sales90d - a.sales90d || b.monthlyUnits - a.monthlyUnits;
+      if (sort === 'buyers') return b.clients90d - a.clients90d || b.sales90d - a.sales90d;
+      if (sort === 'lastSale') return b.lastSaleAt.localeCompare(a.lastSaleAt) || b.sales90d - a.sales90d;
+      if (sort === 'name') return a.name.localeCompare(b.name, 'es');
+      if (sort === 'original') return left.originalIndex - right.originalIndex;
+      return b.monthlyUnits - a.monthlyUnits || b.sales90d - a.sales90d || b.stock - a.stock;
+    })
+    .map(({ product }) => product);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -63,12 +139,15 @@ export function ProductsView({ products, tutorialVectorMode = false, focusProduc
     setSelectedId(id);
     setMode('catalog');
   };
-  const savedFilters = { mode, query, family, brand, availability, sort, selectedVector, selectedProduct: selected.id };
+  const savedFilters = { mode, query, family, brand, line, masterStatus, inventoryStatus, availability, sort, selectedVector, selectedProduct: selected.id };
   const applySaved = (saved: Record<string, string>) => {
-    setMode(saved.mode === 'vectors' ? 'vectors' : 'catalog');
+    setMode(saved.mode === 'vectors' ? 'vectors' : saved.mode === 'compare' ? 'compare' : saved.mode === 'opportunities' ? 'opportunities' : saved.mode === 'prices' ? 'prices' : saved.mode === 'demand' ? 'demand' : saved.mode === 'catalog' ? 'catalog' : 'inventory');
     setQuery(saved.query ?? '');
     setFamily(saved.family ?? '');
     setBrand(saved.brand ?? '');
+    setLine(saved.line ?? '');
+    setMasterStatus(saved.masterStatus ?? '');
+    setInventoryStatus(saved.inventoryStatus ?? '');
     setAvailability((saved.availability as typeof availability) || 'commercial');
     setSort((saved.sort as typeof sort) || 'rotation');
     if (vectorKeys.includes(saved.selectedVector as VectorKey)) setSelectedVector(saved.selectedVector as VectorKey);
@@ -79,13 +158,53 @@ export function ProductsView({ products, tutorialVectorMode = false, focusProduc
 
   if (!selected) return null;
 
+  const selectMode = (nextMode: ProductMode) => {
+    setMode(nextMode);
+    analysisMenuRef.current?.removeAttribute('open');
+  };
+  const secondaryMode = mode === 'demand' || mode === 'prices' || mode === 'vectors';
+  const secondaryModeLabel = mode === 'demand'
+    ? 'Demanda y rotación'
+    : mode === 'prices'
+      ? 'Precios y evolución'
+      : mode === 'vectors'
+        ? 'Herramientas técnicas'
+        : 'Más análisis';
+
+  const modeNavigation = <nav className="product-mode-nav" aria-label="Secciones de Productos">
+    <button className={mode === 'inventory' ? 'active' : ''} aria-current={mode === 'inventory' ? 'page' : undefined} onClick={() => selectMode('inventory')}>Inventario</button>
+    <button className={mode === 'catalog' ? 'active' : ''} aria-current={mode === 'catalog' ? 'page' : undefined} onClick={() => selectMode('catalog')}>Catálogo</button>
+    <button className={mode === 'opportunities' ? 'active' : ''} aria-current={mode === 'opportunities' ? 'page' : undefined} onClick={() => selectMode('opportunities')}>Oportunidades</button>
+    <button className={mode === 'compare' ? 'active' : ''} aria-current={mode === 'compare' ? 'page' : undefined} onClick={() => selectMode('compare')}>Comparar <span className="product-nav-count">{comparisonProductIds.length}</span></button>
+    <details ref={analysisMenuRef} className={`product-mode-more ${secondaryMode ? 'active' : ''}`}>
+      <summary aria-current={secondaryMode ? 'page' : undefined}><BarChart3 size={14} /><span>{secondaryModeLabel}</span><ChevronDown size={14} /></summary>
+      <div className="product-mode-menu">
+        <span>Análisis del catálogo</span>
+        <button className={mode === 'demand' ? 'active' : ''} onClick={() => selectMode('demand')}><strong>Demanda y rotación</strong><small>Movimiento, compradores y estabilidad</small></button>
+        <button className={mode === 'prices' ? 'active' : ''} onClick={() => selectMode('prices')}><strong>Precios y evolución</strong><small>Referencia, efectivo e historia</small></button>
+        <span>Uso técnico</span>
+        <button className={mode === 'vectors' ? 'active' : ''} onClick={() => selectMode('vectors')}><strong>Herramientas técnicas</strong><small>Vectores, evidencia y auditoría</small></button>
+      </div>
+    </details>
+  </nav>;
+
+  if (mode === 'inventory') return <div className="page-view products-workspace">{modeNavigation}<InventoryDecisionTray products={products} reviews={inventoryReviews} loadError={inventoryReviewLoadError} onReviewSaved={(review) => setInventoryReviews((current) => ({ ...current, [review.productId]: review }))} onOpenProduct={(product) => openProduct(product.id)} onOpenBrand={onOpenBrand} /></div>;
+
+  if (mode === 'demand') return <div className="page-view products-workspace">{modeNavigation}<ProductDemandAnalysis products={products} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenGroup={(value) => { setQuery(value); setMode('catalog'); setPage(1); }} /></div>;
+
+  if (mode === 'prices') return <div className="page-view products-workspace">{modeNavigation}<ProductPriceAnalysis products={products} onOpenProduct={onOpenProduct} /></div>;
+
+  if (mode === 'opportunities') return <div className="page-view products-workspace">{modeNavigation}<CommercialOpportunitiesWorkspace clients={clients} onOpenClient={onOpenClient} onOpenSeller={onOpenSeller} onOpenBrand={onOpenBrand} onOpenProduct={onOpenProduct} /></div>;
+
+  if (mode === 'compare') return <div className="page-view products-workspace">{modeNavigation}<ProductComparisonWorkspace products={products} selectedIds={comparisonProductIds} onSelectionChange={onComparisonChange} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} /></div>;
+
   if (mode === 'vectors') {
     const matchingProducts = products.filter((product) => product.vector[selectedVector] > 0).length;
     return (
-      <div className="page-view vector-explorer-page" data-tour="vector-explorer">
+      <div className="page-view vector-explorer-page products-workspace" data-tour="vector-explorer">
+        {modeNavigation}
         <header className="data-card vector-explorer-hero">
-          <div><span className="section-kicker"><BarChart3 size={15} /> Motor vectorial v2.1</span><h2>Explorador de {number(vectorKeys.length)} vectores</h2><p>Edad, porte, especie, posicionamiento, uso, necesidades y sabores se mantienen separados y auditables.</p></div>
-          <button className="button secondary" onClick={() => setMode('catalog')}><ArrowLeft size={16} /> Volver al catálogo</button>
+          <div><span className="section-kicker"><BarChart3 size={15} /> Motor vectorial v2.2</span><h2>Explorador de {number(vectorKeys.length)} vectores</h2><p>Edad, porte, especie, posicionamiento, uso, necesidades y sabores se mantienen separados y auditables.</p></div>
         </header>
         <SavedViewsBar viewKey="products" filters={savedFilters} onApply={applySaved} />
         <div className="vector-explorer-layout">
@@ -114,21 +233,29 @@ export function ProductsView({ products, tutorialVectorMode = false, focusProduc
   }
 
   return (
-    <div className="page-view product-layout">
+    <div className="page-view products-workspace">
+      {modeNavigation}
+      <div className="product-layout products-mode-body product-layout-v3">
       <section className="product-catalog data-card" data-tour="product-catalog">
-        <div className="data-card-header stacked"><div><span className="section-kicker"><Boxes size={14} /> Catálogo</span><h2>{number(filtered.length)} de {number(products.length)} productos</h2><p>Marca, línea y grupo provienen de sus maestros reales; los artículos sin stock ni precio quedan ocultos por defecto.</p></div><label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, marca, línea o SKU…" /></label><div className="product-filter-grid"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Con stock y precio' }, { value: 'stock', label: 'Con stock' }, { value: 'all', label: 'Todo el catálogo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'stock', label: 'Mayor stock' }, { value: 'price', label: 'Mayor precio' }, { value: 'name', label: 'Nombre A–Z' }]} onChange={(value) => setSort(value as typeof sort)} /></div><button className="button secondary vector-explorer-button" data-tour="vector-explorer-button" onClick={() => setMode('vectors')}><BarChart3 size={15} /> Explorar {number(vectorKeys.length)} vectores</button></div>
+        <div className="data-card-header stacked product-catalog-controls">
+          <div><span className="section-kicker"><Boxes size={14} /> Catálogo operativo</span><h2>{number(filtered.length)} de {number(products.length)} productos</h2><p>Elegí un producto para consultar toda su información en la ficha de la derecha.</p></div>
+          <label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU, marca o presentación…" /></label>
+          <div className="product-filter-grid product-filter-grid-v3 product-filter-primary"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializable observable' }, { value: 'stock', label: 'Stock positivo' }, { value: 'all', label: 'Todo el catálogo operativo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'sales', label: 'Mayor venta 90d' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor stock' }, { value: 'price', label: 'Mayor precio' }, { value: 'lastSale', label: 'Venta más reciente' }, { value: 'name', label: 'Nombre A–Z' }, { value: 'original', label: 'Orden original' }]} onChange={(value) => { setSort(value as CatalogSort); setPage(1); }} /></div>
+          <details className="product-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros{[line, masterStatus, inventoryStatus].filter(Boolean).length ? ` · ${[line, masterStatus, inventoryStatus].filter(Boolean).length} activos` : ''}<ChevronDown size={14} /></summary><div className="product-filter-grid product-filter-grid-v3"><MultiSelectFilter label="Línea" value={line} options={lines} onChange={(value) => { setLine(value); setPage(1); }} /><MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} /><MultiSelectFilter label="Inventario" value={inventoryStatus} options={[{ value: 'no_stock_with_demand', label: 'Sin stock con demanda' }, { value: 'critical_coverage', label: 'Cobertura crítica' }, { value: 'low_coverage', label: 'Cobertura baja' }, { value: 'adequate_coverage', label: 'Cobertura adecuada' }, { value: 'high_coverage', label: 'Cobertura alta' }, { value: 'stock_without_movement', label: 'Stock sin movimiento' }, { value: 'new_or_insufficient_history', label: 'Sin historia suficiente' }, { value: 'insufficient_data', label: 'Datos insuficientes' }, { value: 'out_of_assortment', label: 'Fuera de surtido/inactivo' }]} onChange={(value) => { setInventoryStatus(value); setPage(1); }} /></div></details>
+        </div>
         <SavedViewsBar viewKey="products" filters={savedFilters} onApply={applySaved} />
         <div className="product-list">
           {visible.map((product) => <article key={product.id} role="button" tabIndex={0} className={`product-list-row ${product.id === selected.id ? 'active' : ''}`} onClick={() => setSelectedId(product.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(product.id); }}>
             <div className="product-thumb">{product.family === 'Higiene' ? 'HI' : product.family === 'Accesorios' ? 'AC' : product.vector.gatos > product.vector.perros ? 'GA' : 'PE'}</div>
-            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku}</span></div>
-            <div className="product-list-numbers"><strong>{product.price > 0 ? money(product.price) : 'Sin precio'}</strong><span className={product.stock < 30 ? 'negative' : ''}>Stock disp. {product.stock}</span></div>
+            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
+            <div className="product-list-numbers"><strong title="Precio de referencia GESI">{product.price > 0 ? money(product.price) : 'Sin precio'}</strong><span className={product.inventory?.status === 'negative' || product.stock < 30 ? 'negative' : ''}>{product.inventory?.status === 'unavailable' ? 'Stock sin señal' : product.inventory?.status === 'negative' ? `GESI ${product.inventory.rawAvailableUnit1}` : `Stock disp. ${number(product.stock)}`}</span><small>{money(product.sales90d, true)} · 90d</small></div>
             <ChevronRight size={17} />
           </article>)}
         </div>
         <div className="compact-pagination"><button disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentPage} / {pageCount}</strong><button disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div>
       </section>
-      <section className="product-detail"><ProductPanel product={selected} products={products} onOpenProduct={(product) => setSelectedId(product.id)} onOpenBrand={onOpenBrand} /></section>
+      <section className="product-detail"><ProductPanel product={selected} products={products} clients={clients} snapshotDate={snapshotDate} inventoryReview={inventoryReviewsLoaded ? (inventoryReviews[selected.id] ?? null) : undefined} onOpenProduct={(product) => setSelectedId(product.id)} onCompareProduct={(product) => { if (!comparisonProductIds.includes(product.id) && comparisonProductIds.length < 4) onComparisonChange([...comparisonProductIds, product.id]); setMode('compare'); }} comparisonSelectedIds={comparisonProductIds} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenClient={onOpenClient} onDataChanged={onDataChanged} /></section>
+      </div>
     </div>
   );
 }

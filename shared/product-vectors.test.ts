@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
-import { applyCatalogPricePositioning, compareProductsV2, estimateContentKg, inferProductVectorV2, vectorSimilarityV2 } from './product-vectors';
+import { applyCatalogPricePositioning, compareProductsV2, estimateContentKg, inferProductVectorV2, resolveProductContentKg, vectorSimilarityV2 } from './product-vectors';
 
 describe('vectorización de productos v2', () => {
   it('usa los maestros estructurados como evidencia de especie, etapa y formato', () => {
@@ -92,6 +92,23 @@ describe('vectorización de productos v2', () => {
     expect(estimateContentKg('Bolsa 15 + 3 kg')).toBe(18);
     expect(estimateContentKg('Bolsa 500 gr')).toBe(.5);
     expect(estimateContentKg('Caja x 12 unidades')).toBeNull();
+    expect(estimateContentKg('Caja 12 x 100 g')).toBe(1.2);
+    expect(resolveProductContentKg({ unit1: 'UN', unit2: 'KG', unit2PerUnit1: 7.5, descriptions: ['Presentación ambigua'] })).toBe(7.5);
+  });
+
+  it('prioriza maestros confiables y no convierte el rubro heredado Drovet en alimento', () => {
+    const medicine = inferProductVectorV2({ name: 'Dexametasona iny.', category: 'Alimentos Balanceados', group: 'Drovet' });
+    expect(medicine.vector.alimento_seco).toBe(0);
+    expect(medicine.vector.farmacia).toBeGreaterThanOrEqual(84);
+  });
+
+  it('distingue combinaciones explícitas y respeta negaciones', () => {
+    const shared = inferProductVectorV2({ name: 'Suplemento para perros y gatos de todas las edades', category: 'Alimentos suplementos y sustitutos' });
+    expect(shared.vector.perros).toBeGreaterThanOrEqual(90);
+    expect(shared.vector.gatos).toBeGreaterThanOrEqual(90);
+    expect(shared.meta.declaredCombinations).toMatchObject({ species: 'perros y gatos', lifeStage: 'todas las edades' });
+    const noChicken = inferProductVectorV2({ name: 'Alimento perro adulto sin pollo', category: 'Alimentos Balanceados' });
+    expect(noChicken.vector.sabor_pollo).toBe(0);
   });
 
   it('asigna económico y premium por precio/kg sólo dentro de cohortes suficientes', () => {

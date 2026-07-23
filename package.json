@@ -1,7 +1,7 @@
 {
   "name": "salice-inteligente",
   "private": true,
-  "version": "0.4.4",
+  "version": "0.5.9",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,blue \"pnpm run dev:api\" \"pnpm run dev:web\"",
@@ -20,6 +20,9 @@
     "audit:data": "tsx scripts/audit-data.ts",
     "audit:platform": "tsx scripts/audit-platform.ts",
     "audit:vectors": "tsx scripts/audit-product-vectors.ts",
+    "backfill:prices": "tsx scripts/backfill-product-price-history.ts",
+    "audit:prices": "tsx scripts/audit-product-prices.ts",
+    "compare:vectors": "tsx scripts/compare-product-vector-versions.ts",
     "audit:operations": "tsx scripts/audit-operations.ts",
     "backup:operations": "tsx scripts/backup-operations.ts",
     "restore:operations": "tsx scripts/restore-operations.ts",
@@ -29,7 +32,8 @@
     "audit:spt-gesi": "tsx scripts/audit-spt-gesi.ts",
     "reconcile:spt": "tsx scripts/reconcile-spt-sources.ts",
     "import:spt-pbix": "python3 scripts/import-spt-pbix.py",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:reconciliation": "vitest run server/historical-report-reconciliation.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

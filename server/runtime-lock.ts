@@ -1,7 +1,9 @@
 import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export const SERVER_LOCK_PATH = resolve(process.cwd(), 'data/salice-server.lock');
+export const SERVER_LOCK_PATH = process.env.SALICE_SERVER_LOCK_PATH
+  ? resolve(process.env.SALICE_SERVER_LOCK_PATH)
+  : resolve(process.cwd(), 'data/salice-server.lock');
 
 export function processIsAlive(pid: number) {
   if (!Number.isInteger(pid) || pid <= 0) return false;

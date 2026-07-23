@@ -1,4 +1,4 @@
-# Vectorización de productos v2.1 · v0.3.2
+# Vectorización de productos v2.2 · v0.5.4
 
 ## Objetivo
 
@@ -41,7 +41,7 @@ La coincidencia se realiza por palabras o frases completas. Por ejemplo, `Cat` c
 
 ### Edad y tamaño
 
-Cachorros, Adultos y Senior ya no son sólo etiquetas visibles: intervienen en el peso de similitud y las etapas incompatibles reciben una penalización. La versión 2.1 reconoce además expresiones observadas en GESI como `primer año`, `etapa 1`, `mature` y abreviaturas contextuales de adulto.
+Cachorros, Adultos y Senior no son sólo etiquetas visibles: intervienen en el peso de similitud y las etapas incompatibles reciben una penalización. La versión 2.2 agrega expresiones observadas como `starter`, `growth`, `ageing` y `adulto mayor`, además de las variantes ya cubiertas.
 
 El porte requiere una expresión referida a la mascota, como `razas pequeñas`, `small breed`, `mordida mediana` o `large & giant`. Palabras aisladas como `mini`, `small` o `grande` no alcanzan porque pueden describir envases, exhibidores o grandes animales. Un producto Medium & Large puede tener afinidad simultánea con mascotas medianas y grandes.
 
@@ -51,7 +51,7 @@ Las necesidades específicas complementan el vector Funcional y permiten disting
 
 ### Premium y Económico por precio relativo
 
-Una mención explícita como `Premium`, `Maintenance` o familia `Masivo` sigue siendo evidencia válida. La v2.1 suma una segunda vía basada en precio por kilo, con estas restricciones:
+Una mención explícita como `Premium`, `Maintenance` o familia `Masivo` sigue siendo evidencia válida. La v2.2 conserva la vía basada en precio por kilo, con estas restricciones:
 
 1. sólo alimentos secos con precio y peso neto inequívocos;
 2. comparación separada para perros y gatos;
@@ -74,7 +74,16 @@ El precio total de una bolsa nunca se compara directamente con otra presentació
 
 Estas correcciones reducen similitudes altas producidas por rellenos compartidos y conservan vacíos explícitos cuando la API no permite clasificar.
 
-## Similitud v2.1
+## Cambios auditados en v2.2
+
+- Las negaciones (`sin pollo`, `no apto para gatos`) no se convierten en afinidades positivas.
+- `Perros y gatos`, `todas las edades` y `Medium & Large` quedan como combinaciones declaradas, no como contradicciones.
+- El porte sólo se toma de expresiones referidas a la mascota; peso y tamaño del envase no lo determinan.
+- En el legado Drovet, `Rubro = Alimentos Balanceados` exige una segunda señal de alimento. Formas farmacéuticas e instrumental observados recuperan su tipo sin inventar especie.
+- Rubro, línea y relaciones U2/U1 estructuradas tienen prioridad. Una ausencia o ambigüedad permanece visible.
+- Rotación, adopción y popularidad siguen separadas de las 33 dimensiones descriptivas.
+
+## Similitud v2.2
 
 La comparación final se compone de:
 
@@ -96,17 +105,14 @@ La confianza no modifica el porcentaje de similitud: informa si existen fuentes 
 
 `sourceCoverage` resume qué campos descriptivos y maestros estaban disponibles. `confidence` combina esa cobertura con la fuerza de las señales encontradas. Cada dimensión positiva guarda hasta cuatro evidencias visibles, como `Línea: Cat` o `Rubro: Alimento Húmedo`.
 
-En el snapshot del 20/07/2026:
+En el snapshot activo del 22/07/2026 con v2.2:
 
-- 1.679 productos forman el catálogo operativo;
-- 1.633 tienen marca verificable;
-- 1.513 tienen grupo verificable;
-- 1.491 tienen al menos una señal vectorial;
-- 188 quedan con vector vacío y perfil limitado, sin completar atributos artificialmente;
-- 294 tienen peso neto inequívoco y 290 permiten mostrar precio por kilo;
-- 62 quedan en el cuartil económico, 135 en precio de mercado y 74 en el cuartil premium de una cohorte válida;
-- el porte alcanza 36 productos pequeños, 25 medianos y 18 grandes; un producto puede pertenecer a más de un porte cuando la fórmula lo declara;
-- las nuevas necesidades específicas conservan muestras pequeñas pero reales: 14 esterilizados, 5 de control de peso, 5 de piel/pelaje, 5 urinarios, 1 digestivo y 16 dentales.
+- 2.156 productos forman el catálogo operativo;
+- 1.906 tienen al menos una señal vectorial;
+- 250 quedan con vector vacío y perfil limitado, sin completar atributos artificialmente;
+- 474 tienen peso neto reconocido y 443 permiten mostrar precio por kilo;
+- no quedan contradicciones no declaradas y 19 productos registran combinaciones explícitas válidas;
+- 244 perfiles con confianza menor a 45 quedan listados para revisión humana, sin corrección automática.
 
 ## Información comercial de la ficha
 
@@ -122,18 +128,53 @@ En el snapshot del 20/07/2026:
 
 No se presenta margen porque la fuente operativa no entrega una definición validada para ese indicador.
 
+### Presentación administrativa desde v0.5.3
+
+Los vectores ya no ocupan la superficie principal de la ficha. Una función determinística resume únicamente las afinidades positivas en lenguaje cotidiano; cuando no existe evidencia suficiente, usa la clasificación explícita del rubro y declara la limitación.
+
+La ficha habitual muestra datos comerciales, evolución, compradores, inventario y alternativas explicadas. `Ver análisis técnico` conserva los 33 valores, evidencias, cobertura y confianza. El explorador completo continúa en `Productos → Herramientas técnicas`. Ocultar esta información por defecto no cambia vectores, algoritmos ni auditorías.
+
+### Comparación operativa desde v0.5.5
+
+La comparación deja de ser un selector técnico de dos artículos dentro de la ficha. `Productos → Comparar` conserva entre dos y cuatro productos y separa compatibilidad de uso, clasificación comercial, presentación, posicionamiento de precio, comportamiento comercial y confianza de los datos.
+
+La sugerencia de comparables pondera uso, clasificación y presentación antes de la confianza. Una coincidencia vectorial alta no basta para declarar sustitución directa: una especie, etapa, tipo o presentación incompatible permanece visible en la conclusión.
+
+El precio total sólo puede señalar una ventaja cuando las presentaciones son equivalentes. El precio por kilo exige peso inequívoco y mismo uso principal. Stock y rotación U1 no resaltan ventajas entre envases distintos; cobertura sólo se contrasta cuando todos los artículos tienen rotación e inventario utilizables. Las cifras siempre se muestran, aunque la comparación no sea válida.
+
+La matriz completa de 33 dimensiones continúa disponible como detalle técnico opcional. No se usa para ocultar datos comerciales ni para inventar atributos ausentes.
+
+### Demanda y rotación desde v0.5.6
+
+Demanda, compradores, variación y estabilidad permanecen fuera de las 33 dimensiones descriptivas. Se calculan desde los movimientos históricos GESI para ventanas de 30, 90 y 180 días y nunca modifican el vector, la similitud ni la confianza descriptiva.
+
+Un producto puede ser muy similar a otro y tener una rotación distinta; también puede acelerar sin que eso pruebe compatibilidad o sustitución. `Nuevo observado` describe la primera venta dentro de la cobertura comercial disponible, no una dimensión vectorial ni una fecha inferida de alta.
+
+### Precios observados desde v0.5.7
+
+El posicionamiento económico del vector continúa derivándose de la referencia GESI normalizada por kilo cuando el contenido es verificable. No se reemplaza automáticamente por el precio efectivo, porque descuentos, mix de clientes y condiciones comerciales pueden moverlo sin que cambie el posicionamiento del producto.
+
+Referencia, efectivo e historia son métricas auditables fuera de las 33 dimensiones. Una alerta de cambio tampoco modifica vectores ni recomendaciones por sí sola. Cuando falta un peso inequívoco, el sistema conserva la advertencia de presentación ambigua en vez de forzar un precio por kilo.
+
 ## Uso en recomendaciones
 
-El perfil del cliente sigue ponderando productos comprados por gasto, para no equiparar unidades incompatibles. La afinidad usa el vector v2.1; la recomendación conserva adopción en pares, adopción zonal, rotación, compatibilidad de especie y nivel de confianza. Los clientes inactivos y los productos sin stock continúan excluidos.
+Desde v0.5.8 el perfil del cliente sigue ponderando productos comprados por gasto, para no equiparar unidades incompatibles. La afinidad usa el vector v2.2, pero permanece separada de adopción comparable, rotación e inventario. Los pares se ordenan por productos compartidos y señales disponibles de segmento, canal, localidad y zona.
+
+La recomendación distingue faltantes del mix observable, adopción en pares, sustitutos ante quiebre y oportunidades para stock alto. Un sustituto exige compatibilidad de uso y presentación; una similitud vectorial aislada no alcanza. Clientes inactivos, productos sin stock positivo, maestros inactivos, inventario insuficiente e incompatibilidades explícitas quedan excluidos. La confianza informa cobertura de evidencia y no probabilidad de venta. Ninguna sugerencia crea tareas ni registra gestiones.
 
 ## Mantenimiento
 
 Al cambiar una regla:
 
 1. agregar o ajustar una prueba en `shared/product-vectors.test.ts`;
-2. regenerar el snapshot desde la captura validada con `pnpm run sync:gesi`;
-3. ejecutar `pnpm test`, `pnpm run build` y `pnpm run audit:data`;
-4. revisar visualmente edad, porte, precio relativo, alimento seco, húmedo, snacks, farmacia, higiene, accesorios y artículos sin clasificación;
-5. documentar cualquier nueva inferencia y su evidencia.
+2. ejecutar `pnpm run compare:vectors` y revisar los productos cambiados;
+3. regenerar un paquete candidato desde la captura validada;
+4. ejecutar `pnpm test`, `pnpm run build`, `pnpm run audit:data` y `pnpm run audit:vectors`;
+5. revisar visualmente edad, porte, precio relativo, alimento seco, húmedo, snacks, farmacia, higiene, accesorios y artículos sin clasificación;
+6. documentar cualquier nueva inferencia y su evidencia.
 
-`pnpm run audit:vectors` guarda `product-vectors.json` en la carpeta de calidad de la generación activa. Informa cobertura de las 33 dimensiones, perfiles vacíos, pesos reconocidos, cohortes de precio, contradicciones para revisión, cambios frente al snapshot anterior, variaciones de precio por kilo superiores al 25% y una muestra determinística de recomendaciones insuficientes. Una contradicción se presenta para revisión —por ejemplo, un producto realmente apto para perros y gatos— y no se corrige automáticamente.
+`pnpm run audit:vectors` guarda `product-vectors.json` en la carpeta de calidad de la generación activa. Informa cobertura, perfiles vacíos o de baja confianza, pesos, combinaciones declaradas, contradicciones, cohortes y cambios. `pnpm run compare:vectors` guarda la comparación completa v2.1 → v2.2.
+
+## Correcciones humanas
+
+La oficina puede corregir una dimensión desde el análisis técnico. Valor, motivo, autor y fecha se guardan en `operations.sqlite`; cada alta, cambio o reversión agrega un evento inmutable. La corrección se aplica al leer el snapshot, por lo que una actualización de GESI no la pisa. Revertirla recupera el valor algorítmico vigente. Este mecanismo es exclusivamente humano: la IA no guarda correcciones automáticamente.

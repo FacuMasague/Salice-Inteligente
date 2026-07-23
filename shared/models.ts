@@ -2,6 +2,7 @@ export type Health = 'healthy' | 'attention' | 'critical';
 export type InvoiceStatus = 'paid' | 'open' | 'due_soon' | 'overdue';
 export type PortfolioStatus = 'confirmed' | 'review';
 export type RecommendationConfidence = 'reliable' | 'exploratory' | 'insufficient';
+export type RecommendationKind = 'mix_gap' | 'peer_adoption' | 'stockout_substitute' | 'high_stock_opportunity';
 export type CommercialActivityType = 'visit' | 'call' | 'collection' | 'offer';
 export type CommercialActivityOutcome = 'completed' | 'sale' | 'promise' | 'no_contact' | 'rescheduled' | 'no_interest';
 export type PaymentPromiseStatus = 'pending' | 'kept' | 'broken' | 'cancelled';
@@ -9,7 +10,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.4.4';
+export const APP_VERSION = '0.5.9';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -59,16 +60,52 @@ export type VectorKey =
   | 'sabor_cordero';
 
 export interface ProductVectorMeta {
-  version: '2.1';
+  version: '2.1' | '2.2';
   /** Calidad de la clasificación, no probabilidad de venta. */
   confidence: number;
   /** Cobertura de los campos descriptivos y maestros disponibles en GESI. */
   sourceCoverage: number;
   evidence: Partial<Record<VectorKey, string[]>>;
+  /** Combinaciones explícitas que no deben auditarse como contradicciones. */
+  declaredCombinations?: Partial<Record<'species' | 'lifeStage' | 'petSize', string>>;
+}
+
+export interface ProductVectorCorrection {
+  productId: string;
+  key: VectorKey;
+  value: number;
+  reason: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface ProductVectorCorrectionEvent extends ProductVectorCorrection {
+  id: string;
+  eventType: 'set' | 'removed';
 }
 
 export type ProductMasterStatus = 'active' | 'inactive' | 'unknown';
 export type ProductPricePosition = 'budget' | 'market' | 'premium' | 'unknown';
+export type ProductCommercialStatus = 'commercializable' | 'not_commercializable' | 'insufficient';
+export type StockSignalStatus = 'positive' | 'zero' | 'negative' | 'unavailable';
+export type StockSignalQuality = 'reliable' | 'attention' | 'insufficient';
+export type CatalogParticipationReason = 'active_master' | 'recent_sale' | 'nonzero_inventory';
+
+export interface ProductInventorySignal {
+  capturedAt: string;
+  companyId: number;
+  branchId: number;
+  warehouseId: number;
+  warehouseLabel: string;
+  completeZeroStockUniverse: boolean;
+  rawAvailableUnit1: number | null;
+  rawAvailableUnit2: number | null;
+  unit2: string;
+  unit2PerUnit1: number | null;
+  status: StockSignalStatus;
+  quality: StockSignalQuality;
+  qualityReasons: string[];
+}
 
 export interface Product {
   id: string;
@@ -85,6 +122,10 @@ export interface Product {
   unit: string;
   unitsPerCase: number | null;
   masterStatus: ProductMasterStatus;
+  commercialStatus: ProductCommercialStatus;
+  /** GESI no expone una marca inequívoca de discontinuación. */
+  discontinuationStatus: 'not_reported';
+  catalogParticipation: CatalogParticipationReason[];
   price: number;
   /** Contenido neto estimado sólo cuando la presentación es inequívoca. */
   contentKg: number | null;
@@ -99,6 +140,7 @@ export interface Product {
   clients90d: number;
   lastSaleAt: string;
   stockCoverageMonths: number | null;
+  inventory: ProductInventorySignal;
   margin: number | null;
   vector: Record<VectorKey, number>;
   vectorMeta: ProductVectorMeta;
@@ -197,7 +239,7 @@ export interface SnapshotMeta {
   syncStatus: 'demo' | 'connected' | 'error';
   apiBaseConfigured: boolean;
   disclaimer?: string;
-  productVectorVersion?: '2.1';
+  productVectorVersion?: '2.1' | '2.2';
   coverage?: {
     rawClients: number;
     includedClients: number;
@@ -226,10 +268,38 @@ export interface SnapshotMeta {
     invalidCreditTermInvoices?: number;
     clientsWithObservedCreditTerms?: number;
     clientsWithMixedCreditTerms?: number;
+    inventory?: {
+      companyId: number;
+      branchId: number;
+      warehouseId: number;
+      warehouseLabel: string;
+      capturedAt: string;
+      completeZeroStockUniverse: boolean;
+      masterRows: number;
+      uniqueMasterProducts: number;
+      duplicateMasterRows: number;
+      activeMasterProducts: number;
+      inactiveMasterProducts: number;
+      unknownMasterProducts: number;
+      stockRows: number;
+      uniqueStockProducts: number;
+      duplicateStockRows: number;
+      invalidStockRows: number;
+      positiveStockProducts: number;
+      zeroStockProducts: number;
+      negativeStockProducts: number;
+      missingStockProducts: number;
+      catalogProducts: number;
+      commercializableProducts: number;
+      insufficientProducts: number;
+      explicitDiscontinuedProducts: number;
+      productsWithMissingPrimaryUnit: number;
+      productsWithSecondaryUnit: number;
+    };
   };
 }
 
-export const SNAPSHOT_REVISION = 8;
+export const SNAPSHOT_REVISION = 10;
 
 export interface DashboardData {
   meta: SnapshotMeta;
@@ -1283,6 +1353,25 @@ export interface Recommendation {
   peerSampleSize: number;
   confidence: RecommendationConfidence;
   reason: string;
+  kinds: RecommendationKind[];
+  affinityExplanation: string;
+  evidence: string[];
+  comparableClients: Array<Pick<Client, 'id' | 'name' | 'tradeName' | 'seller' | 'locality'>>;
+  replacedProduct: Product | null;
+}
+
+export interface ProductClientOpportunity {
+  client: Pick<Client, 'id' | 'name' | 'tradeName' | 'seller' | 'locality' | 'commercialOpportunity' | 'sales90d'>;
+  score: number;
+  similarity: number;
+  peerAdoption: number;
+  peerSampleSize: number;
+  confidence: RecommendationConfidence;
+  reason: string;
+  kinds: Exclude<RecommendationKind, 'stockout_substitute'>[];
+  affinityExplanation: string;
+  evidence: string[];
+  comparableClients: Array<Pick<Client, 'id' | 'name' | 'tradeName' | 'seller' | 'locality'>>;
 }
 
 export interface CommercialActivity {

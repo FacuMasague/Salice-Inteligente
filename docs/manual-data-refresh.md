@@ -27,6 +27,8 @@ El orquestador construye todo dentro de `data/bundles/<ejecución>/`:
 9. manifiesto con corte, revisión, tamaños y SHA-256;
 10. reemplazo atómico de `data/active-bundle.json`.
 
+Después de una activación aprobada, el sistema agrega a `operations.sqlite` una observación append-only de precios por producto. Una ejecución rechazada no incorpora el candidato a esa serie. Al iniciar, `pnpm run backfill:prices` también puede reconstruir observaciones faltantes únicamente desde snapshots GESI que todavía estén preservados localmente; no consulta Power BI ni inventa puntos intermedios.
+
 Los candidatos nunca son leídos por el servidor antes de aprobarse. Si una etapa falla, se elimina solamente esa generación y el manifiesto activo continúa apuntando exactamente al paquete anterior. No existe una ventana en la que el servidor combine una base comercial nueva con un snapshot viejo.
 
 El servidor resuelve snapshot y bases desde el mismo manifiesto. Cuando el puntero cambia, abre las rutas de la nueva generación en la siguiente consulta sin reinicio. Al iniciar vuelve a verificar tamaños y checksums. Se conservan la generación activa y hasta dos anteriores.
@@ -41,6 +43,7 @@ Una ejecución aprobada debe dejar:
 - ningún movimiento posterior al corte del snapshot;
 - conteos físicos iguales a la metadata de cada SQLite;
 - auditorías SPT, vectorial y de plataforma dentro del paquete;
+- evidencia comparativa sólo si el paquete cambia la versión del motor vectorial;
 - un manifiesto con checksums válidos;
 - un registro exitoso con duración, cobertura y advertencias.
 

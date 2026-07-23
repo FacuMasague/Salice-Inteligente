@@ -10,4 +10,7 @@ export const REPORT_ENDPOINT_METRICS = {
   '/api/admin/sales': ['sales.net', 'volume.kilos', 'sales.units', 'clients.buyers', 'sales.documents', 'sales.average_ticket', 'sales.average_price_kg'],
   '/api/admin/receivables': ['balance.pending', 'balance.overdue', 'credit.term.invoice_days'],
   '/api/admin/goals': ['target.monthly', 'volume.kilos', 'sales.net'],
+  '/api/products/demand-analysis': ['product.demand_units', 'product.buyers_window', 'product.days_since_last_sale', 'product.demand_variation', 'product.rotation_stability'],
+  '/api/products/price-analysis': ['product.reference_price', 'product.effective_price_u1', 'product.reference_price_per_kg', 'product.price_variation'],
+  '/api/products/:id/price-history': ['product.reference_price', 'product.effective_price_u1', 'product.reference_price_per_kg', 'product.price_variation'],
 } as const;
