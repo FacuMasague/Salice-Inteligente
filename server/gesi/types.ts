@@ -15,6 +15,7 @@ export interface GesiRawCapture {
     sptFetchFrom: string;
     salesDetailFrom: string;
     sptSalesDetailFrom: string;
+    logisticsFrom?: string;
     historyUntil: string;
     optionalEndpointWarnings: string[];
   };
@@ -29,6 +30,8 @@ export interface GesiRawCapture {
   sptCreditNotes: GesiRow[];
   collections: GesiRow[];
   pendingDocuments: GesiRow[];
+  deliverySheets?: GesiRow[];
+  unassignedDeliveryDocuments?: GesiRow[];
   masters: {
     channels: GesiRow[];
     paymentMethods: GesiRow[];

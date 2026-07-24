@@ -864,6 +864,31 @@ export function createCommercialNote(input: {
   });
 }
 
+export function deleteCommercialOpportunityNote(activityId: string, clientId: number) {
+  const store = db();
+  const row = store.prepare('SELECT * FROM commercial_activities WHERE id = ? AND client_id = ?').get(activityId, clientId);
+  if (!row) return null;
+  const activity = activityFromRow(row);
+  if (!activity.productIds.length) return null;
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      DELETE FROM commercial_opportunity_links
+      WHERE activity_id = ? AND saved_view_id IS NULL
+    `).run(activityId);
+    store.prepare(`
+      UPDATE commercial_opportunity_links SET activity_id = NULL
+      WHERE activity_id = ? AND saved_view_id IS NOT NULL
+    `).run(activityId);
+    store.prepare('DELETE FROM commercial_activities WHERE id = ? AND client_id = ?').run(activityId, clientId);
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return activity;
+}
+
 export function createAgendaItem(input: {
   clientId: number;
   seller: string;

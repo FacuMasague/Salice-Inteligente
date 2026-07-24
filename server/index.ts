@@ -2,7 +2,7 @@ import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
 import { resolve } from 'node:path';
-import { recommendProducts, optimizeRoute } from '../shared/algorithms.js';
+import { optimizeDeliveryRoute, recommendProducts } from '../shared/algorithms.js';
 import { buildProductClientOpportunities, isCommercialOpportunityEligible } from '../shared/commercial-opportunities.js';
 import {
   APP_VERSION,
@@ -48,6 +48,7 @@ import {
   createSavedView,
   createCommercialOpportunityLink,
   deleteCommercialGoalRow,
+  deleteCommercialOpportunityNote,
   deleteReceivableCaseEvent,
   deleteSavedView,
   getCommercialGoalsPayload,
@@ -843,6 +844,15 @@ app.post('/api/commercial-opportunity-links', async (req, res) => {
   }
 });
 
+app.delete('/api/clients/:clientId/opportunity-notes/:activityId', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const activity = deleteCommercialOpportunityNote(String(req.params.activityId), clientId);
+  if (!activity) return res.status(404).json({ error: 'La nota de oportunidad no existe o no está vinculada a productos.' });
+  return res.json({ ok: true, activity });
+});
+
 app.get('/api/products/:id/client-opportunities', async (req, res) => {
   const data = await loadSnapshot();
   const product = data.products.find((item) => item.id === req.params.id);
@@ -851,14 +861,20 @@ app.get('/api/products/:id/client-opportunities', async (req, res) => {
 });
 
 app.post('/api/routes/optimize', async (req, res) => {
-  const selectedIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds.map(Number) : [];
-  if (!selectedIds.length) return res.status(400).json({ error: 'Elegí al menos un cliente' });
+  const orderedClientIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds.map(Number).filter(Number.isInteger) : [];
+  const invoiceIds = Array.isArray(req.body?.invoiceIds) ? req.body.invoiceIds.map(String) : [];
+  if (!orderedClientIds.length || !invoiceIds.length) return res.status(400).json({ error: 'Elegí al menos una parada con facturas.' });
   const data = await loadSnapshot();
-  const visitMinutes = Number(req.body?.visitMinutes);
+  const selectedInvoiceIDs = new Set(invoiceIds);
+  const invoices = data.logistics.invoices.filter((invoice) => selectedInvoiceIDs.has(invoice.id) && orderedClientIds.includes(invoice.clientId));
+  if (!invoices.length) return res.status(400).json({ error: 'Las facturas elegidas no pertenecen al snapshot logístico activo.' });
+  const stopMinutes = Number(req.body?.stopMinutes);
   const maxWorkMinutes = Number(req.body?.maxWorkMinutes);
-  return res.json(optimizeRoute(selectedIds, data.clients, {
-    visitMinutes: Number.isFinite(visitMinutes) ? visitMinutes : undefined,
+  const mode = req.body?.mode === 'manual' ? 'manual' : 'suggested';
+  return res.json(optimizeDeliveryRoute(orderedClientIds, invoices, data.clients, {
+    stopMinutes: Number.isFinite(stopMinutes) ? stopMinutes : undefined,
     maxWorkMinutes: Number.isFinite(maxWorkMinutes) ? maxWorkMinutes : undefined,
+    mode,
   }));
 });
 

@@ -106,6 +106,27 @@ const inventory = snapshot.meta.coverage?.inventory;
 add('inventory-context', 'El inventario pertenece a Salice y al depósito principal', inventory?.companyId === 3 && inventory.branchId === 3 && inventory.warehouseId === 2, inventory ? `Empresa ${inventory.companyId} / sucursal ${inventory.branchId} / depósito ${inventory.warehouseId} · ${inventory.warehouseLabel}` : 'Sin metadata de inventario');
 add('inventory-zero-universe', 'El inventario distingue existencia cero de producto ausente', inventory?.completeZeroStockUniverse === true && inventory.missingStockProducts === 0, inventory ? `${inventory.uniqueStockProducts}/${inventory.uniqueMasterProducts} maestros con fila · ${inventory.zeroStockProducts} ceros observados` : 'Sin metadata de inventario');
 add('product-catalog-traceability', 'Cada producto explica por qué participa en el catálogo operativo', snapshot.products.every((product) => product.catalogParticipation?.length > 0), `${snapshot.products.length} productos evaluados`);
+const logistics = snapshot.meta.coverage?.logistics;
+const logisticsInvoices = snapshot.logistics?.invoices ?? [];
+const logisticsSheets = snapshot.logistics?.sheets ?? [];
+add(
+  'logistics-coverage',
+  'El snapshot conserva la cobertura logística y sus estados explícitos',
+  Boolean(snapshot.logistics)
+    && logisticsInvoices.length === (logistics?.invoices ?? -1)
+    && logisticsSheets.length === (logistics?.sheets ?? -1),
+  `${logisticsInvoices.length} facturas / ${logisticsSheets.length} fojas`,
+);
+add(
+  'logistics-assignment-reconciliation',
+  'Cada factura logística pertenece a un único estado de asignación',
+  logisticsInvoices.every((invoice) => ['unassigned', 'open_sheet', 'closed_sheet', 'unknown'].includes(invoice.assignmentStatus))
+    && logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unassigned').length === (logistics?.unassignedInvoices ?? -1)
+    && logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'open_sheet').length === (logistics?.openSheetInvoices ?? -1)
+    && logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'closed_sheet').length === (logistics?.closedSheetInvoices ?? -1)
+    && logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unknown').length === (logistics?.unknownInvoices ?? -1),
+  `${logistics?.unassignedInvoices ?? 0} sin foja · ${logistics?.openSheetInvoices ?? 0} en abiertas · ${logistics?.closedSheetInvoices ?? 0} en cerradas · ${logistics?.unknownInvoices ?? 0} desconocidas`,
+);
 add('staging-activation', 'Staging y snapshot activo corresponden a la misma captura', staging.meta.generatedAt === snapshot.meta.generatedAt, `${staging.meta.generatedAt} / ${snapshot.meta.generatedAt}`);
 add('staging-revision', 'Staging y snapshot usan la misma revisión', staging.meta.revision === snapshot.meta.revision, `Revisiones ${staging.meta.revision} / ${snapshot.meta.revision}`);
 add('commercial-capture', 'La base comercial corresponde al snapshot activo', sptMeta.get('captured_at') === snapshot.meta.generatedAt, `${sptMeta.get('captured_at') ?? 'sin fecha'} / ${snapshot.meta.generatedAt}`);
@@ -128,7 +149,7 @@ add(
 add('operations-integrity', 'La persistencia operativa supera integrity_check', operationsIntegrity === 'ok', operationsIntegrity);
 add(
   'administrative-storage',
-  'La persistencia operativa contiene todos los contratos hasta v0.6.5',
+  'La persistencia operativa contiene todos los contratos hasta v0.7.0',
   !administrativeStorage.error && administrativeStorage.missing.length === 0 && administrativeStorage.missingTriggers.length === 0,
   administrativeStorage.error || (administrativeStorage.missing.length || administrativeStorage.missingTriggers.length
     ? `Faltan tablas: ${administrativeStorage.missing.join(', ') || 'ninguna'} · triggers: ${administrativeStorage.missingTriggers.join(', ') || 'ninguno'}`

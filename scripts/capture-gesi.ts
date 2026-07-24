@@ -42,6 +42,7 @@ const historyFrom = process.env.GESI_HISTORY_FROM ?? isoDaysAgo(365);
 const salesHistoryFrom = process.env.GESI_SPT_HISTORY_FROM ?? historyFrom;
 const salesDetailFrom = process.env.GESI_SALES_DETAIL_FROM ?? isoDaysAgo(180);
 const sptSalesDetailFrom = process.env.GESI_SPT_DETAIL_FROM ?? salesHistoryFrom;
+const logisticsFrom = process.env.GESI_LOGISTICS_FROM ?? isoDaysAgo(45);
 const historyUntil = capturedAt.toISOString();
 
 const listBody = (from: string) => ({
@@ -260,6 +261,52 @@ if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devo
 const normalizedStocks = inventory.rows;
 
 await client.login();
+const deliverySheetHeaders = await tracked(
+  'Fojas de reparto',
+  client.getAll<GesiRow>(`/api/Ventas/Repartos/GetList?fechaDesde=${encodeURIComponent(logisticsFrom.slice(0, 10))}`, 'fojasReparto', 1000),
+);
+const deliverySheets: GesiRow[] = [];
+for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
+  const row = deliverySheetHeaders[index];
+  try {
+    const payload = await client.request<GesiRow>(`/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${Number(row.fojaID)}`);
+    const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
+    deliverySheets.push(detail ? { ...row, ...detail } : row);
+  } catch (error) {
+    throw new Error(`No se pudo leer la foja ${Number(row.fojaID)}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if ((index + 1) % 50 === 0) {
+    console.log(`Detalle de fojas: ${index + 1}/${deliverySheetHeaders.length}`);
+    await client.login();
+  }
+  if (index + 1 < deliverySheetHeaders.length) await new Promise((resolve) => setTimeout(resolve, 750));
+}
+console.log(`Detalle de fojas: ${deliverySheets.length}/${deliverySheetHeaders.length}`);
+await client.login();
+let unassignedDeliveryDocuments: GesiRow[] = [];
+try {
+  unassignedDeliveryDocuments = await tracked(
+    'Comprobantes sin foja',
+    client.getAll<GesiRow>(
+      `/api/Ventas/Repartos/GetComprobantesNoAsignados?fechadesde=${encodeURIComponent(logisticsFrom.slice(0, 10))}&fechahasta=${encodeURIComponent(historyUntil.slice(0, 10))}`,
+      'comprobantes',
+      1000,
+    ),
+  );
+} catch (error) {
+  const assignedKeys = new Set(deliverySheets.flatMap((sheet) => (
+    Array.isArray(sheet.listaDeComprobantesAsignados) ? sheet.listaDeComprobantesAsignados as GesiRow[] : []
+  )).map(documentIdentity));
+  unassignedDeliveryDocuments = allInvoiceHeaders
+    .filter((row) => String(row.fechaDeEmision ?? '').slice(0, 10) >= logisticsFrom.slice(0, 10))
+    .filter((row) => !assignedKeys.has(documentIdentity(row)));
+  optionalEndpointWarnings.push(
+    `Comprobantes sin foja: el endpoint específico fue rechazado; se derivaron ${unassignedDeliveryDocuments.length} factura(s) recientes como diferencia entre Facturas/GetList y todas las fojas leídas. ${error instanceof Error ? error.message : String(error)}`,
+  );
+  console.warn(`Comprobantes sin foja derivados por diferencia: ${unassignedDeliveryDocuments.length}`);
+}
+
+await client.login();
 const invoiceDetails = await fetchDocumentDetails(
   'Detalle de facturas',
   '/api/Ventas/Comprobantes/Facturas/GetItem?incluirDetalleDeVenta=S',
@@ -342,6 +389,7 @@ const capture: GesiRawCapture = {
     sptFetchFrom: salesHistoryFrom,
     salesDetailFrom,
     sptSalesDetailFrom: sptDetailCoverageFrom,
+    logisticsFrom,
     historyUntil,
     optionalEndpointWarnings,
   },
@@ -356,6 +404,8 @@ const capture: GesiRawCapture = {
   sptCreditNotes,
   collections,
   pendingDocuments,
+  deliverySheets,
+  unassignedDeliveryDocuments,
   masters: {
     channels, paymentMethods, sellers, rubros, subRubros,
     productBrands, productLines, productFamilies, productGroups,
@@ -395,5 +445,7 @@ console.log(JSON.stringify({
   sptCreditNotesWithDetail: creditNoteDetails.length,
   collections365d: collections.length,
   pendingDocuments: pendingDocuments.length,
+  deliverySheets: deliverySheets.length,
+  unassignedDeliveryDocuments: unassignedDeliveryDocuments.length,
   warnings: optionalEndpointWarnings,
 }, null, 2));

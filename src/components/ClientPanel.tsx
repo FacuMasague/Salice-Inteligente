@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Maximize2, Package, Phone, Route, Save, Sparkles, TrendingDown, TrendingUp, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, Check, ChevronRight, CircleDollarSign, ClipboardCheck, Clock3, Mail, MapPin, Maximize2, Package, Phone, Route, Save, Sparkles, Trash2, TrendingDown, TrendingUp, Truck, WalletCards, X } from 'lucide-react';
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
-import type { Client, CommercialActivity, PaymentPromise, Product, ReceivableCaseEvent, Recommendation } from '../../shared/models';
+import type { Client, CommercialActivity, LogisticsSnapshot, PaymentPromise, Product, ReceivableCaseEvent, Recommendation } from '../../shared/models';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { invoiceDeliveryDisplay } from '../lib/delivery-status';
 import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
 import { partitionClientActivities } from '../lib/commercial-activities';
 
@@ -12,6 +13,7 @@ const invoiceLabel = { paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', 
 interface ClientPanelProps {
   client: Client;
   products: Product[];
+  logistics: LogisticsSnapshot;
   onClose: () => void;
   onPlanRoute: (clientId: number) => void;
   onNoteSaved: (clientId: number, note: string) => void;
@@ -50,7 +52,7 @@ function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapsho
   </section>;
 }
 
-export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct, onOpenBrand, onOpenInvoice }: ClientPanelProps) {
+export function ClientPanel({ client, products, logistics, onClose, onPlanRoute, onNoteSaved, mode = 'compact', snapshotDate = new Date().toISOString(), onExpand, onOpenSeller, onOpenProduct, onOpenBrand, onOpenInvoice }: ClientPanelProps) {
   const [tab, setTab] = useState<'summary' | 'purchases' | 'account' | 'operations'>('summary');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
@@ -62,6 +64,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const [activities, setActivities] = useState<CommercialActivity[]>([]);
   const [promises, setPromises] = useState<PaymentPromise[]>([]);
   const [receivableEvents, setReceivableEvents] = useState<ReceivableCaseEvent[]>([]);
+  const [deletingOpportunityId, setDeletingOpportunityId] = useState('');
+  const [opportunityDeleteError, setOpportunityDeleteError] = useState('');
 
   useEffect(() => {
     setTab('summary');
@@ -72,6 +76,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
     setActivities([]);
     setPromises([]);
     setReceivableEvents([]);
+    setDeletingOpportunityId('');
+    setOpportunityDeleteError('');
     const controller = new AbortController();
     fetch(`/api/clients/${client.id}/operations`, { signal: controller.signal })
       .then((response) => response.json())
@@ -128,6 +134,21 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
   const openInvoices = client.invoices.filter((invoice) => invoice.outstanding > 0);
   const activeReceivableEvents = receivableEvents.filter((event) => !event.deletedAt && event.eventType !== 'status');
   const { opportunities: opportunityActivities, general: generalActivities } = partitionClientActivities(activities);
+  const deleteOpportunityNote = async (activity: CommercialActivity) => {
+    if (!window.confirm('¿Eliminar esta nota de oportunidad? La recomendación y una eventual lista guardada se conservarán.')) return;
+    setDeletingOpportunityId(activity.id);
+    setOpportunityDeleteError('');
+    try {
+      const response = await fetch(`/api/clients/${client.id}/opportunity-notes/${encodeURIComponent(activity.id)}`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo eliminar la nota.');
+      setActivities((current) => current.filter((item) => item.id !== activity.id));
+    } catch (error) {
+      setOpportunityDeleteError(error instanceof Error ? error.message : 'No se pudo eliminar la nota.');
+    } finally {
+      setDeletingOpportunityId('');
+    }
+  };
 
   return (
     <aside className={`client-panel ${mode === 'full' ? 'client-profile' : 'client-panel-compact'}`} data-tour="client-panel" aria-label={`Ficha de ${clientPrimaryName(client)}`}>
@@ -269,21 +290,24 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
             </section>
             <section className="panel-section">
               <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14} /> Comprobantes</span><h3>Historial de cuenta</h3></div></div>
+              <p className="invoice-logistics-note"><Truck size={14} /><span>Estado según las fojas capturadas de GESI. <strong>Una foja cerrada no confirma que la mercadería haya sido entregada.</strong></span></p>
               <div className="invoice-list">
                 {!client.invoices.length && <p className="section-description">No hay comprobantes pendientes ni pagos conciliados en la ventana analizada.</p>}
-                {client.invoices.map((invoice) => (
-                  <button className="invoice-row" key={invoice.id} onClick={() => onOpenInvoice?.(invoice.id)} disabled={!onOpenInvoice}>
+                {client.invoices.map((invoice) => {
+                  const delivery = invoiceDeliveryDisplay(invoice.id, invoice.issuedAt, logistics);
+                  return <button className="invoice-row" key={invoice.id} onClick={() => onOpenInvoice?.(invoice.id)} disabled={!onOpenInvoice}>
                     <div className={`invoice-status-dot ${invoice.status}`} />
                     <div className="invoice-copy">
                       <strong>{invoice.number}</strong>
                       <span>Emitida {compactDate(invoice.issuedAt)} · vence {compactDate(invoice.dueAt)}{invoice.creditTermDays != null ? ` · plazo ${invoice.creditTermDays} d` : ''}</span>
                       <small>{invoice.paymentMethod || 'Sin forma de pago informada'}</small>
+                      <small className="invoice-delivery-line" title={delivery.sheetId ? 'Abrir el comprobante y consultar la foja' : undefined}><Truck size={12} /><span className={`invoice-delivery-badge ${delivery.status} ${delivery.sheetId ? 'linked' : ''}`}>{delivery.label}{delivery.sheetId && <ChevronRight size={10} />}</span></small>
                       {invoice.paidAt && <small><Check size={12} /> Pagada {compactDate(invoice.paidAt)}</small>}
                     </div>
                     <div className="invoice-amount"><strong>{money(invoice.outstanding > 0 ? invoice.outstanding : invoice.amount)}</strong><span className={`status-text ${invoice.status}`}>{invoiceLabel[invoice.status]}{invoice.outstanding > 0 && invoice.outstanding !== invoice.amount ? ' · saldo' : ''}</span></div>
                     <ChevronRight size={15} />
-                  </button>
-                ))}
+                  </button>;
+                })}
               </div>
             </section>
             <div className="payment-behavior">
@@ -304,7 +328,8 @@ export function ClientPanel({ client, products, onClose, onPlanRoute, onNoteSave
             <section className="panel-section first">
               <div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Productos vinculados</span><h3>Oportunidades</h3></div><span className="count-badge">{opportunityActivities.length}</span></div>
               {!opportunityActivities.length && <p className="section-description">Todavía no hay notas vinculadas a oportunidades de productos.</p>}
-              <div className="panel-operation-list opportunity-activity-list">{opportunityActivities.map((activity) => <article key={activity.id}><span>Nota</span><div><strong>{activity.note || 'Oportunidad documentada por la oficina'}</strong><small>{longDate(activity.occurredAt)}</small><div className="opportunity-activity-products">{activity.productIds.map((productId) => { const product = products.find((item) => item.id === productId); return product ? <button className="entity-link product-entity-link" key={productId} onClick={() => onOpenProduct?.(product)}><Package size={13} />{product.name}<ChevronRight size={12} /></button> : <span key={productId}>Producto {productId} no disponible</span>; })}</div></div></article>)}</div>
+              {opportunityDeleteError && <p className="form-error">{opportunityDeleteError}</p>}
+              <div className="panel-operation-list opportunity-activity-list">{opportunityActivities.map((activity) => <article key={activity.id}><span>Nota</span><div><strong>{activity.note || 'Oportunidad documentada por la oficina'}</strong><small>{longDate(activity.occurredAt)}</small><div className="opportunity-activity-products">{activity.productIds.map((productId) => { const product = products.find((item) => item.id === productId); return product ? <button className="entity-link product-entity-link" key={productId} onClick={() => onOpenProduct?.(product)}><Package size={13} />{product.name}<ChevronRight size={12} /></button> : <span key={productId}>Producto {productId} no disponible</span>; })}</div></div><button className="icon-button opportunity-delete-button" disabled={deletingOpportunityId === activity.id} onClick={() => deleteOpportunityNote(activity)} aria-label="Eliminar nota de oportunidad" title="Eliminar nota"><Trash2 size={15} /></button></article>)}</div>
             </section>
             <section className="panel-section first">
               <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Registro local</span><h3>Notas sobre hechos externos</h3></div><span className="count-badge">{generalActivities.length}</span></div>

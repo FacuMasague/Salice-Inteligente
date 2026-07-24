@@ -1,132 +1,250 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Check, Clock3, MapPin, Navigation, Route, Sparkles, Truck } from 'lucide-react';
-import { distanceKm } from '../../shared/algorithms';
-import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
-import type { Client, RoutePlan } from '../../shared/models';
-import { matchesMultiFilter } from '../../shared/multi-filter';
+import {
+  AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp,
+  Clock3, FileText, FolderOpen, MapPin, Navigation, Route, Search, Sparkles, Truck,
+} from 'lucide-react';
+import { groupDeliveryInvoices } from '../../shared/algorithms';
+import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
-import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
-import { minutesAsTime, money } from '../lib/format';
-import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText } from '../lib/delivery-status';
+import { compactDate, minutesAsTime, money, number } from '../lib/format';
+import { clientPrimaryName } from '../lib/client-name';
 
-const initialRouteIDs = (clients: Client[]) => {
-  const ranked = clients
-    .filter((client): client is Client & { coordinates: [number, number] } => client.active && client.coordinates !== null)
-    .sort((a, b) => b.visitPriority - a.visitPriority);
-  const anchor = ranked[0];
-  if (!anchor) return [];
-  const sameLocality = ranked.filter((client) => client.locality === anchor.locality);
-  const nearby = ranked.filter((client) => client.locality !== anchor.locality && distanceKm(anchor.coordinates, client.coordinates) <= 35);
-  const ordered = [...sameLocality, ...nearby];
-  return ordered.slice(0, 5).map((client) => client.id);
+const statusOptions = [
+  { value: 'all', label: 'Todos los estados' },
+  { value: 'unassigned', label: 'Sin asignar' },
+  { value: 'open_sheet', label: 'Foja abierta' },
+  { value: 'closed_sheet', label: 'Foja cerrada' },
+  { value: 'unknown', label: 'Sin confirmar' },
+];
+
+const addDays = (date: string, days: number) => {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 };
 
-export function RoutesView({ clients, initialClientId, onOpenClient, onOpenSeller }: { clients: Client[]; initialClientId: number | null; onOpenClient: (client: Client) => void; onOpenSeller: (seller: string) => void }) {
-  const routableClients = useMemo(() => clients.filter((client) => client.active && client.coordinates !== null), [clients]);
-  const sellers = useMemo(() => [...new Set(routableClients.map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')), [routableClients]);
-  const [seller, setSeller] = useState(() => {
-    const requested = clients.find((client) => client.id === initialClientId && client.active && client.coordinates !== null);
-    if (requested) return requested.seller;
-    return [...routableClients].sort((a, b) => b.visitPriority - a.visitPriority)[0]?.seller || '';
-  });
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => {
-    const requested = clients.find((client) => client.id === initialClientId && client.active && client.coordinates !== null);
-    const activeRoutable = clients.filter((client) => client.active && client.coordinates !== null);
-    const initialSeller = requested?.seller || [...activeRoutable].sort((a, b) => b.visitPriority - a.visitPriority)[0]?.seller;
-    const pool = initialSeller ? activeRoutable.filter((client) => client.seller === initialSeller) : activeRoutable;
-    const selected = new Set(initialRouteIDs(pool));
-    if (requested) selected.add(requested.id);
-    return selected;
-  });
+export function RoutesView({
+  clients,
+  logistics,
+  initialClientId,
+  onOpenClient,
+  onOpenInvoice,
+  onOpenSheet,
+}: {
+  clients: Client[];
+  logistics: LogisticsSnapshot;
+  initialClientId: number | null;
+  onOpenClient: (client: Client) => void;
+  onOpenInvoice: (invoiceId: string) => void;
+  onOpenSheet: (sheetId: number) => void;
+}) {
+  const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
+  const coverageFrom = logistics.coverageFrom.slice(0, 10);
+  const coverageThrough = logistics.coverageThrough.slice(0, 10);
+  const defaultFrom = addDays(coverageThrough, -7);
+  const [from, setFrom] = useState(defaultFrom < coverageFrom ? coverageFrom : defaultFrom);
+  const [through, setThrough] = useState(coverageThrough);
+  const [status, setStatus] = useState('all');
+  const [locality, setLocality] = useState('');
+  const [query, setQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [manualOrder, setManualOrder] = useState<number[]>([]);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [loading, setLoading] = useState(false);
-  const [visitMinutes, setVisitMinutes] = useState(25);
+  const [routeError, setRouteError] = useState('');
+  const [stopMinutes, setStopMinutes] = useState(15);
   const [maxWorkMinutes, setMaxWorkMinutes] = useState(480);
+  const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
+  const [sheetLookup, setSheetLookup] = useState('');
+  const sortedSheets = useMemo(() => [...logistics.sheets].sort((a, b) => b.id - a.id), [logistics.sheets]);
+
+  const localities = useMemo(() => [...new Set(logistics.invoices.map((invoice) => invoice.locality).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es')), [logistics.invoices]);
+  const filteredInvoices = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('es');
+    return logistics.invoices.filter((invoice) => {
+      const client = clientById.get(invoice.clientId);
+      return invoice.issuedAt >= from
+        && invoice.issuedAt <= through
+        && (status === 'all' || invoice.assignmentStatus === status)
+        && (!locality || locality.split('|').includes(invoice.locality))
+        && (!normalizedQuery || `${invoice.number} ${invoice.deliveryAddress} ${invoice.locality} ${client?.name ?? ''} ${client?.tradeName ?? ''}`
+          .toLocaleLowerCase('es').includes(normalizedQuery));
+    });
+  }, [clientById, from, locality, logistics.invoices, query, status, through]);
+  const stops = useMemo(() => groupDeliveryInvoices(filteredInvoices, clients), [clients, filteredInvoices]);
+  const stopByClient = useMemo(() => new Map(stops.map((stop) => [stop.clientId, stop])), [stops]);
+  const selectedStops = manualOrder.map((id) => stopByClient.get(id)).filter((stop): stop is NonNullable<typeof stop> => Boolean(stop));
+  const selectedInvoices = selectedStops.flatMap((stop) => stop.invoices);
+
+  useEffect(() => {
+    setSelectedIds((current) => new Set([...current].filter((id) => stopByClient.has(id))));
+    setManualOrder((current) => current.filter((id) => stopByClient.has(id)));
+    setPlan(null);
+  }, [stopByClient]);
+
   useEffect(() => {
     if (!initialClientId) return;
-    const requested = routableClients.find((client) => client.id === initialClientId);
-    if (!requested) return;
-    const pool = routableClients.filter((client) => client.seller === requested.seller);
-    const selected = new Set(initialRouteIDs(pool));
-    selected.add(requested.id);
-    setSeller(requested.seller);
-    setSelectedIds(selected);
+    const target = stops.find((stop) => stop.clientId === initialClientId && stop.coordinates);
+    if (!target) return;
+    setSelectedIds(new Set([target.clientId]));
+    setManualOrder([target.clientId]);
+    setExpandedClients(new Set([target.clientId]));
     setPlan(null);
-  }, [initialClientId, routableClients]);
-  const orderedClients = useMemo(
-    () => routableClients.filter((client) => matchesMultiFilter(client.seller, seller)).sort((a, b) => b.visitPriority - a.visitPriority),
-    [routableClients, seller],
-  );
-  const selectedSales = clients.filter((client) => selectedIds.has(client.id)).reduce((sum, client) => sum + client.sales90d, 0);
-  const savedFilters = { seller, selectedClientIds: [...selectedIds].join(','), visitMinutes: String(visitMinutes), maxWorkMinutes: String(maxWorkMinutes) };
-  const applySaved = (saved: Record<string, string>) => {
-    const nextSeller = saved.seller || '';
-    const validIds = new Set((saved.selectedClientIds || '').split(',').map(Number).filter((id) => routableClients.some((client) => client.id === id)));
-    setSeller(nextSeller);
-    setSelectedIds(validIds);
-    setVisitMinutes([15, 25, 35, 45].includes(Number(saved.visitMinutes)) ? Number(saved.visitMinutes) : 25);
-    setMaxWorkMinutes([360, 420, 480, 540].includes(Number(saved.maxWorkMinutes)) ? Number(saved.maxWorkMinutes) : 480);
-    setPlan(null);
-  };
+  }, [initialClientId, stops]);
 
-  const changeSeller = (nextSeller: string) => {
-    const pool = routableClients.filter((client) => matchesMultiFilter(client.seller, nextSeller));
-    setSeller(nextSeller);
-    setSelectedIds(new Set(initialRouteIDs(pool)));
-    setPlan(null);
-  };
-
-  const toggle = (id: number) => {
+  const toggle = (clientId: number) => {
+    const stop = stopByClient.get(clientId);
+    if (!stop?.coordinates) return;
     setPlan(null);
     setSelectedIds((current) => {
       const next = new Set(current);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(clientId)) {
+        next.delete(clientId);
+        setManualOrder((order) => order.filter((id) => id !== clientId));
+      } else {
+        next.add(clientId);
+        setManualOrder((order) => [...order, clientId]);
+      }
       return next;
     });
   };
-  const optimize = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/routes/optimize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientIds: [...selectedIds], visitMinutes, maxWorkMinutes }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error);
-      setPlan(payload);
-    } finally { setLoading(false); }
+
+  const move = (clientId: number, direction: -1 | 1) => {
+    setPlan(null);
+    setManualOrder((current) => {
+      const index = current.indexOf(clientId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
+  const estimate = async (mode: 'manual' | 'suggested') => {
+    setLoading(true);
+    setRouteError('');
+    try {
+      const response = await fetch('/api/routes/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientIds: manualOrder,
+          invoiceIds: selectedInvoices.map((invoice) => invoice.id),
+          stopMinutes,
+          maxWorkMinutes,
+          mode,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo calcular el recorrido.');
+      setPlan(payload);
+      if (mode === 'suggested') setManualOrder(payload.stops.map((stop: RoutePlan['stops'][number]) => stop.clientId));
+    } catch (error) {
+      setRouteError(error instanceof Error ? error.message : 'No se pudo calcular el recorrido.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const counts = Object.fromEntries((['unassigned', 'open_sheet', 'closed_sheet', 'unknown'] as DeliveryAssignmentStatus[])
+    .map((key) => [key, filteredInvoices.filter((invoice) => invoice.assignmentStatus === key).length])) as Record<DeliveryAssignmentStatus, number>;
+
   return (
-    <div className="page-view routes-layout">
-      <section className="data-card route-picker" data-tour="route-picker">
-        <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Planificador</span><h2>Visitas sugeridas</h2></div><div className="route-picker-actions"><MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={changeSeller} /><span className="count-badge">{selectedIds.size} elegidas</span></div></div>
-        <p className="section-description">{orderedClients.length} clientes geolocalizados · P visita combina 58% riesgo de cobranza y 42% oportunidad comercial.</p>
-        <div className="route-constraints"><SingleSelectFilter label="Duración por visita" value={visitMinutes} options={[{ value: 15, label: '15 min' }, { value: 25, label: '25 min' }, { value: 35, label: '35 min' }, { value: 45, label: '45 min' }]} onChange={(value) => { setVisitMinutes(Number(value)); setPlan(null); }} /><SingleSelectFilter label="Jornada máxima" value={maxWorkMinutes} options={[{ value: 360, label: '6 horas' }, { value: 420, label: '7 horas' }, { value: 480, label: '8 horas' }, { value: 540, label: '9 horas' }]} onChange={(value) => { setMaxWorkMinutes(Number(value)); setPlan(null); }} /></div>
-        <SavedViewsBar viewKey="routes" filters={savedFilters} onApply={applySaved} />
-        <div className="route-client-list">
-          {orderedClients.map((client) => <article className={`route-client ${selectedIds.has(client.id) ? 'selected' : ''}`} key={client.id}>
-            <button className="route-check-button" onClick={() => toggle(client.id)} aria-label={`${selectedIds.has(client.id) ? 'Quitar' : 'Agregar'} ${clientPrimaryName(client)} de la ruta`}><span className="route-check">{selectedIds.has(client.id) && <Check size={14} />}</span></button>
-            <button className="route-client-identity" onClick={() => onOpenClient(client)}><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) && <>{clientSecondaryName(client)} · </>}<MapPin size={12} /> {client.locality}</span></button>
-            <button className="entity-link route-seller-link" onClick={() => onOpenSeller(client.seller)}>{client.seller}</button>
-            <div className="route-priority"><strong>P{client.visitPriority}</strong><span>C{client.collectionRisk}{isCommercialOpportunityEligible(client) ? ` · O${client.commercialOpportunity}` : ''}</span></div>
-          </article>)}
+    <div className="page-view delivery-routes-page">
+      <section className="data-card delivery-route-header" data-tour="route-picker">
+        <div>
+          <span className="section-kicker"><Truck size={15} /> Repartos desde GESI · sólo lectura</span>
+          <h2>Facturas y fojas de reparto</h2>
+          <p>Una foja cerrada confirma el cierre de la carga en GESI; no demuestra que el cliente haya recibido la mercadería.</p>
         </div>
-        <div className="route-picker-footer"><div><span>Venta 90d seleccionada</span><strong>{money(selectedSales, true)}</strong></div><button className="button primary large" disabled={!selectedIds.size || loading} onClick={optimize}><Sparkles size={17} /> {loading ? 'Optimizando…' : 'Optimizar recorrido'}</button></div>
-      </section>
-      <section className="route-result">
-        {!plan ? <div className="route-empty"><div className="empty-route-icon"><Route size={38} /></div><h2>Armá la jornada del vendedor</h2><p>Elegí clientes del mismo corredor y generá una estimación. Se aplica un factor vial sobre la distancia geográfica, duración por visita y límite de jornada.</p><div className="algorithm-explainer"><Sparkles size={16} /><span><strong>Estimación explicable</strong> · validar caminos y horarios antes de salir</span></div></div> : <>
-          <article className="route-overview data-card">
-            <div><span className="section-kicker"><Navigation size={14} /> Ruta estimada</span><h2>Jornada de {plan.stops.length} visitas</h2><p>Salida desde {plan.depot.address} · 09:00 · {plan.feasible ? 'dentro del límite configurado' : 'requiere ajustes'}</p></div>
-            <div className="route-totals"><span><Truck size={17} /><strong>{plan.totalKm} km</strong><small>recorrido</small></span><span><Clock3 size={17} /><strong>{Math.floor(plan.totalMinutes / 60)} h {plan.totalMinutes % 60} min</strong><small>con visitas</small></span></div>
-          </article>
-          {!!plan.warnings.length && <div className="route-warnings">{plan.warnings.map((warning) => <p key={warning}><Clock3 size={15} /> {warning}</p>)}</div>}
-          <div className="route-timeline">
-            <div className="depot-stop"><span><Truck size={16} /></span><div><strong>{plan.depot.name}</strong><small>{plan.depot.address}, {plan.depot.locality} · salida 09:00</small></div></div>
-            {plan.stops.map((stop) => { const client = clients.find((item) => item.id === stop.clientId); const destination = client?.coordinates?.join(','); const visibleName = client ? clientPrimaryName(client) : stop.clientName; return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km estimados desde la parada anterior</span><h3>{visibleName}</h3><p>{client && clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{stop.locality} · prioridad P{stop.priority}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${visibleName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>; })}
-            <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso a {plan.depot.address}</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
+        <div className="delivery-header-actions">
+          <div className="delivery-coverage"><span>Cobertura</span><strong>{compactDate(coverageFrom)}–{compactDate(coverageThrough)}</strong><small>{number(logistics.sheets.length)} fojas leídas</small></div>
+          <div className="delivery-sheet-lookup">
+            <label><span>ABRIR FOJA</span><select value={sheetLookup} onChange={(event) => setSheetLookup(event.target.value)}>
+              <option value="">Elegir número…</option>
+              {sortedSheets.map((sheet) => <option value={sheet.id} key={sheet.id}>Foja {sheet.id} · {sheet.status === 'closed' ? 'cerrada' : 'abierta'}</option>)}
+            </select></label>
+            <button className="button secondary" disabled={!sheetLookup} onClick={() => onOpenSheet(Number(sheetLookup))}><FolderOpen size={15} /> Abrir</button>
           </div>
-          <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.visitMinutes} min por visita y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito ni ventanas del cliente.</p>
-        </>}
+        </div>
       </section>
+
+      <section className="delivery-route-kpis">
+        <article><FileText size={18} /><div><span>Facturas visibles</span><strong>{number(filteredInvoices.length)}</strong></div></article>
+        <article className="unassigned"><AlertTriangle size={18} /><div><span>Sin asignar</span><strong>{number(counts.unassigned)}</strong></div></article>
+        <article className="open"><Truck size={18} /><div><span>En foja abierta</span><strong>{number(counts.open_sheet)}</strong></div></article>
+        <article className="closed"><Check size={18} /><div><span>En foja cerrada</span><strong>{number(counts.closed_sheet)}</strong></div></article>
+      </section>
+
+      <section className="data-card delivery-route-filters">
+        <label><span>FACTURADA DESDE</span><input type="date" min={coverageFrom} max={through} value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+        <label><span>HASTA</span><input type="date" min={from} max={coverageThrough} value={through} onChange={(event) => setThrough(event.target.value)} /></label>
+        <SingleSelectFilter label="Estado de reparto" value={status} options={statusOptions} onChange={setStatus} />
+        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
+        <label className="delivery-route-search"><span>BUSCAR</span><div><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, factura o domicilio" /></div></label>
+      </section>
+
+      <div className="delivery-route-workspace">
+        <section className="data-card delivery-stop-picker">
+          <header><div><span className="section-kicker"><MapPin size={14} /> Paradas agrupadas</span><h2>Clientes a incluir</h2><p>Varias facturas del mismo cliente forman una sola parada.</p></div><span className="count-badge">{selectedIds.size} elegidas</span></header>
+          <div className="delivery-stop-list">
+            {stops.map((stop) => {
+              const client = clientById.get(stop.clientId);
+              const selected = selectedIds.has(stop.clientId);
+              const expanded = expandedClients.has(stop.clientId);
+              const missingRouteData = !stop.coordinates;
+              return <article className={`delivery-stop-row ${selected ? 'selected' : ''} ${missingRouteData ? 'unroutable' : ''}`} key={stop.clientId}>
+                <button className="route-check-button" disabled={missingRouteData} onClick={() => toggle(stop.clientId)} aria-label={`${selected ? 'Quitar' : 'Agregar'} parada`}>
+                  <span className="route-check">{selected && <Check size={14} />}</span>
+                </button>
+                <div className="delivery-stop-main">
+                  <button className="delivery-client-link" disabled={!client} onClick={() => client && onOpenClient(client)}><strong>{client ? clientPrimaryName(client) : stop.clientName}</strong></button>
+                  <span><MapPin size={12} /> {stop.address} · {stop.locality}</span>
+                  {missingRouteData && <small className="delivery-data-warning"><AlertTriangle size={12} /> Dirección sin coordenadas: visible, pero no se puede estimar la ruta.</small>}
+                  <div className="delivery-stop-statuses">{[...new Set(stop.invoices.map((invoice) => invoice.assignmentStatus))].map((value) => <em className={value} key={value}>{DELIVERY_ASSIGNMENT_LABELS[value]}</em>)}</div>
+                </div>
+                <div className="delivery-stop-summary"><strong>{stop.invoices.length} {stop.invoices.length === 1 ? 'factura' : 'facturas'}</strong><span>{money(stop.amount, true)}</span><button className="icon-button" onClick={() => setExpandedClients((current) => { const next = new Set(current); next.has(stop.clientId) ? next.delete(stop.clientId) : next.add(stop.clientId); return next; })} aria-label="Ver facturas">{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
+                {expanded && <div className="delivery-invoice-list">{stop.invoices.map((invoice) => <button key={invoice.id} onClick={() => onOpenInvoice(invoice.id)}>
+                  <span><strong>{invoice.number}</strong><small>Facturada {compactDate(invoice.issuedAt)} · envío sugerido {compactDate(invoice.suggestedDeliveryAt)}</small></span>
+                  <span><em className={invoice.assignmentStatus}>{deliveryAssignmentText(invoice.assignmentStatus, invoice.sheet?.id)}</em>{invoice.sheet?.driver && <small>{invoice.sheet.driver}</small>}</span>
+                  <strong>{money(invoice.amount, true)}</strong>
+                </button>)}</div>}
+              </article>;
+            })}
+            {!stops.length && <div className="delivery-route-empty"><Search size={22} /><span>No hay facturas que coincidan con los filtros elegidos.</span></div>}
+          </div>
+        </section>
+
+        <section className="delivery-route-planner">
+          <div className="data-card delivery-order-card">
+            <header><div><span className="section-kicker"><Route size={14} /> Orden del reparto</span><h2>Secuencia de paradas</h2><p>Podés ordenar manualmente o pedir una secuencia estimada.</p></div></header>
+            <div className="delivery-order-list">{selectedStops.map((stop, index) => <article key={stop.clientId}><span>{index + 1}</span><div><strong>{stop.clientName}</strong><small>{stop.invoices.length} factura(s) · {stop.locality}</small></div><button disabled={index === 0} onClick={() => move(stop.clientId, -1)} aria-label="Subir parada"><ArrowUp size={14} /></button><button disabled={index === selectedStops.length - 1} onClick={() => move(stop.clientId, 1)} aria-label="Bajar parada"><ArrowDown size={14} /></button></article>)}</div>
+            {!selectedStops.length && <div className="delivery-order-empty">Elegí clientes con coordenadas para armar el recorrido.</div>}
+            <div className="delivery-route-constraints"><SingleSelectFilter label="Tiempo por parada" value={stopMinutes} options={[{ value: 10, label: '10 min' }, { value: 15, label: '15 min' }, { value: 20, label: '20 min' }, { value: 30, label: '30 min' }]} onChange={(value) => { setStopMinutes(Number(value)); setPlan(null); }} /><SingleSelectFilter label="Jornada máxima" value={maxWorkMinutes} options={[{ value: 360, label: '6 horas' }, { value: 420, label: '7 horas' }, { value: 480, label: '8 horas' }, { value: 540, label: '9 horas' }]} onChange={(value) => { setMaxWorkMinutes(Number(value)); setPlan(null); }} /></div>
+            {routeError && <p className="form-error">{routeError}</p>}
+            <div className="delivery-route-actions"><button className="button ghost" disabled={!selectedStops.length || loading} onClick={() => estimate('manual')}><Route size={16} /> Estimar en este orden</button><button className="button primary" disabled={!selectedStops.length || loading} onClick={() => estimate('suggested')}><Sparkles size={16} /> {loading ? 'Calculando…' : 'Sugerir secuencia'}</button></div>
+          </div>
+
+          {!plan ? <div className="data-card route-empty delivery-plan-empty"><Route size={34} /><h2>Recorrido todavía sin estimar</h2><p>La fecha “envío sugerido” aplica la generalización de oficina: día siguiente y, para facturas del viernes, lunes. No es un compromiso ni una confirmación de entrega.</p></div> : <div className="delivery-route-result">
+            <article className="data-card route-overview"><div><span className="section-kicker"><Navigation size={14} /> Recorrido estimado</span><h2>{plan.stops.length} paradas · {selectedInvoices.length} facturas</h2><p>Salida y regreso a {plan.depot.address}. No representa el recorrido realmente realizado.</p></div><div className="route-totals"><span><Truck size={17} /><strong>{plan.totalKm} km</strong><small>estimados</small></span><span><Clock3 size={17} /><strong>{Math.floor(plan.totalMinutes / 60)} h {plan.totalMinutes % 60} min</strong><small>con paradas</small></span></div></article>
+            {!!plan.warnings.length && <div className="route-warnings">{plan.warnings.map((warning) => <p key={warning}><AlertTriangle size={15} /> {warning}</p>)}</div>}
+            <div className="route-timeline">
+              <div className="depot-stop"><span><Truck size={16} /></span><div><strong>{plan.depot.name}</strong><small>{plan.depot.address} · salida 09:00</small></div></div>
+              {plan.stops.map((stop) => {
+                const client = clientById.get(stop.clientId);
+                const destination = client?.coordinates?.join(',');
+                return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km desde la parada anterior</span><h3>{stop.clientName}</h3><p>{stop.address} · {stop.locality} · {stop.invoiceCount} factura(s) · {money(stop.amount, true)}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${stop.clientName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>;
+              })}
+              <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso al depósito</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
+            </div>
+            <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.stopMinutes} min por parada y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito, capacidad, ventanas horarias ni prueba de entrega.</p>
+          </div>}
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,12 @@
-import { SALICE_DEPOT, type Client, type Product, type Recommendation, type RoutePlan, type VectorKey } from './models.js';
+import {
+  SALICE_DEPOT,
+  type Client,
+  type DeliveryInvoice,
+  type Product,
+  type Recommendation,
+  type RoutePlan,
+  type VectorKey,
+} from './models.js';
 import { VECTOR_KEYS } from './product-vectors.js';
 import { buildCommercialOpportunities } from './commercial-opportunities.js';
 
@@ -27,20 +35,60 @@ export function distanceKm(a: [number, number], b: [number, number]) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-export interface RouteOptions {
-  visitMinutes?: number;
-  maxWorkMinutes?: number;
-  roadFactor?: number;
+export interface DeliveryStopCandidate {
+  clientId: number;
+  clientName: string;
+  address: string;
+  locality: string;
+  coordinates: [number, number] | null;
+  invoices: DeliveryInvoice[];
+  amount: number;
 }
 
-export function optimizeRoute(selectedIds: number[], clients: Client[], options: RouteOptions = {}): RoutePlan {
+export function groupDeliveryInvoices(invoices: DeliveryInvoice[], clients: Client[]): DeliveryStopCandidate[] {
+  const clientById = new Map(clients.map((client) => [client.id, client]));
+  const groups = new Map<number, DeliveryInvoice[]>();
+  for (const invoice of invoices) groups.set(invoice.clientId, [...(groups.get(invoice.clientId) ?? []), invoice]);
+  return [...groups.entries()].map(([clientId, groupedInvoices]) => {
+    const client = clientById.get(clientId);
+    const preferredAddress = groupedInvoices.map((invoice) => invoice.deliveryAddress).find(Boolean) || client?.address || '';
+    const preferredLocality = groupedInvoices.map((invoice) => invoice.locality).find(Boolean) || client?.locality || 'Sin localidad';
+    return {
+      clientId,
+      clientName: client?.tradeName || client?.name || `Cliente ${clientId}`,
+      address: preferredAddress || 'Sin domicilio informado',
+      locality: preferredLocality,
+      coordinates: client?.coordinates ?? null,
+      invoices: [...groupedInvoices].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt) || a.number.localeCompare(b.number)),
+      amount: Math.round(groupedInvoices.reduce((sum, invoice) => sum + invoice.amount, 0) * 100) / 100,
+    };
+  }).sort((a, b) => a.locality.localeCompare(b.locality, 'es') || a.clientName.localeCompare(b.clientName, 'es'));
+}
+
+export interface RouteOptions {
+  stopMinutes?: number;
+  maxWorkMinutes?: number;
+  roadFactor?: number;
+  mode?: 'suggested' | 'manual';
+}
+
+export function optimizeDeliveryRoute(
+  orderedClientIds: number[],
+  invoices: DeliveryInvoice[],
+  clients: Client[],
+  options: RouteOptions = {},
+): RoutePlan {
   const depot = SALICE_DEPOT.coordinates;
-  const visitMinutes = Math.max(10, Math.min(90, Math.round(options.visitMinutes ?? 25)));
+  const stopMinutes = Math.max(5, Math.min(120, Math.round(options.stopMinutes ?? 15)));
   const maxWorkMinutes = Math.max(120, Math.min(720, Math.round(options.maxWorkMinutes ?? 480)));
   const roadFactor = Math.max(1, Math.min(1.8, options.roadFactor ?? 1.25));
-  const remaining = clients.filter((client): client is Client & { coordinates: [number, number] } => (
-    client.active && selectedIds.includes(client.id) && client.coordinates !== null
-  ));
+  const selected = new Set(orderedClientIds);
+  const grouped = groupDeliveryInvoices(invoices, clients)
+    .filter((stop): stop is DeliveryStopCandidate & { coordinates: [number, number] } => selected.has(stop.clientId) && stop.coordinates !== null);
+  const byClient = new Map(grouped.map((stop) => [stop.clientId, stop]));
+  const remaining = options.mode === 'manual'
+    ? orderedClientIds.map((id) => byClient.get(id)).filter((stop): stop is DeliveryStopCandidate & { coordinates: [number, number] } => Boolean(stop))
+    : [...grouped];
   const stops: RoutePlan['stops'] = [];
   let current = depot;
   let totalKm = 0;
@@ -53,31 +101,27 @@ export function optimizeRoute(selectedIds: number[], clients: Client[], options:
   };
 
   while (remaining.length) {
-    const candidates = remaining.map((client) => ({
-      client,
-      distance: estimatedLeg(current, client.coordinates),
-    }));
-    candidates.sort((a, b) => {
-      const scoreA = a.distance - a.client.visitPriority * 0.045;
-      const scoreB = b.distance - b.client.visitPriority * 0.045;
-      return scoreA - scoreB;
-    });
+    const candidates = remaining.map((stop) => ({ stop, distance: estimatedLeg(current, stop.coordinates) }));
+    if (options.mode !== 'manual') candidates.sort((a, b) => a.distance - b.distance || a.stop.clientName.localeCompare(b.stop.clientName, 'es'));
     const next = candidates[0];
     const travelMinutes = travelTime(next.distance);
     totalKm += next.distance;
     elapsed += travelMinutes;
     stops.push({
       order: stops.length + 1,
-      clientId: next.client.id,
-      clientName: next.client.name,
-      locality: next.client.locality,
+      clientId: next.stop.clientId,
+      clientName: next.stop.clientName,
+      address: next.stop.address,
+      locality: next.stop.locality,
       distanceKm: Number(next.distance.toFixed(1)),
       etaMinutes: elapsed,
-      priority: next.client.visitPriority,
+      invoiceCount: next.stop.invoices.length,
+      invoiceIds: next.stop.invoices.map((invoice) => invoice.id),
+      amount: next.stop.amount,
     });
-    elapsed += visitMinutes;
-    current = next.client.coordinates;
-    remaining.splice(remaining.findIndex((client) => client.id === next.client.id), 1);
+    elapsed += stopMinutes;
+    current = next.stop.coordinates;
+    remaining.splice(remaining.findIndex((stop) => stop.clientId === next.stop.clientId), 1);
   }
 
   const returnDistance = stops.length ? estimatedLeg(current, depot) : 0;
@@ -93,9 +137,11 @@ export function optimizeRoute(selectedIds: number[], clients: Client[], options:
     stops,
     totalKm: Number(totalKm.toFixed(1)),
     totalMinutes,
-    algorithm: 'Vecino más cercano ponderado por prioridad, distancia vial estimada y regreso al depósito',
+    algorithm: options.mode === 'manual'
+      ? 'Orden manual, distancia vial estimada y regreso al depósito'
+      : 'Vecino más cercano por distancia estimada y regreso al depósito',
     feasible: warnings.length === 0,
     warnings,
-    assumptions: { visitMinutes, maxWorkMinutes, roadFactor },
+    assumptions: { stopMinutes, maxWorkMinutes, roadFactor },
   };
 }

@@ -8,13 +8,13 @@ import { longDate, number } from '../lib/format';
 
 const lessons = [
   { icon: Map, title: 'Mapa operativo', text: 'Indicadores, cartera Salice, agrupación de puntos y fichas.' },
-  { icon: ClipboardCheck, title: 'Agenda operativa', text: 'Prioridades, gestiones, resultados y promesas de pago.' },
+  { icon: ClipboardCheck, title: 'Bandeja comercial', text: 'Señales, oportunidades, compromisos y notas sin planificación paralela.' },
   { icon: Users, title: 'Clientes', text: 'GESI, pertenencia, riesgo, oportunidad y filtros.' },
   { icon: Users, title: 'Vendedores', text: 'Desempeño, cartera, cobranza, territorio y clientes prioritarios.' },
   { icon: WalletCards, title: 'Cobranzas', text: 'Antigüedad, saldo pendiente y pago contra vencimiento.' },
   { icon: BarChart3, title: 'Reportes', text: 'Gestión general, volumen SPT, ventas comerciales, proveedores y cuentas no compradoras.' },
   { icon: BarChart3, title: 'Productos', text: 'Disponibilidad, comparación y ranking de 33 vectores.' },
-  { icon: Route, title: 'Rutas', text: 'Corredores, límite de jornada y supuestos visibles.' },
+  { icon: Route, title: 'Rutas', text: 'Facturas, fojas abiertas/cerradas, paradas y recorridos estimados.' },
 ];
 
 interface SystemStatus {
@@ -67,7 +67,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado · 26 pasos</span><h2>Aprendé a usar Salice Inteligente v{APP_VERSION}</h2><p>El tutorial recorre operación, administración, objetivos, reportes, marcas, productos y rutas. Sólo los formularios operativos modifican datos locales.</p></div>
+          <div><span className="section-kicker">Recorrido guiado actualizado</span><h2>Aprendé a usar Salice Inteligente v{APP_VERSION}</h2><p>Incluye la gestión comercial liviana de v0.6 y las rutas de reparto de v0.7, además de operación, objetivos, reportes y productos.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
@@ -106,7 +106,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
 
         <section className="data-card settings-card" data-tour="data-quality">
           <div className="data-card-header"><div><span className="section-kicker"><ShieldCheck size={14} /> Calidad y cobertura</span><h2>Qué tan completa es la foto</h2></div><span className="count-badge">{longDate(data.meta.generatedAt)}</span></div>
-          <div className="coverage-list"><p><span>Geocodificación de activos</span><strong>{geocodeRate}% · {number(activeGeocoded)} / {number(active)}</strong></p><p><span>Productos con precio</span><strong>{number(coverage?.pricedProducts ?? 0)} / {number(data.products.length)}</strong></p><p><span>Pagos conciliados</span><strong>{number(coverage?.paymentSamples ?? 0)}</strong></p><p><span>Facturas con plazo válido</span><strong>{number(coverage?.creditTermInvoices ?? 0)} / {number(coverage?.invoices365d ?? 0)}</strong></p><p><span>Clientes con condición realmente mixta</span><strong>{number(coverage?.clientsWithMixedCreditTerms ?? 0)}</strong></p><p><span>Detalles de factura omitidos por GESI</span><strong>{number(coverage?.omittedInvoiceDetails ?? 0)}</strong></p></div>
+          <div className="coverage-list"><p><span>Geocodificación de activos</span><strong>{geocodeRate}% · {number(activeGeocoded)} / {number(active)}</strong></p><p><span>Productos con precio</span><strong>{number(coverage?.pricedProducts ?? 0)} / {number(data.products.length)}</strong></p><p><span>Pagos conciliados</span><strong>{number(coverage?.paymentSamples ?? 0)}</strong></p><p><span>Facturas con plazo válido</span><strong>{number(coverage?.creditTermInvoices ?? 0)} / {number(coverage?.invoices365d ?? 0)}</strong></p><p><span>Fojas logísticas abiertas / cerradas</span><strong>{number(coverage?.logistics?.openSheets ?? 0)} / {number(coverage?.logistics?.closedSheets ?? 0)}</strong></p><p><span>Facturas sin foja / con foja cerrada</span><strong>{number(coverage?.logistics?.unassignedInvoices ?? 0)} / {number(coverage?.logistics?.closedSheetInvoices ?? 0)}</strong></p><p><span>Clientes con condición realmente mixta</span><strong>{number(coverage?.clientsWithMixedCreditTerms ?? 0)}</strong></p><p><span>Detalles de factura omitidos por GESI</span><strong>{number(coverage?.omittedInvoiceDetails ?? 0)}</strong></p></div>
         </section>
 
         <section className="data-card settings-card">

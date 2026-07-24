@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AlertCircle, ChevronDown, EyeOff, Filter, MapPinned, TrendingUp, Users, WalletCards } from 'lucide-react';
-import type { Client, Product } from '../../shared/models';
+import type { Client, LogisticsSnapshot, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { ClientMap } from '../components/ClientMap';
 import { ClientPanel } from '../components/ClientPanel';
@@ -11,6 +11,7 @@ import { money, number } from '../lib/format';
 interface MapDashboardProps {
   clients: Client[];
   products: Product[];
+  logistics: LogisticsSnapshot;
   selected: Client | null;
   onSelect: (client: Client | null) => void;
   onPlanRoute: (clientId: number) => void;
@@ -26,7 +27,7 @@ interface MapDashboardProps {
 
 export type ClientVisibility = string;
 
-export function MapDashboard({ clients, products, selected, onSelect, onPlanRoute, onNoteSaved, onExpandClient, onOpenSeller, onOpenProduct, onOpenInvoice, snapshotDate, clientVisibility, onClientVisibilityChange }: MapDashboardProps) {
+export function MapDashboard({ clients, products, logistics, selected, onSelect, onPlanRoute, onNoteSaved, onExpandClient, onOpenSeller, onOpenProduct, onOpenInvoice, snapshotDate, clientVisibility, onClientVisibilityChange }: MapDashboardProps) {
   const [zone, setZone] = useState('');
   const [health, setHealth] = useState('');
   const [portfolioStatus, setPortfolioStatus] = useState('');
@@ -89,7 +90,7 @@ export function MapDashboard({ clients, products, selected, onSelect, onPlanRout
           <ClientMap clients={filtered} selectedId={selected?.id ?? null} onSelect={onSelect} />
           <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
         </section>
-        {selected && <ClientPanel client={selected} products={products} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
+        {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
       </div>
     </div>
   );

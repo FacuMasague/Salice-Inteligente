@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ChevronRight, Chevr
 import { APP_VERSION, VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product } from '../shared/models';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
+import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawer';
 import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
 import { ProductPanel } from './components/ProductPanel';
 import { TUTORIAL_STEPS, TutorialOverlay, type TutorialView } from './components/TutorialOverlay';
@@ -49,7 +50,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
   products: { title: 'Inteligencia de producto', subtitle: 'Inventario, catálogo y oportunidades con análisis avanzados agrupados' },
   brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
-  routes: { title: 'Planificación de rutas', subtitle: 'Recorridos comerciales priorizados y explicables' },
+  routes: { title: 'Rutas de reparto', subtitle: 'Facturas, fojas y recorridos estimados desde la oficina' },
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
   receivables: { title: 'Cuentas por cobrar', subtitle: 'Cartera, responsables, estados y seguimiento administrativo' },
   goals: { title: 'Objetivos comerciales', subtitle: 'Planificación propia, versiones, cambios y cumplimiento' },
@@ -94,7 +95,7 @@ export default function App() {
   const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
   const [tutorialStep, setTutorialStep] = useState<number | null>(null);
-  const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v032') === 'completed');
+  const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v070') === 'completed');
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -110,6 +111,7 @@ export default function App() {
   const [productComparisonRequest, setProductComparisonRequest] = useState(0);
   const [brandFocus, setBrandFocus] = useState('');
   const [invoiceFocusId, setInvoiceFocusId] = useState<string | null>(null);
+  const [sheetFocusId, setSheetFocusId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [dataHealth, setDataHealth] = useState<DataHealthPayload | null>(null);
   const [reloadingData, setReloadingData] = useState(false);
@@ -232,7 +234,7 @@ export default function App() {
         setSearchOpen(true);
         requestAnimationFrame(() => searchInput.current?.focus());
       }
-      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); }
+      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
@@ -259,7 +261,7 @@ export default function App() {
   const selected = useMemo(() => data?.clients.find((client) => client.id === selectedId) || null, [data, selectedId]);
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
   const activeClients = useMemo(() => data?.clients.filter((client) => client.active) ?? [], [data]);
-  const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openClientById = (clientId: number) => { const client = data?.clients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
   const addProductToComparison = (product: Product) => {
@@ -273,15 +275,16 @@ export default function App() {
   const openBrand = (brand: string) => { if (!brand || brand.startsWith('Sin ')) return; setBrandFocus(brand); setView('brands'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setSearchOpen(false); setNotificationsOpen(false); };
   const openProductCatalog = (product: Product) => { setProductFocusId(product.id); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
   const openProductFamily = (family: string) => { if (!family || family.startsWith('Sin ')) return; setProductFamilyFocus(family); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
-  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
-  const openInvoice = (invoiceId: string) => { setInvoiceFocusId(invoiceId); setSearchOpen(false); setNotificationsOpen(false); };
-  const selectView = (next: View) => { setView(next); setSidebarOpen(false); setClientProfileOpen(false); setProductProfileOpen(false); if (next !== 'map') setSelectedId(null); };
+  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openInvoice = (invoiceId: string) => { setInvoiceFocusId(invoiceId); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openSheet = (sheetId: number) => { if (!data?.logistics.sheets.some((sheet) => sheet.id === sheetId)) return; setSheetFocusId(sheetId); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const selectView = (next: View) => { setView(next); setSidebarOpen(false); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); if (next !== 'map') setSelectedId(null); };
   const toggleSidebarSection = (section: SidebarSection) => setSidebarSections((current) => ({ ...current, [section]: !current[section] }));
   const planRoute = (clientId: number) => { if (!data?.clients.find((client) => client.id === clientId)?.active) return; setRouteClientId(clientId); setView('routes'); setSelectedId(null); setClientProfileOpen(false); };
   const noteSaved = (clientId: number, note: string) => setData((current) => current ? ({ ...current, clients: current.clients.map((client) => client.id === clientId ? { ...client, note } : client) }) : current);
   const startTutorial = () => setTutorialStep(0);
   const finishTutorial = () => {
-    localStorage.setItem('salice-tutorial-v032', 'completed');
+    localStorage.setItem('salice-tutorial-v070', 'completed');
     setTutorialCompleted(true);
     setTutorialStep(null);
     setSelectedId(null);
@@ -365,14 +368,14 @@ export default function App() {
         {data.meta.disclaimer && <div className={`demo-banner ${data.meta.source === 'gesi' ? 'connected' : ''}`}><Database size={15} /><span><strong>{data.meta.source === 'demo' ? 'Prototipo con datos demostrativos.' : 'Snapshot real de Salice.'}</strong> {localizedDisclaimer(data.meta)}</span></div>}
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
-          {view === 'map' && <MapDashboard clients={data.clients} products={data.products} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
+          {view === 'map' && <MapDashboard clients={data.clients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
           {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
           {view === 'products' && <ProductsView products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
           {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
-          {view === 'routes' && <RoutesView clients={activeClients} initialClientId={routeClientId} onOpenClient={openClient} onOpenSeller={openSeller} />}
+          {view === 'routes' && <RoutesView clients={data.clients} logistics={data.logistics} initialClientId={routeClientId} onOpenClient={openClient} onOpenInvoice={openInvoice} onOpenSheet={openSheet} />}
           {view === 'sales-explorer' && <SalesExplorerView clients={data.clients} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
           {view === 'receivables' && <ReceivablesView dataClients={data.clients} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}
           {view === 'goals' && <GoalsView />}
@@ -387,9 +390,17 @@ export default function App() {
           {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
         </Suspense></div>
       </main>
-      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
+      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
       {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></div>}
-      {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} />}
+      {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
+      {sheetFocusId != null && data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId) && <DeliverySheetDetailDrawer
+        sheet={data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId)!}
+        logistics={data.logistics}
+        clients={data.clients}
+        onClose={() => setSheetFocusId(null)}
+        onOpenClient={openClientById}
+        onOpenInvoice={openInvoice}
+      />}
       {tutorialStep != null && <TutorialOverlay stepIndex={tutorialStep} onBack={() => setTutorialStep((value) => value == null ? null : Math.max(0, value - 1))} onNext={nextTutorialStep} onClose={() => setTutorialStep(null)} />}
     </div>
   );

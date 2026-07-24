@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { validateNormalizedSnapshot } from '../server/gesi/normalize.js';
-import { optimizeRoute, recommendProducts } from '../shared/algorithms.js';
+import { groupDeliveryInvoices, optimizeDeliveryRoute, recommendProducts } from '../shared/algorithms.js';
 import { SNAPSHOT_REVISION, VECTOR_LABELS, type DashboardData } from '../shared/models.js';
 import { resolveActiveDataPaths } from '../server/data-bundle.js';
 
@@ -65,12 +65,15 @@ for (const client of data.clients) {
 }
 
 const routable = data.clients.filter((client) => client.active && client.coordinates !== null);
-const priorityIDs = [...routable].sort((a, b) => b.visitPriority - a.visitPriority).slice(0, 5).map((client) => client.id);
-const route = optimizeRoute(priorityIDs, data.clients);
-check(route.stops.length === priorityIDs.length, 'La ruta no contiene todas las paradas geolocalizadas');
-check(new Set(route.stops.map((stop) => stop.clientId)).size === priorityIDs.length, 'La ruta repite clientes');
-if (priorityIDs.length) check(route.totalKm > 0 && route.totalMinutes > 0, 'La ruta no tiene distancia o duración');
-check(route.assumptions.visitMinutes > 0 && route.assumptions.maxWorkMinutes > 0, 'La ruta no informa sus supuestos');
+const deliveryStops = groupDeliveryInvoices(data.logistics.invoices, data.clients).filter((stop) => stop.coordinates !== null).slice(0, 5);
+const routeIDs = deliveryStops.map((stop) => stop.clientId);
+const routeInvoiceIDs = new Set(deliveryStops.flatMap((stop) => stop.invoices.map((invoice) => invoice.id)));
+const routeInvoices = data.logistics.invoices.filter((invoice) => routeInvoiceIDs.has(invoice.id));
+const route = optimizeDeliveryRoute(routeIDs, routeInvoices, data.clients);
+check(route.stops.length === routeIDs.length, 'La ruta no contiene todas las paradas de reparto geolocalizadas');
+check(new Set(route.stops.map((stop) => stop.clientId)).size === routeIDs.length, 'La ruta repite clientes');
+if (routeIDs.length) check(route.totalKm > 0 && route.totalMinutes > 0, 'La ruta no tiene distancia o duración');
+check(route.assumptions.stopMinutes > 0 && route.assumptions.maxWorkMinutes > 0, 'La ruta no informa sus supuestos');
 check(route.feasible === (route.warnings.length === 0), 'La factibilidad de ruta no coincide con sus alertas');
 
 const totals = {

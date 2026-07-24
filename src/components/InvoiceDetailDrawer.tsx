@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, CircleDollarSign, Download, MapPin, Package, ReceiptText, RefreshCw, UserRound, X } from 'lucide-react';
-import type { InvoiceDetailPayload } from '../../shared/models';
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, CircleDollarSign, Download, MapPin, Package, ReceiptText, RefreshCw, Truck, UserRound, X } from 'lucide-react';
+import type { InvoiceDetailPayload, LogisticsSnapshot } from '../../shared/models';
+import { deliveryAssignmentText } from '../lib/delivery-status';
 import { compactDate, money, number } from '../lib/format';
 
 interface InvoiceDetailDrawerProps {
   invoiceId: string;
+  logistics: LogisticsSnapshot;
   onClose: () => void;
   onOpenClient: (clientId: number) => void;
   onOpenSeller: (seller: string) => void;
+  onOpenSheet: (sheetId: number) => void;
 }
 
 const statusLabels: Record<InvoiceDetailPayload['status'], string> = {
   paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', overdue: 'Vencida', not_due: 'No vencida',
 };
 
-export function InvoiceDetailDrawer({ invoiceId, onClose, onOpenClient, onOpenSeller }: InvoiceDetailDrawerProps) {
+export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClient, onOpenSeller, onOpenSheet }: InvoiceDetailDrawerProps) {
   const [detail, setDetail] = useState<InvoiceDetailPayload | null>(null);
   const [error, setError] = useState('');
+  const deliveryInvoice = logistics.invoices.find((invoice) => invoice.id === invoiceId);
 
   useEffect(() => {
     setDetail(null);
@@ -62,6 +66,18 @@ export function InvoiceDetailDrawer({ invoiceId, onClose, onOpenClient, onOpenSe
           <span><strong>Sucursal</strong>{detail.branch || 'Sin dato verificable'}</span>
           {detail.paidAt && <span><strong>Pago conciliado</strong>{compactDate(detail.paidAt)}</span>}
         </section>
+
+        {deliveryInvoice && <section className={`invoice-logistics-card ${deliveryInvoice.assignmentStatus}`}>
+          <div className="invoice-logistics-icon"><Truck size={20} /></div>
+          <div>
+            <span>Estado en fojas GESI</span>
+            <strong>{deliveryAssignmentText(deliveryInvoice.assignmentStatus, deliveryInvoice.sheet?.id)}</strong>
+            <small>Envío sugerido {compactDate(deliveryInvoice.suggestedDeliveryAt)} · no confirma expedición ni entrega.</small>
+          </div>
+          {deliveryInvoice.sheet && <button className="button secondary" onClick={() => onOpenSheet(deliveryInvoice.sheet!.id)}>
+            Abrir foja {deliveryInvoice.sheet.id}<ChevronRight size={15} />
+          </button>}
+        </section>}
 
         <section className="invoice-line-section">
           <div className="section-title-row"><div><span className="section-kicker"><Package size={14} /> Renglones</span><h3>Detalle de productos</h3></div><span className="count-badge">{number(detail.lineItems.length)}</span></div>

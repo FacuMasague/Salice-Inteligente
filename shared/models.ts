@@ -10,7 +10,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.6.5';
+export const APP_VERSION = '0.7.1';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -268,6 +268,19 @@ export interface SnapshotMeta {
     invalidCreditTermInvoices?: number;
     clientsWithObservedCreditTerms?: number;
     clientsWithMixedCreditTerms?: number;
+    logistics?: {
+      coverageFrom: string;
+      coverageThrough: string;
+      invoices: number;
+      unassignedInvoices: number;
+      openSheetInvoices: number;
+      closedSheetInvoices: number;
+      unknownInvoices: number;
+      sheets: number;
+      openSheets: number;
+      closedSheets: number;
+      sheetsWithDriver: number;
+    };
     inventory?: {
       companyId: number;
       branchId: number;
@@ -299,12 +312,53 @@ export interface SnapshotMeta {
   };
 }
 
-export const SNAPSHOT_REVISION = 10;
+export const SNAPSHOT_REVISION = 11;
+
+export type DeliveryAssignmentStatus = 'unassigned' | 'open_sheet' | 'closed_sheet' | 'unknown';
+
+export interface DeliverySheetReference {
+  id: number;
+  status: 'open' | 'closed';
+  driver: string;
+  startsAt: string;
+  endsAt: string;
+  closedAt: string | null;
+}
+
+export interface DeliveryInvoice {
+  id: string;
+  clientId: number;
+  number: string;
+  issuedAt: string;
+  suggestedDeliveryAt: string;
+  amount: number;
+  deliveryAddress: string;
+  locality: string;
+  assignmentStatus: DeliveryAssignmentStatus;
+  sheet: DeliverySheetReference | null;
+}
+
+export interface DeliverySheet extends DeliverySheetReference {
+  zone: string;
+  subzone: string;
+  comment: string;
+  dispatchComment: string;
+  dispatchedAt: string | null;
+  invoiceIds: string[];
+}
+
+export interface LogisticsSnapshot {
+  coverageFrom: string;
+  coverageThrough: string;
+  invoices: DeliveryInvoice[];
+  sheets: DeliverySheet[];
+}
 
 export interface DashboardData {
   meta: SnapshotMeta;
   clients: Client[];
   products: Product[];
+  logistics: LogisticsSnapshot;
 }
 
 export type SptFilterKey =
@@ -1565,10 +1619,13 @@ export interface RouteStop {
   order: number;
   clientId: number;
   clientName: string;
+  address: string;
   locality: string;
   distanceKm: number;
   etaMinutes: number;
-  priority: number;
+  invoiceCount: number;
+  invoiceIds: string[];
+  amount: number;
 }
 
 export interface RoutePlan {
@@ -1580,7 +1637,7 @@ export interface RoutePlan {
   feasible: boolean;
   warnings: string[];
   assumptions: {
-    visitMinutes: number;
+    stopMinutes: number;
     maxWorkMinutes: number;
     roadFactor: number;
   };

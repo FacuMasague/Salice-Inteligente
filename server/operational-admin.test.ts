@@ -143,6 +143,55 @@ describe('persistencia administrativa v0.4.0', () => {
     expect(store.listCommercialOpportunityLinks({ clientId: 123 })).toEqual([]);
   });
 
+  it('borra una nota de oportunidad sin borrar una selección guardada', () => {
+    const list = store.createSavedView({
+      viewKey: 'products',
+      purpose: 'product_opportunities',
+      name: 'Selección que debe conservarse',
+      filters: { clientId: '321' },
+    });
+    const note = store.createCommercialNote({
+      clientId: 321,
+      seller: 'Vendedor prueba',
+      type: 'note',
+      occurredAt: '2026-07-23T16:00:00.000Z',
+      note: 'Nota eliminable.',
+      productIds: ['producto-321'],
+    });
+    const savedLink = store.createCommercialOpportunityLink({
+      savedViewId: list.id,
+      clientId: 321,
+      productId: 'producto-321',
+      recommendationKinds: ['peer_adoption'],
+      activityId: note.activity.id,
+      snapshotAt: '2026-07-22T14:02:00.000Z',
+    });
+    const noteOnly = store.createCommercialNote({
+      clientId: 321,
+      seller: 'Vendedor prueba',
+      type: 'note',
+      occurredAt: '2026-07-23T16:05:00.000Z',
+      note: 'Vínculo exclusivamente de nota.',
+      productIds: ['producto-322'],
+    });
+    store.createCommercialOpportunityLink({
+      clientId: 321,
+      productId: 'producto-322',
+      recommendationKinds: ['mix_gap'],
+      activityId: noteOnly.activity.id,
+      snapshotAt: '2026-07-22T14:02:00.000Z',
+    });
+
+    expect(store.deleteCommercialOpportunityNote(note.activity.id, 321)?.id).toBe(note.activity.id);
+    expect(store.listActivities({ clientId: 321 }).some((activity) => activity.id === note.activity.id)).toBe(false);
+    expect(store.listCommercialOpportunityLinks({ clientId: 321 })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: savedLink.id, savedViewId: list.id, activityId: null }),
+    ]));
+    expect(store.deleteCommercialOpportunityNote(noteOnly.activity.id, 321)?.id).toBe(noteOnly.activity.id);
+    expect(store.listCommercialOpportunityLinks({ clientId: 321 }).some((link) => link.productId === 'producto-322')).toBe(false);
+    expect(store.deleteSavedView(list.id)).toBe(true);
+  });
+
   it('persiste la revisión humana de inventario sin modificar las señales GESI', () => {
     expect(store.listInventoryAlertReviews()).toEqual(expect.arrayContaining([
       expect.objectContaining({ productId: 'producto-legado', status: 'unreviewed', note: 'Revisión iniciada antes de incorporar el tercer estado.' }),

@@ -240,5 +240,37 @@ export function createDemoSnapshot(): DashboardData {
     },
     products,
     clients,
+    logistics: {
+      coverageFrom: '2026-07-01',
+      coverageThrough: '2026-07-15',
+      invoices: clients.slice(0, 6).map((client, index) => ({
+        id: `3:137:A:5:${9000 + index}`,
+        clientId: client.id,
+        number: `FAC A 0005-${String(9000 + index).padStart(8, '0')}`,
+        issuedAt: index < 2 ? '2026-07-15' : '2026-07-14',
+        suggestedDeliveryAt: index < 2 ? '2026-07-16' : '2026-07-15',
+        amount: 125000 + index * 28750,
+        deliveryAddress: client.address,
+        locality: client.locality,
+        assignmentStatus: index < 2 ? 'unassigned' : index < 4 ? 'open_sheet' : 'closed_sheet',
+        sheet: index < 2 ? null : {
+          id: index < 4 ? 701 : 700,
+          status: index < 4 ? 'open' : 'closed',
+          driver: 'Reparto demostrativo',
+          startsAt: '2026-07-15',
+          endsAt: '2026-07-15',
+          closedAt: index < 4 ? null : '2026-07-15',
+        },
+      })),
+      sheets: [{
+        id: 700, status: 'closed', driver: 'Reparto demostrativo', startsAt: '2026-07-15', endsAt: '2026-07-15',
+        closedAt: '2026-07-15', zone: 'Mar del Plata', subzone: 'Centro', comment: 'Reparto demostrativo',
+        dispatchComment: '', dispatchedAt: null, invoiceIds: [`3:137:A:5:9004`, `3:137:A:5:9005`],
+      }, {
+        id: 701, status: 'open', driver: 'Reparto demostrativo', startsAt: '2026-07-15', endsAt: '2026-07-15',
+        closedAt: null, zone: 'Mar del Plata', subzone: '', comment: 'Foja en preparación',
+        dispatchComment: '', dispatchedAt: null, invoiceIds: [`3:137:A:5:9002`, `3:137:A:5:9003`],
+      }],
+    },
   };
 }

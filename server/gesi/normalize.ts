@@ -3,6 +3,9 @@ import {
   SNAPSHOT_REVISION,
   type Client,
   type DashboardData,
+  type DeliveryInvoice,
+  type DeliverySheet,
+  type DeliverySheetReference,
   type Health,
   type Invoice,
   type InvoiceStatus,
@@ -108,6 +111,18 @@ const documentNumber = (row: GesiRow) => {
 const invoiceStatus = (dueAt: string, snapshotDate: string): InvoiceStatus => (
   dueAt < snapshotDate ? 'overdue' : dueAt <= addDays(snapshotDate, 7) ? 'due_soon' : 'open'
 );
+
+export const suggestedDeliveryDate = (issuedAt: string) => {
+  if (!issuedAt) return '';
+  const value = new Date(`${issuedAt}T12:00:00Z`);
+  const day = value.getUTCDay();
+  return addDays(issuedAt, day === 5 ? 3 : day === 6 ? 2 : 1);
+};
+
+const deliverySheetStatus = (row: GesiRow): DeliverySheetReference['status'] => {
+  const state = text(row.estado).toUpperCase();
+  return state === '2' || state === 'C' || Boolean(date(row.fechaCerrada)) ? 'closed' : 'open';
+};
 
 const recentMonthKeys = (snapshotDate: string) => {
   const months: string[] = [];
@@ -539,6 +554,77 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     })
     .sort((a, b) => b.visitPriority - a.visitPriority || a.tradeName.localeCompare(b.tradeName));
 
+  const invoiceIDs = new Set(invoices.map(documentIdentity));
+  const assignmentByInvoice = new Map<string, DeliverySheetReference>();
+  const logisticsSheets: DeliverySheet[] = (capture.deliverySheets ?? []).map((row) => {
+    const status = deliverySheetStatus(row);
+    const reference: DeliverySheetReference = {
+      id: number(row.fojaID),
+      status,
+      driver: text(row.descripcionRepartidor) || (number(row.repartidorID) ? `Repartidor ${number(row.repartidorID)}` : 'Sin repartidor informado'),
+      startsAt: date(row.desde),
+      endsAt: date(row.hasta),
+      closedAt: text(row.fechaCerrada) || null,
+    };
+    const assigned = Array.isArray(row.listaDeComprobantesAsignados)
+      ? row.listaDeComprobantesAsignados as GesiRow[]
+      : [];
+    const assignedInvoiceIDs = [...new Set(assigned.map(documentIdentity).filter((id) => invoiceIDs.has(id)))];
+    for (const id of assignedInvoiceIDs) {
+      const current = assignmentByInvoice.get(id);
+      if (!current || (current.status === 'open' && reference.status === 'closed') || reference.id > current.id) {
+        assignmentByInvoice.set(id, reference);
+      }
+    }
+    return {
+      ...reference,
+      zone: text(row.descripcionZona),
+      subzone: text(row.descripcionSubZona),
+      comment: text(row.comentario),
+      dispatchComment: text(row.comentarioExpedicion),
+      dispatchedAt: text(row.fechaExpedido) || null,
+      invoiceIds: assignedInvoiceIDs,
+    };
+  }).filter((sheet) => sheet.id > 0);
+  const explicitlyUnassigned = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentIdentity));
+  const logisticsFrom = capture.captureMeta.logisticsFrom || addDays(snapshotDate, -45);
+  const logisticsCoverageFrom = date(logisticsFrom);
+  const logisticsInvoices: DeliveryInvoice[] = invoices
+    .filter((row) => date(row.fechaDeEmision) >= logisticsCoverageFrom)
+    .map((row) => {
+      const id = documentIdentity(row);
+      const sheet = assignmentByInvoice.get(id) ?? null;
+      const assignmentStatus: DeliveryInvoice['assignmentStatus'] = sheet
+        ? sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'
+        : explicitlyUnassigned.has(id) ? 'unassigned' : 'unknown';
+      return {
+        id,
+        clientId: number(row.clienteID),
+        number: documentNumber(row),
+        issuedAt: date(row.fechaDeEmision),
+        suggestedDeliveryAt: suggestedDeliveryDate(date(row.fechaDeEmision)),
+        amount: roundMoney(number(row.importeTotal)),
+        deliveryAddress: text(row.domicilioEntrega) || text(row.domicilio),
+        locality: text(row.localidad) || 'Sin localidad',
+        assignmentStatus,
+        sheet,
+      };
+    })
+    .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt) || a.number.localeCompare(b.number));
+  const logisticsCoverage = {
+    coverageFrom: logisticsCoverageFrom,
+    coverageThrough: snapshotDate,
+    invoices: logisticsInvoices.length,
+    unassignedInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unassigned').length,
+    openSheetInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'open_sheet').length,
+    closedSheetInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'closed_sheet').length,
+    unknownInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unknown').length,
+    sheets: logisticsSheets.length,
+    openSheets: logisticsSheets.filter((sheet) => sheet.status === 'open').length,
+    closedSheets: logisticsSheets.filter((sheet) => sheet.status === 'closed').length,
+    sheetsWithDriver: logisticsSheets.filter((sheet) => !sheet.driver.startsWith('Sin ')).length,
+  };
+
   const omittedInvoiceDetails = capture.captureMeta.optionalEndpointWarnings
     .map((warning) => warning.match(/Detalle de facturas: GESI rechazó (\d+)/)?.[1])
     .filter(Boolean)
@@ -637,11 +723,18 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         invalidCreditTermInvoices,
         clientsWithObservedCreditTerms: clients.filter((client) => client.creditTermSampleSize > 0).length,
         clientsWithMixedCreditTerms: clients.filter((client) => client.creditTermStatus === 'mixed').length,
+        logistics: logisticsCoverage,
         inventory: inventoryCoverage,
       },
     },
     products,
     clients,
+    logistics: {
+      coverageFrom: logisticsCoverageFrom,
+      coverageThrough: snapshotDate,
+      invoices: logisticsInvoices,
+      sheets: logisticsSheets,
+    },
   };
 }
 
@@ -669,6 +762,23 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.coverage?.creditTermInvoices === data.clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0), 'La cobertura de facturas con plazo observado no coincide');
   check(data.meta.coverage?.clientsWithObservedCreditTerms === data.clients.filter((client) => client.creditTermSampleSize > 0).length, 'La cobertura de clientes con plazo observado no coincide');
   check(data.meta.coverage?.clientsWithMixedCreditTerms === data.clients.filter((client) => client.creditTermStatus === 'mixed').length, 'La cobertura de clientes con plazo mixto no coincide');
+  check(Boolean(data.logistics), 'El snapshot no contiene la capa logística');
+  if (data.logistics) {
+    check(data.meta.coverage?.logistics?.invoices === data.logistics.invoices.length, 'La cobertura de facturas logísticas no coincide');
+    check(data.meta.coverage?.logistics?.sheets === data.logistics.sheets.length, 'La cobertura de fojas no coincide');
+    const sheetIDs = new Set(data.logistics.sheets.map((sheet) => sheet.id));
+    check(sheetIDs.size === data.logistics.sheets.length, 'Hay fojas de reparto duplicadas');
+    check(new Set(data.logistics.invoices.map((invoice) => invoice.id)).size === data.logistics.invoices.length, 'Hay facturas logísticas duplicadas');
+    for (const invoice of data.logistics.invoices) {
+      check(invoice.issuedAt >= data.logistics.coverageFrom && invoice.issuedAt <= data.logistics.coverageThrough, `${invoice.id}: factura logística fuera de cobertura`);
+      check(invoice.suggestedDeliveryAt > invoice.issuedAt, `${invoice.id}: fecha sugerida de reparto inválida`);
+      check(invoice.sheet == null === ['unassigned', 'unknown'].includes(invoice.assignmentStatus), `${invoice.id}: asignación a foja incoherente`);
+      if (invoice.sheet) {
+        check(sheetIDs.has(invoice.sheet.id), `${invoice.id}: foja inexistente`);
+        check(invoice.assignmentStatus === (invoice.sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'), `${invoice.id}: estado de foja incoherente`);
+      }
+    }
+  }
 
   for (const product of data.products) {
     const values = Object.values(product.vector);

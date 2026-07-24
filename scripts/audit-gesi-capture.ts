@@ -119,6 +119,10 @@ const relevantClientIDs = new Set([...invoiceClientIDs, ...pendingClientIDs, ...
 const clientCoordinates = capture.clients.map((row) => ({ id: number(row.clienteID), point: parseCoordinates(row.geoCoordenadas) }));
 const regionalCoordinates = clientCoordinates.filter(({ point }) => point && point[0] >= -42 && point[0] <= -34 && point[1] >= -61 && point[1] <= -55);
 const branchDefinitions = capture.clients.flatMap((row) => Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : []);
+const deliverySheets = capture.deliverySheets ?? [];
+const assignedDeliveryDocuments = deliverySheets.flatMap((row) => Array.isArray(row.listaDeComprobantesAsignados) ? row.listaDeComprobantesAsignados as GesiRow[] : []);
+const assignedInvoiceIDs = new Set(assignedDeliveryDocuments.map(documentKey).filter((id) => invoiceIDs.has(id)));
+const unassignedDeliveryInvoiceIDs = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentKey).filter((id) => invoiceIDs.has(id)));
 
 const report = {
   capture: capture.captureMeta,
@@ -224,6 +228,18 @@ const report = {
     documentSubtypes: countBy(capture.pendingDocuments, 'subtipo'),
     absoluteClientReconciliationDifference: quantiles(reconciliationDifferences),
     clientsReconciledWithinOnePeso: reconciliationDifferences.filter((value) => value <= 1).length,
+  },
+  logistics: {
+    coverageFrom: capture.captureMeta.logisticsFrom ?? '',
+    sheets: deliverySheets.length,
+    openSheets: deliverySheets.filter((row) => ['1', 'A'].includes(text(row.estado).toUpperCase()) && !date(row.fechaCerrada)).length,
+    closedSheets: deliverySheets.filter((row) => ['2', 'C'].includes(text(row.estado).toUpperCase()) || Boolean(date(row.fechaCerrada))).length,
+    sheetsWithDriver: deliverySheets.filter((row) => number(row.repartidorID) > 0).length,
+    sheetsWithAssignedDocuments: deliverySheets.filter((row) => Array.isArray(row.listaDeComprobantesAsignados) && row.listaDeComprobantesAsignados.length > 0).length,
+    assignedDocuments: assignedDeliveryDocuments.length,
+    assignedInvoicesInCapture: assignedInvoiceIDs.size,
+    explicitlyUnassignedInvoicesInCapture: unassignedDeliveryInvoiceIDs.size,
+    invoiceAssignmentsDuplicated: assignedDeliveryDocuments.map(documentKey).filter((id, index, rows) => invoiceIDs.has(id) && rows.indexOf(id) !== index).length,
   },
   sourceWarnings: capture.captureMeta.optionalEndpointWarnings,
 };

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { normalizeCapture } from './gesi/normalize';
+import { normalizeCapture, suggestedDeliveryDate } from './gesi/normalize';
 import type { GesiRawCapture } from './gesi/types';
 import { buildPendingBalancesDatabase } from './pending-balances-build';
 
@@ -66,5 +66,49 @@ describe('forma de pago documental', () => {
     database.close();
     expect(document.payment_method).toBe('CARTERA');
     expect(client.payment_method).toBe('CTA CTE 30 DIAS');
+  });
+
+  it('distingue facturas sin foja, en foja abierta y en foja cerrada sin llamarlas entregadas', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    const base = raw.invoices[0];
+    const openInvoice = { ...base, numero: 124, fechaDeEmision: '2026-07-02' };
+    const unassignedInvoice = { ...base, numero: 125, fechaDeEmision: '2026-07-03' };
+    raw.invoices.push(openInvoice, unassignedInvoice);
+    raw.deliverySheets = [{
+      empresaID: 3, fojaID: 700, estado: 2, repartidorID: 4, descripcionRepartidor: 'Repartidor prueba',
+      desde: '2026-07-02', hasta: '2026-07-02', fechaCerrada: '2026-07-02',
+      listaDeComprobantesAsignados: [base],
+    }, {
+      empresaID: 3, fojaID: 701, estado: 1, repartidorID: 4, descripcionRepartidor: 'Repartidor prueba',
+      desde: '2026-07-03', hasta: '2026-07-03', fechaCerrada: null,
+      listaDeComprobantesAsignados: [openInvoice],
+    }];
+    raw.unassignedDeliveryDocuments = [unassignedInvoice];
+
+    const logistics = normalizeCapture(raw).logistics;
+    expect(logistics.invoices.find((invoice) => invoice.number.includes('00000123'))).toMatchObject({
+      assignmentStatus: 'closed_sheet', sheet: { id: 700, status: 'closed' },
+    });
+    expect(logistics.invoices.find((invoice) => invoice.number.includes('00000124'))).toMatchObject({
+      assignmentStatus: 'open_sheet', sheet: { id: 701, status: 'open' },
+    });
+    expect(logistics.invoices.find((invoice) => invoice.number.includes('00000125'))).toMatchObject({
+      assignmentStatus: 'unassigned', sheet: null,
+    });
+    expect(logistics.coverageFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(logistics.sheets.flatMap((sheet) => sheet.invoiceIds)).toHaveLength(2);
+    expect(logistics.sheets.find((sheet) => sheet.id === 700)).toMatchObject({
+      zone: '',
+      subzone: '',
+      comment: '',
+      dispatchComment: '',
+      dispatchedAt: null,
+    });
+  });
+
+  it('sugiere lunes para una factura del viernes sin convertirlo en compromiso', () => {
+    expect(suggestedDeliveryDate('2026-07-24')).toBe('2026-07-27');
+    expect(suggestedDeliveryDate('2026-07-23')).toBe('2026-07-24');
   });
 });

@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.6.5
+# Salice Inteligente · v0.7.1
 
-Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, reunir señales comerciales y notas de oficina, documentar promesas de pago, generar recomendaciones explicables, planificar rutas y consultar reportes de gestión.
+Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, reunir señales comerciales y notas de oficina, documentar promesas de pago, generar recomendaciones explicables, revisar facturas para reparto y estimar rutas, y consultar reportes de gestión.
 
 ## Abrir el programa
 
@@ -17,26 +17,53 @@ pnpm run dev
 
 ## Estado de los datos
 
-La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 22/07/2026 a las 14:02 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal `Mar del Plata [WPM]` (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
+La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 23/07/2026 a las 14:26 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal `Mar del Plata [WPM]` (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
 
 Cobertura del snapshot actual:
 
-- 5.718 clientes conservados: 1.916 activos y 3.802 inactivos según el estado actual de GESI.
-- 2.471 clientes con coordenadas válidas, de los cuales 880 están activos; el mapa abre en Mar del Plata y zona.
-- 13.022 maestros de producto: 1.505 activos y 11.517 inactivos. El catálogo operativo contiene 2.156 productos explicables; 1.280 resultan comercializables con las señales actuales.
-- Existencias completas del depósito 2: 902 productos con U1 positiva, 12.072 en cero y 48 con disponibilidad negativa conservada como incidencia; no falta ningún código maestro.
-- 6.289 facturas dentro de la ventana analítica de 90 días.
-- 26.731 pagos conciliados para calcular comportamiento de pago.
-- 948 comprobantes con saldo abierto en el snapshot normalizado.
-- 28.729 facturas con plazo válido entre compra/emisión y primer vencimiento.
-- 1.089 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
-- 1.834 productos del catálogo operativo con precio de referencia disponible.
+- 5.721 clientes conservados: 1.919 activos y 3.802 inactivos según el estado actual de GESI.
+- 2.474 clientes con coordenadas válidas, de los cuales 883 están activos; el mapa abre en Mar del Plata y zona.
+- 13.022 maestros de producto: 1.505 activos y 11.517 inactivos. El catálogo operativo contiene 2.155 productos explicables; 1.280 resultan comercializables con las señales actuales.
+- Existencias completas del depósito 2: 903 productos con U1 positiva, 12.072 en cero y 47 con disponibilidad negativa conservada como incidencia; no falta ningún código maestro.
+- 6.274 facturas dentro de la ventana analítica de 90 días.
+- 26.724 pagos conciliados para calcular comportamiento de pago.
+- 949 comprobantes con saldo abierto en el snapshot normalizado.
+- 28.724 facturas con plazo válido entre compra/emisión y primer vencimiento.
+- 1.090 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
+- 1.833 productos del catálogo operativo con precio de referencia disponible.
+- Cobertura logística desde el 08/06/2026: 3.068 facturas, 2.488 sin foja y 580 en fojas cerradas. GESI entregó 74 fojas —73 cerradas y una abierta—; la foja abierta no contiene facturas en este corte.
 
 GESI devuelve error para los maestros de zonas y tipos de cliente, y omitió el detalle de dos facturas. También anuncia 13.023 productos pero devuelve de forma estable 13.022; la captura admite esa diferencia de un registro dentro de la tolerancia de datos vivos. El sistema señala estas limitaciones y no inventa los datos faltantes.
 
-La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 562 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
+La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 565 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
+
+### Comprobantes y fojas navegables · v0.7.1
+
+- El detalle unificado de una factura muestra ahora su estado logístico y, cuando está asignada, permite abrir la foja correspondiente.
+- La ficha de foja reúne estado, repartidor, período, cierre, fecha de expedición cuando exista, zona, subzona, comentarios, cantidad de clientes, comprobantes e importe total.
+- Cada comprobante de la foja abre el mismo detalle unificado y cada cliente mantiene navegación a su perfil.
+- `Centro operativo → Rutas` incorpora un selector para abrir directamente cualquiera de las fojas presentes en el snapshot.
+- La navegación es de sólo lectura. Una foja cerrada sigue sin presentarse como envío expedido o entrega realizada.
+- Zona, subzona, comentarios y fecha de expedición se incorporan al contrato normalizado desde esta versión; los snapshots anteriores que no los contienen los muestran como no informados hasta una nueva actualización manual aprobada.
+
+La ficha completa está en `docs/release-v0.7.1.md`.
+
+### Rutas de reparto y fojas GESI · v0.7.0
+
+- `Centro operativo → Rutas de reparto` deja de proponer visitas comerciales y trabaja con facturas recientes identificables.
+- Cada comprobante conserva un estado explícito: sin asignar, incluido en una foja abierta, incluido en una foja cerrada o desconocido. Una foja cerrada confirma el cierre administrativo en GESI; no prueba que la mercadería haya sido entregada.
+- `Cliente → Cuenta corriente → Historial de cuenta` muestra la misma señal junto a cada factura. Los comprobantes anteriores a la cobertura logística se identifican como tales y no se presentan artificialmente como `sin foja`.
+- Varias facturas del mismo cliente forman una sola parada. La oficina puede filtrar por fecha, localidad y estado, revisar el detalle del comprobante, ordenar paradas manualmente o pedir una secuencia estimada.
+- Los recorridos siempre parten y terminan en el centro de distribución de Eduardo Bradley 1450. Distancia y duración son estimaciones geométricas sin tránsito, capacidad, disponibilidad, ventanas horarias, GPS ni recorrido real.
+- La fecha sugerida de reparto muestra la costumbre informada por la oficina: día siguiente, o lunes para facturas de viernes. Es una referencia visible, no una regla ni una asignación automática.
+- Clientes sin coordenadas o con dirección dudosa permanecen visibles, pero no se incorporan silenciosamente a una estimación de recorrido.
+- La captura manual incorpora fojas completas de GESI. Como el endpoint específico de comprobantes no asignados fue rechazado por GESI, ese universo se deriva de las facturas recientes menos las asignaciones observadas en todas las fojas capturadas y la limitación queda auditada.
+- Las notas humanas vinculadas a recomendaciones de productos pueden eliminarse desde `Cliente → Gestiones`. Borrar una nota no elimina la recomendación, el producto ni una lista guardada, y nunca modifica GESI.
+- El tutorial fue actualizado con la gestión comercial liviana de v0.6 y este flujo logístico de v0.7.
+
+La ficha completa está en `docs/release-v0.7.0.md`.
 
 ### Oportunidades en gestiones y ubicación administrativa · v0.6.5
 
@@ -243,7 +270,7 @@ Las decisiones y comprobaciones de esta entrega están en `docs/release-v0.4.2.m
 - El indicador de frescura de la esquina superior derecha ejecuta el flujo manual completo de GESI. Captura, audita, reconstruye y publica un paquete nuevo únicamente cuando todos los controles aprueban; una falla conserva la última generación válida y muestra su etapa y error.
 - Clientes incorpora filtro y orden por evolución comercial. Compara los últimos 90 días contra los 90 inmediatamente anteriores: `+10%` o más se considera aumento, `-10%` o menos caída y el rango intermedio se muestra como estable.
 - La forma de pago se toma del `formaDePagoID` de cada factura cuando GESI lo informa. Cartera, ficha de cliente y detalle de cuentas por cobrar distinguen esa forma documental de la condición configurada actualmente para el cliente.
-- Las vistas guardadas están disponibles en todas las ventanas. Además de filtros y modos, conservan los textos escritos en cada buscador; Rutas guarda también clientes seleccionados, duración de visita y límite de jornada.
+- Las vistas guardadas están disponibles en todas las ventanas administrativas. Además de filtros y modos, conservan los textos escritos en cada buscador.
 
 Las definiciones y comprobaciones específicas están en `docs/release-v0.4.1.md`.
 
@@ -404,7 +431,7 @@ La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` 
 ## Criterios de negocio de esta foto
 
 - Se conservan todos los clientes del maestro. El estado 1 de GESI define actividad; la definición empresa 3 / sucursal 3 se muestra por separado como pertenencia confirmada o a revisar.
-- Los indicadores operativos, las recomendaciones y los recorridos usan exclusivamente clientes activos. Cuentas por cobrar mantiene cualquier documento abierto, incluso si el cliente pasó a inactivo.
+- Los indicadores operativos y las recomendaciones comerciales usan exclusivamente clientes activos. Cuentas por cobrar mantiene cualquier documento abierto y Rutas conserva cualquier factura logística identificable del período, incluso si el cliente cambió de estado después de facturar.
 - La facturación de 90 días se reconcilia contra los renglones positivos de producto; conceptos no asignables quedan informados por separado.
 - El comportamiento de pago se calcula sólo cuando cobranza, factura y vencimiento pueden vincularse: días desde emisión, días antes/después del vencimiento y porcentaje en término.
 - La cuenta corriente no usa `limiteDeCredito_Dias` como duración contractual: la documentación de GESI sólo tipa el campo y los valores no concuerdan de forma estable con las condiciones de pago. El plazo operativo se obtiene de cada factura.
@@ -414,7 +441,7 @@ La importación crea `data/reference/spt-pbix.sqlite`. `pnpm run reconcile:spt` 
 - El precio de referencia prioriza el canal especializado de GESI, luego el canal general y finalmente cualquier precio positivo disponible.
 - La cobertura de stock de un producto es `stock disponible U1 positivo ÷ (unidades U1 vendidas en 90 días / 3)`. No se redondea la rotación antes de dividir; con stock cero, negativo o ausente, o sin rotación positiva, se muestra como no calculable y no se infiere demanda.
 - La similitud de producto no es probabilidad de venta. Combina afinidad vectorial y coincidencias del maestro, mientras que la confianza expresa únicamente la calidad de las señales disponibles.
-- Los recorridos parten y regresan al centro de distribución de Eduardo Bradley 1450, Mar del Plata (`-37.9457069, -57.5823923`), estiman distancia vial con un factor explícito y controlan duración de visita/jornada. Todavía no incorporan tránsito ni ventanas horarias.
+- Los recorridos agrupan facturas por cliente, parten y regresan al centro de distribución de Eduardo Bradley 1450, Mar del Plata (`-37.9457069, -57.5823923`) y estiman distancia vial con un factor explícito y un tiempo administrativo por parada. No incorporan tránsito, capacidad, ventanas horarias, GPS ni prueba de entrega.
 - Las señales nunca cuentan como realizadas. Una nota sólo documenta un hecho externo y no se usa para inferir productividad.
 - Las promesas exigibles suman compromisos locales pendientes hasta la fecha elegida; no equivalen a cobranzas conciliadas en GESI.
 - Los saldos residuales menores a $1.000 siguen visibles en la cuenta, pero no generan por sí solos una tarea o alerta de cobranza.
@@ -468,6 +495,7 @@ React + Vite
     ├── GET  /api/notifications
     ├── GET  /api/clients/:id/recommendations
     ├── GET  /api/clients/:id/operations
+    ├── DELETE /api/clients/:id/opportunity-notes/:activityId
     ├── PATCH /api/clients/:id/note
     └── POST /api/routes/optimize
              │
@@ -496,4 +524,4 @@ pnpm run audit:prices
 pnpm run audit:operations
 ```
 
-Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, origen de recorridos, bandeja comercial semanal, promesas vencidas, notas sin planificación automática, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, artefactos activos y supuestos de ruta.
+Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, bandeja comercial semanal, promesas vencidas, notas sin planificación automática, borrado seguro de notas de oportunidades, agrupación de facturas por parada, secuencia manual y sugerida de repartos, asociación con fojas, fecha sugerida no contractual, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, cobertura logística, artefactos activos y supuestos de ruta.
