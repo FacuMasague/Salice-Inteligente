@@ -11,6 +11,7 @@ import type {
   CommercialSalesProductRow,
   CommercialSalesReportMeta,
   CommercialSalesReportPayload,
+  CommercialSellerVariationRow,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { cutoffDate, daysInclusive, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
@@ -350,4 +351,43 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
     brandTotal: brandData.total,
     brands: brandData.rows,
   };
+}
+
+function sellerPeriodMetrics(
+  database: DatabaseSync,
+  filters: CommercialSalesFilters,
+  start: string,
+  end: string,
+) {
+  const where = buildWhere(filters, start, end);
+  return rows<{ seller: string; netAmount: number }>(database.prepare(`
+    SELECT COALESCE(NULLIF(TRIM(seller), ''), 'Sin vendedor') AS seller,
+           COALESCE(SUM(net_amount), 0) AS netAmount
+    FROM movements
+    WHERE ${where.sql}
+    GROUP BY COALESCE(NULLIF(TRIM(seller), ''), 'Sin vendedor')
+  `), where.parameters);
+}
+
+export function buildCommercialSellerVariations(
+  report: Pick<CommercialSalesReportPayload, 'filters' | 'periodStart' | 'periodEnd' | 'comparisonStart' | 'comparisonEnd'>,
+): CommercialSellerVariationRow[] {
+  const database = db();
+  if (!database) return [];
+  const current = new Map(sellerPeriodMetrics(database, report.filters, report.periodStart, report.periodEnd)
+    .map((row) => [row.seller, Number(row.netAmount)]));
+  const comparison = new Map(sellerPeriodMetrics(database, report.filters, report.comparisonStart, report.comparisonEnd)
+    .map((row) => [row.seller, Number(row.netAmount)]));
+  return [...new Set([...current.keys(), ...comparison.keys()])].map((seller) => {
+    const currentNetAmount = current.get(seller) ?? 0;
+    const comparisonNetAmount = comparison.get(seller) ?? 0;
+    return {
+      seller,
+      currentNetAmount,
+      comparisonNetAmount,
+      difference: currentNetAmount - comparisonNetAmount,
+      variation: metricVariation(currentNetAmount, comparisonNetAmount),
+    };
+  }).sort((left, right) => Math.abs(right.difference) - Math.abs(left.difference)
+    || left.seller.localeCompare(right.seller, 'es'));
 }

@@ -21,6 +21,7 @@ type ReceivableSort = 'name' | 'seller' | 'responsible' | 'status' | 'pendingBal
 
 interface ReceivablesViewProps {
   dataClients: Client[];
+  navigationRequest?: { id: number; filters: Partial<ReceivableDashboardFilters> } | null;
   onOpenClient: (client: Client) => void;
   onOpenSeller: (seller: string) => void;
   onOpenInvoice: (invoiceId: string) => void;
@@ -157,7 +158,7 @@ function ReceivableDrawer({ row, detail, responsibles, onClose, onSaved, onOpenC
   </div>;
 }
 
-export function ReceivablesView({ dataClients, onOpenClient, onOpenSeller, onOpenInvoice }: ReceivablesViewProps) {
+export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, onOpenSeller, onOpenInvoice }: ReceivablesViewProps) {
   const [filters, setFilters] = useState<ReceivableDashboardFilters>(emptyFilters);
   const [payload, setPayload] = useState<ReceivableDashboardPayload | null>(null);
   const [selected, setSelected] = useState<ReceivableDashboardRow | null>(null);
@@ -165,6 +166,11 @@ export function ReceivablesView({ dataClients, onOpenClient, onOpenSeller, onOpe
   const [sort, setSort] = useState(emptySort<ReceivableSort>());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!navigationRequest) return;
+    setFilters((current) => ({ ...current, ...navigationRequest.filters }));
+  }, [navigationRequest?.id]);
 
   const reload = () => {
     const controller = new AbortController();

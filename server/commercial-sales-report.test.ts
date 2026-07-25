@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildCommercialSalesReport, getCommercialSalesReportMeta } from './commercial-sales-report';
+import { buildCommercialSalesReport, buildCommercialSellerVariations, getCommercialSalesReportMeta } from './commercial-sales-report';
 import { resolveActiveDataPaths } from './data-bundle';
 
 const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
@@ -69,5 +69,17 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(filtered!.current.netAmount).toBeGreaterThan(0);
     expect(filtered!.current.netAmount).toBeLessThan(full!.current.netAmount);
     expect(filtered!.brandTotal.netAmount).toBeLessThanOrEqual(filtered!.current.netAmount + 0.001);
+  }, 15_000);
+
+  it('compara vendedores con exactamente los períodos resueltos por el reporte', () => {
+    const report = buildCommercialSalesReport({});
+    expect(report).not.toBeNull();
+    const variations = buildCommercialSellerVariations(report!);
+    expect(variations.length).toBeGreaterThan(0);
+    expect(variations.reduce((sum, row) => sum + row.currentNetAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
+    expect(variations.reduce((sum, row) => sum + row.comparisonNetAmount, 0)).toBeCloseTo(report!.comparison.netAmount, 4);
+    expect(variations.map((row) => Math.abs(row.difference))).toEqual(
+      [...variations].map((row) => Math.abs(row.difference)).sort((left, right) => right - left),
+    );
   }, 15_000);
 });

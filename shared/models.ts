@@ -10,7 +10,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.7.1';
+export const APP_VERSION = '0.8.7';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -548,6 +548,14 @@ export interface CommercialSalesReportPayload {
   brands: CommercialSalesBrandRow[];
 }
 
+export interface CommercialSellerVariationRow {
+  seller: string;
+  currentNetAmount: number;
+  comparisonNetAmount: number;
+  difference: number;
+  variation: number | null;
+}
+
 export type MarsClientMode = 'branch' | 'account';
 
 export type MarsFilterKey = 'branch' | 'clientType' | 'channelGroup' | 'brand' | 'subcategoryGroup';
@@ -915,7 +923,7 @@ export interface GeneralReportPayload {
   brands: GeneralPerformanceRow[];
 }
 
-export type SalesExplorerFilterKey = 'seller' | 'client' | 'product' | 'brand' | 'category' | 'channel' | 'zone';
+export type SalesExplorerFilterKey = 'seller' | 'client' | 'product' | 'brand' | 'category' | 'productGroup' | 'channel' | 'zone';
 
 export interface SelectOption {
   value: string;
@@ -930,6 +938,7 @@ export interface SalesExplorerFilters {
   product: string;
   brand: string;
   category: string;
+  productGroup: string;
   channel: string;
   zone: string;
 }
@@ -949,6 +958,7 @@ export interface SalesExplorerMeta {
     products: SelectOption[];
     brands: string[];
     categories: string[];
+    productGroups: string[];
     channels: string[];
     zones: string[];
   };
@@ -1442,6 +1452,73 @@ export interface NonBuyerReportPayload {
   brands: NonBuyerEntityRow[];
   accountSellers: NonBuyerSellerRow[];
   brandSellers: NonBuyerSellerRow[];
+}
+
+export type ExecutiveSummaryDestination =
+  | 'commercial-sales'
+  | 'reports'
+  | 'non-buyers'
+  | 'pending-balances'
+  | 'routes';
+
+export interface ExecutiveSummaryContext {
+  definition: string;
+  period: string;
+  cutoff: string;
+  source: string;
+  universe: string;
+  warning: string;
+  destination: ExecutiveSummaryDestination;
+}
+
+export interface ExecutiveSummaryPayload {
+  generatedAt: string;
+  snapshotAt: string;
+  sales: {
+    netAmount: number;
+    kilos: number;
+    buyers: number;
+    comparisonNetAmount: number;
+    comparisonKilos: number;
+    netVariation: number | null;
+    kiloVariation: number | null;
+    context: ExecutiveSummaryContext;
+  };
+  goals: {
+    actual: number;
+    target: number;
+    completion: number | null;
+    gap: number;
+    projectedCompletion: number | null;
+    unit: GeneralReportUnit;
+    targetSource: string;
+    context: ExecutiveSummaryContext;
+  };
+  nonBuyers: {
+    accounts: number;
+    universe90: number;
+    rate: number | null;
+    context: ExecutiveSummaryContext;
+  };
+  balances: {
+    pending: number;
+    overdue: number;
+    overdueShare: number;
+    clients: number;
+    context: ExecutiveSummaryContext;
+  };
+  sellerVariations: {
+    rows: CommercialSellerVariationRow[];
+    context: ExecutiveSummaryContext;
+  };
+  logistics: {
+    invoices: number;
+    unassigned: number;
+    openSheet: number;
+    closedSheet: number;
+    unknown: number;
+    context: ExecutiveSummaryContext;
+  };
 }
 
 export interface Recommendation {

@@ -85,7 +85,7 @@ export function getSalesExplorerMeta(): SalesExplorerMeta {
     rowCount: 0,
     sourceDocumentCount: 0,
     unavailableDocumentCount: 0,
-    options: { sellers: [], clients: [], products: [], brands: [], categories: [], channels: [], zones: [] },
+    options: { sellers: [], clients: [], products: [], brands: [], categories: [], productGroups: [], channels: [], zones: [] },
     universe: {
       id: UNIVERSE.id,
       companies: [...UNIVERSE.companies],
@@ -134,6 +134,7 @@ export function getSalesExplorerMeta(): SalesExplorerMeta {
       products,
       brands: distinct('brand'),
       categories: distinct('category'),
+      productGroups: distinct('product_group'),
       channels: distinct('channel'),
       zones: distinct('zone'),
     },
@@ -158,6 +159,7 @@ export function normalizeSalesExplorerFilters(input: Partial<Record<string, unkn
     product: normalizeMultiFilter(input.product, productOptions),
     brand: normalizeMultiFilter(input.brand, meta.options.brands),
     category: normalizeMultiFilter(input.category, meta.options.categories),
+    productGroup: normalizeMultiFilter(input.productGroup, meta.options.productGroups),
     channel: normalizeMultiFilter(input.channel, meta.options.channels),
     zone: normalizeMultiFilter(input.zone, meta.options.zones),
   };
@@ -168,7 +170,8 @@ export function buildSalesExplorerWhere(filters: SalesExplorerFilters) {
   const clauses = [universe.sql, 'sale_date >= ?', 'sale_date <= ?'];
   const parameters: SqlValue[] = [...universe.parameters, filters.from, filters.to];
   const textDimensions: Array<[keyof SalesExplorerFilters, string]> = [
-    ['seller', 'seller'], ['product', 'product_id'], ['brand', 'brand'], ['category', 'category'], ['channel', 'channel'], ['zone', 'zone'],
+    ['seller', 'seller'], ['product', 'product_id'], ['brand', 'brand'], ['category', 'category'],
+    ['productGroup', 'product_group'], ['channel', 'channel'], ['zone', 'zone'],
   ];
   for (const [key, column] of textDimensions) {
     const selected = decodeMultiFilter(filters[key]);

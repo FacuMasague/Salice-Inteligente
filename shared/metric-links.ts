@@ -1,4 +1,5 @@
 export const REPORT_ENDPOINT_METRICS = {
+  '/api/reports/executive-summary': ['sales.net', 'volume.kilos', 'clients.buyers', 'comparison.variation', 'target.monthly', 'recovery.non_buyer_30', 'balance.pending', 'balance.overdue', 'logistics.foja_assignment'],
   '/api/reports/spt': ['volume.kilos', 'sales.units', 'sales.net', 'clients.buyers', 'comparison.ratio'],
   '/api/reports/commercial-sales': ['sales.net', 'volume.kilos', 'sales.units', 'clients.buyers', 'comparison.variation'],
   '/api/reports/general': ['volume.kilos', 'sales.net', 'clients.buyers', 'target.monthly', 'target.linear_projection', 'comparison.variation'],

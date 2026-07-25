@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Building2, CalendarRange, ChevronDown, Database, Filter, PawPrint, RefreshCw, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
+import { BarChart3, Building2, CalendarRange, Database, PawPrint, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { MarsBrandRow, MarsFilterKey, MarsFilters, MarsPeriodPoint, MarsReportMeta, MarsReportPayload } from '../../shared/models';
+import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportExportUrl } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { compactNumber, number } from '../lib/format';
+import { reportFiltersFromLocation } from '../lib/report-links';
 
 const EMPTY_FILTERS: MarsFilters = {
   year: '', period: '', clientMode: 'branch', branch: '', clientType: '',
@@ -68,8 +71,8 @@ function VolumeChart({ report }: { report: MarsReportPayload }) {
     {hoveredRow && hovered != null && <aside className={`mars-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.periods.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}>
       <strong>{hoveredRow.label} · {dateLabel(hoveredRow.start)}–{dateLabel(hoveredRow.end)}{hoveredRow.isPartial ? ' · parcial' : ''}</strong>
       <span><i className="volume" /><div><small>Volumen</small><b>{exactKilos(hoveredRow.kilos)} kg</b></div></span>
-      <span><i className="ratio" /><div><small>YTD vs año anterior</small><b>{percent(hoveredRow.ytdVsPreviousYear)}</b></div></span>
-      <div className="mars-tooltip-grid"><span>{number(hoveredRow.clients)} {report.filters.clientMode === 'branch' ? 'sucursales' : 'cuentas'}</span><span>{percent(hoveredRow.vsPreviousYear)} vs LY</span><span>{percent(hoveredRow.vsPreviousPeriod)} vs período anterior</span></div>
+      <span><i className="ratio" /><div><small>Acumulado vs año anterior</small><b>{percent(hoveredRow.ytdVsPreviousYear)}</b></div></span>
+      <div className="mars-tooltip-grid"><span>{number(hoveredRow.clients)} {report.filters.clientMode === 'branch' ? 'sucursales' : 'cuentas'}</span><span>{percent(hoveredRow.vsPreviousYear)} vs año anterior</span><span>{percent(hoveredRow.vsPreviousPeriod)} vs período anterior</span></div>
     </aside>}
   </div>;
 }
@@ -98,7 +101,19 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
   const points = report.periods.map((row, index) => `${x(index)},${y(row.clients)}`).join(' ');
   const hoveredRow = hovered == null ? null : report.periods[hovered];
   return <div className="mars-client-chart" onMouseLeave={() => setHovered(null)}>
-    <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Clientes Mars por período">
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Clientes Mars por período"
+      onMouseMove={(event) => {
+        if (!report.periods.length) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const pointerX = (event.clientX - rect.left) / rect.width * width;
+        const nearest = report.periods.length === 1 ? 0 : Math.round((pointerX - inset.left) / step);
+        setHovered(Math.max(0, Math.min(report.periods.length - 1, nearest)));
+      }}
+    >
       {[0, .5, 1].map((ratioValue) => <g key={ratioValue}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratioValue)} y2={y(max * ratioValue)} className="mars-grid-line" />{ratioValue > 0 && <text x={inset.left - 8} y={y(max * ratioValue) + 4} textAnchor="end">{Math.round(max * ratioValue)}</text>}</g>)}
       <polyline points={points} className="mars-client-line" />
       {report.periods.map((row, index) => <g key={row.label} className="mars-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)}><circle cx={x(index)} cy={y(row.clients)} r={hovered === index ? 6 : 4.5} className={row.isPartial ? 'mars-client-dot partial' : 'mars-client-dot'} /><text x={x(index)} y={height - 12} textAnchor="middle">{row.label}</text></g>)}
@@ -119,7 +134,7 @@ function BrandTable({ rows, onOpenBrand }: { rows: MarsBrandRow[]; onOpenBrand: 
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const changeSort = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="mars-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => changeSort('share')} /><SortButton label="Año anterior comparable" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => changeSort('variation')} /></header>{sorted.map((row) => <article key={row.brand}><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span>{exactKilos(row.kilos)} kg</span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)} kg</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
+  return <div className="mars-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => changeSort('share')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => changeSort('variation')} /></header>{sorted.map((row) => <article key={row.brand}><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span>{exactKilos(row.kilos)} kg</span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)} kg</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
 }
 
 function PeriodTable({ rows, mode }: { rows: MarsPeriodPoint[]; mode: MarsFilters['clientMode'] }) {
@@ -128,7 +143,7 @@ function PeriodTable({ rows, mode }: { rows: MarsPeriodPoint[]; mode: MarsFilter
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const changeSort = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="mars-period-table"><header><SortButton label="Período" direction={direction('period')} onClick={() => changeSort('period')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label={mode === 'branch' ? 'Sucursales' : 'Cuentas'} direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="LY comparable" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Vs LY" direction={direction('vsPreviousYear')} onClick={() => changeSort('vsPreviousYear')} /><SortButton label="YTD" direction={direction('ytdKilos')} onClick={() => changeSort('ytdKilos')} /><SortButton label="YTD vs LY" direction={direction('ytdVsPreviousYear')} onClick={() => changeSort('ytdVsPreviousYear')} /></header>{sorted.map((row) => <article key={row.label}><strong>{row.label}<small>{dateLabel(row.start)}–{dateLabel(row.end)}{row.isPartial ? ' · parcial' : ''}</small></strong><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{exactKilos(row.previousYearKilos)}</span><span>{percent(row.vsPreviousYear)}</span><span>{exactKilos(row.ytdKilos)}</span><span>{percent(row.ytdVsPreviousYear)}</span></article>)}</div>;
+  return <div className="mars-period-table"><header><SortButton label="Período" direction={direction('period')} onClick={() => changeSort('period')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label={mode === 'branch' ? 'Sucursales' : 'Cuentas'} direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Vs año anterior" direction={direction('vsPreviousYear')} onClick={() => changeSort('vsPreviousYear')} /><SortButton label="Acumulado" direction={direction('ytdKilos')} onClick={() => changeSort('ytdKilos')} /><SortButton label="Acum. vs anterior" direction={direction('ytdVsPreviousYear')} onClick={() => changeSort('ytdVsPreviousYear')} /></header>{sorted.map((row) => <article key={row.label}><strong>{row.label}<small>{dateLabel(row.start)}–{dateLabel(row.end)}{row.isPartial ? ' · parcial' : ''}</small></strong><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{exactKilos(row.previousYearKilos)}</span><span>{percent(row.vsPreviousYear)}</span><span>{exactKilos(row.ytdKilos)}</span><span>{percent(row.ytdVsPreviousYear)}</span></article>)}</div>;
 }
 
 export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) => void }) {
@@ -146,7 +161,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
       return payload as MarsReportMeta;
     }).then((payload) => {
       setMeta(payload);
-      setFilters({ ...EMPTY_FILTERS, year: payload.latestYear, period: payload.latestPeriod });
+      setFilters(reportFiltersFromLocation('mars', { ...EMPTY_FILTERS, year: payload.latestYear, period: payload.latestPeriod }));
     }).catch((cause: Error) => { setError(cause.message); setLoading(false); });
   }, []);
 
@@ -165,15 +180,16 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     return () => controller.abort();
   }, [filters, meta]);
 
-  const activeFilterCount = useMemo(() => (Object.entries(filters) as [keyof MarsFilters, string][]).filter(([key, value]) => !['year', 'period', 'clientMode'].includes(key) && value).length, [filters]);
+  const selectedFilterCount = useMemo(() => (Object.entries(filters) as [keyof MarsFilters, string][]).filter(([key, value]) => !['year', 'period', 'clientMode'].includes(key) && value).length, [filters]);
+  const advancedFilterCount = useMemo(() => (['clientType', 'channelGroup', 'brand', 'subcategoryGroup'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof MarsFilters, value: string) => setFilters((current) => {
     if (key === 'year' && meta) return { ...current, year: value, period: meta.periods[value]?.at(-1)?.label ?? current.period };
     return { ...current, [key]: value };
   });
 
-  if (!meta && loading) return <div className="page-view mars-page"><div className="spt-loading"><RefreshCw className="spin" size={24} /><strong>Preparando Reporte Mars</strong><span>Reconstruyendo el calendario comercial y los movimientos desde GESI…</span></div></div>;
-  if (!meta || (!report && error)) return <div className="page-view mars-page"><div className="spt-loading error"><Database size={24} /><strong>No pudimos abrir Reporte Mars</strong><span>{error}</span></div></div>;
-  if (!report) return <div className="page-view mars-page"><div className="spt-loading"><RefreshCw className="spin" size={24} /><strong>Calculando períodos Mars</strong></div></div>;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Mars" detail="Reconstruyendo el calendario comercial y los movimientos desde GESI…" />;
+  if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte Mars" detail={error} onRetry={() => location.reload()} />;
+  if (!report) return <ReportState state="loading" title="Calculando períodos Mars" detail="Aplicando el universo y los filtros seleccionados." />;
 
   const clientTerm = report.filters.clientMode === 'branch' ? 'sucursales de cliente' : 'cuentas únicas';
   const priorPeriod = report.selected.period === 1 ? 'P13 del año anterior' : `P${String(report.selected.period - 1).padStart(2, '0')}`;
@@ -189,31 +205,44 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
   });
 
   return <div className="page-view mars-page">
-    <section className="data-card mars-filter-card" data-tour="mars-overview">
-      <div className="mars-filter-copy"><span className="section-kicker"><PawPrint size={14} /> Reporte Mars</span><h2>Pet Nutrition · {report.filters.year} {report.filters.period}</h2><p>Períodos comerciales Mars de cuatro semanas, calculados directamente sobre facturas y notas de crédito de GESI.</p><div className="mars-mode-tabs" role="group" aria-label="Unidad de clientes"><button className={filters.clientMode === 'branch' ? 'active' : ''} onClick={() => update('clientMode', 'branch')}><Store size={14} /> Por sucursal</button><button className={filters.clientMode === 'account' ? 'active' : ''} onClick={() => update('clientMode', 'account')}><Building2 size={14} /> Por cuenta</button></div></div>
-      <div className="mars-filter-controls"><SingleSelectFilter label="Año Mars" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Período Mars" value={filters.period} options={(meta.periods[filters.year] ?? []).map((period) => period.label)} onChange={(value) => update('period', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /><button className={`button secondary mars-more-button ${activeFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)}><Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}<ChevronDown size={13} /></button></div>
-      {expanded && <div className="mars-filter-expanded">{filterKeys.filter((key) => key !== 'branch').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!activeFilterCount} onClick={reset}><X size={14} /> Restablecer</button></div>}
-      <SavedViewsBar viewKey="mars" filters={{ ...filters }} onApply={applySaved} />
-      {loading && <div className="mars-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
-    </section>
+    <BusinessReportFilters
+      dataTour="mars-overview"
+      kicker={<><PawPrint size={14} /> Reporte Mars</>}
+      title={<>Pet Nutrition · {report.filters.year} {report.filters.period}</>}
+      description="Períodos comerciales Mars de cuatro semanas, calculados directamente sobre facturas y notas de crédito de GESI."
+      introExtra={<div className="mars-mode-tabs" role="group" aria-label="Unidad de clientes"><button className={filters.clientMode === 'branch' ? 'active' : ''} onClick={() => update('clientMode', 'branch')}><Store size={14} /> Por sucursal</button><button className={filters.clientMode === 'account' ? 'active' : ''} onClick={() => update('clientMode', 'account')}><Building2 size={14} /> Por cuenta</button></div>}
+      primary={<><SingleSelectFilter label="Año Mars" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Período Mars" value={filters.period} options={(meta.periods[filters.year] ?? []).map((period) => period.label)} onChange={(value) => update('period', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /></>}
+      advanced={<>{filterKeys.filter((key) => key !== 'branch').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}
+      activeFilterCount={advancedFilterCount}
+      expanded={expanded}
+      onToggle={() => setExpanded((value) => !value)}
+      loading={loading}
+    >
+      <ReportFilterActions view="mars" filters={{ ...filters }} labels={{ year: { label: 'Año Mars' }, period: { label: 'Período' }, clientMode: { label: 'Clientes', value: (value) => value === 'account' ? 'Por cuenta' : 'Por sucursal' }, ...Object.fromEntries(Object.entries(FILTER_LABELS).map(([key, label]) => [key, { label }])) }} onClear={(key) => update(key as keyof MarsFilters, key === 'year' ? meta.latestYear : key === 'period' ? meta.latestPeriod : key === 'clientMode' ? 'branch' : '')} onReset={reset}><SavedViewsBar viewKey="mars" filters={{ ...filters }} onApply={applySaved} /></ReportFilterActions>
+    </BusinessReportFilters>
 
-    <section className={`mars-period-note ${report.isPartial ? 'partial' : ''}`}><CalendarRange size={17} /><div><strong>{report.selected.label} · {dateLabel(report.selected.start)} al {dateLabel(report.isPartial ? report.sourceMaxDate : report.selected.end)}</strong><span>{report.isPartial ? `Período en curso: ${report.elapsedDays} de ${report.selected.days} días. Las comparaciones YTD y por marca usan el mismo número de días del año anterior.` : `Período completo de ${report.selected.days} días.`}</span></div></section>
+    <ReportContext universe="Empresa 3 / sucursal 3 · grupo Pet Nutrition" period={`${report.selected.start} → ${report.isPartial ? report.sourceMaxDate : report.selected.end}`} cutoff={report.sourceMaxDate} comparison="Período anterior, mismo período del año anterior y acumulado equivalente" partial={report.isPartial} warnings={[...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : []), ...(meta.clientTypeCatalogSource !== 'gesi_api' ? ['Tipos de cliente mostrados desde catálogo de referencia validado.'] : [])]} related={[{ view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('mars', filters), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
-    <div className="mars-kpis">
-      <article><span className="mars-kpi-icon green"><Scale size={20} /></span><div><small>Total de kilos</small><strong>{kilos(report.current.kilos)} kg</strong><em>{report.isPartial ? 'corte parcial' : 'período completo'}</em></div></article>
-      <article><span className={`mars-kpi-icon ${currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'blue'}`}>{currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}</span><div><small>{priorPeriod}</small><strong>{kilos(report.previousPeriod.kilos)} kg</strong><em>{percent(currentVsPrevious, true)} vs período seleccionado</em></div></article>
-      <article><span className={`mars-kpi-icon ${currentVsYear != null && currentVsYear >= 0 ? 'green' : 'blue'}`}><BarChart3 size={20} /></span><div><small>Mismo período {report.selected.year - 1}</small><strong>{kilos(report.previousYear.kilos)} kg</strong><em>{report.isPartial ? 'base completa del período' : `${percent(currentVsYear, true)} interanual`}</em></div></article>
-      <article><span className="mars-kpi-icon navy"><Users size={20} /></span><div><small>{clientTerm}</small><strong>{number(report.current.clients)}</strong><em>{number(report.current.accounts)} cuentas · {number(report.current.clientBranches)} sucursales</em></div></article>
-      <article><span className="mars-kpi-icon green"><CalendarRange size={20} /></span><div><small>{clientTerm} YTD</small><strong>{number(report.ytd.clients)}</strong><em>P01–{report.selected.label}</em></div></article>
-      <article><span className={`mars-kpi-icon ${ytdClientVariation != null && ytdClientVariation >= 0 ? 'green' : 'blue'}`}><Users size={20} /></span><div><small>YTD año anterior</small><strong>{number(report.previousYtd.clients)}</strong><em>{percent(ytdClientVariation, true)} · corte equivalente</em></div></article>
-    </div>
+    <BusinessReportPeriodNote partial={report.isPartial} title={`${report.selected.label} · ${dateLabel(report.selected.start)} al ${dateLabel(report.isPartial ? report.sourceMaxDate : report.selected.end)}`} detail={report.isPartial ? `Período en curso: ${report.elapsedDays} de ${report.selected.days} días. Las comparaciones acumuladas y por marca usan el mismo número de días del año anterior.` : `Período completo de ${report.selected.days} días.`} />
 
-    <div className="mars-main-grid"><section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance YTD</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />YTD vs LY</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada ClienteID se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section></div>
+    <BusinessReportKpis items={[
+      { label: 'Total de kilos', value: <>{kilos(report.current.kilos)} kg</>, detail: report.isPartial ? 'corte parcial' : 'período completo', icon: <Scale size={20} />, tone: 'green' },
+      { label: priorPeriod, value: <>{kilos(report.previousPeriod.kilos)} kg</>, detail: `${percent(currentVsPrevious, true)} vs período seleccionado`, icon: currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />, tone: currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'blue' },
+      { label: `Mismo período ${report.selected.year - 1}`, value: <>{kilos(report.previousYear.kilos)} kg</>, detail: report.isPartial ? 'base completa del período' : `${percent(currentVsYear, true)} interanual`, icon: <BarChart3 size={20} />, tone: currentVsYear != null && currentVsYear >= 0 ? 'green' : 'blue' },
+      { label: clientTerm, value: number(report.current.clients), detail: `${number(report.current.accounts)} cuentas · ${number(report.current.clientBranches)} sucursales`, icon: <Users size={20} />, tone: 'navy' },
+      { label: `${clientTerm} acumuladas`, value: number(report.ytd.clients), detail: `P01–${report.selected.label}`, icon: <CalendarRange size={20} />, tone: 'green' },
+      { label: 'Acumulado año anterior', value: number(report.previousYtd.clients), detail: `${percent(ytdClientVariation, true)} · corte equivalente`, icon: <Users size={20} />, tone: ytdClientVariation != null && ytdClientVariation >= 0 ? 'green' : 'blue' },
+    ]} />
 
-    <div className="mars-secondary-grid"><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><QuarterChart report={report} /></section><section className="data-card mars-brand-card"><div className="data-card-header"><div><span className="section-kicker"><PawPrint size={14} /> Marcas</span><h2>Mix del período seleccionado</h2><p>Comparación contra la misma cantidad de días del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section></div>
+    <section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance acumulado</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section>
+
+    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><QuarterChart report={report} /></section></div>
+
+    <section className="data-card mars-brand-card"><div className="data-card-header"><div><span className="section-kicker"><PawPrint size={14} /> Marcas</span><h2>Mix del período seleccionado</h2><p>Comparación contra la misma cantidad de días del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 
     <section className="data-card mars-period-card"><div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Detalle auditable</span><h2>Períodos Mars {report.selected.year}</h2><p>Seleccioná los encabezados para ordenar de menor a mayor, de mayor a menor y volver al orden original.</p></div></div><PeriodTable rows={report.periods} mode={filters.clientMode} /></section>
 
-    <section className="mars-source-note"><Database size={16} /><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos Mars · cobertura GESI {meta.coverageFrom} a {meta.maxDate} · empresa 3 / sucursal 3 · grupo Pet Nutrition · excluye Via Salice MDP S.A.{meta.unavailableDocumentCount ? ` GESI no entregó el detalle de ${number(meta.unavailableDocumentCount)} de ${number(meta.sourceDocumentCount)} comprobantes; quedan identificados para el próximo refresco.` : ''}{meta.clientTypeCatalogSource !== 'gesi_api' ? ' Como el maestro de tipos de cliente llegó vacío, sus nombres se muestran con el catálogo de referencia validado; los IDs, clientes y movimientos siguen siendo de GESI.' : ''} El PBIX se usa sólo como referencia funcional y de conciliación.</span></div></section>
+    <BusinessReportSourceNote source={meta.sourceSystem}>{number(meta.rowCount)} movimientos Mars · cobertura GESI {meta.coverageFrom} a {meta.maxDate} · empresa 3 / sucursal 3 · grupo Pet Nutrition · excluye Via Salice MDP S.A.{meta.unavailableDocumentCount ? ` GESI no entregó el detalle de ${number(meta.unavailableDocumentCount)} de ${number(meta.sourceDocumentCount)} comprobantes; quedan identificados para el próximo refresco.` : ''}{meta.clientTypeCatalogSource !== 'gesi_api' ? ' Como el maestro de tipos de cliente llegó vacío, sus nombres se muestran con el catálogo de referencia validado; los IDs, clientes y movimientos siguen siendo de GESI.' : ''} El PBIX se usa sólo como referencia funcional y de conciliación.</BusinessReportSourceNote>
   </div>;
 }

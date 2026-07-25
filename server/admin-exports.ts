@@ -24,9 +24,36 @@ function filtersLabel(filters: object) {
   return Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}=${value}`).join(' · ') || 'Sin filtros adicionales';
 }
 
+const EXPORT_SOURCE = 'API GESI y bases analíticas propias; Power BI no participa de la exportación';
+
+interface ExportMetadata {
+  title: string;
+  period: string;
+  cutoff: string;
+  universe: string;
+  filters: object;
+  source?: string;
+  warnings?: string[];
+}
+
+function metadataCsv(metadata: ExportMetadata, generatedAt = new Date().toISOString()) {
+  return [
+    ['Título', metadata.title],
+    ['Generado', generatedAt],
+    ['Período', metadata.period],
+    ['Corte operativo', metadata.cutoff],
+    ['Universo', metadata.universe],
+    ['Filtros', filtersLabel(metadata.filters)],
+    ['Fuente', metadata.source ?? EXPORT_SOURCE],
+    ['Advertencias', metadata.warnings?.join(' · ') || 'Sin advertencias adicionales'],
+  ];
+}
+
 function setDownloadHeaders(response: Response, contentType: string, filename: string) {
+  const extension = filename.match(/\.[a-z0-9]+$/i)?.[0].toLowerCase() ?? '';
+  const basename = extension ? filename.slice(0, -extension.length) : filename;
   response.setHeader('Content-Type', contentType);
-  response.setHeader('Content-Disposition', `attachment; filename="${safeFilePart(filename)}"`);
+  response.setHeader('Content-Disposition', `attachment; filename="${safeFilePart(basename)}${extension}"`);
   response.setHeader('Cache-Control', 'no-store');
 }
 
@@ -35,10 +62,14 @@ export function exportSalesCsv(response: Response, input: Partial<Record<string,
   const filters = normalizeSalesExplorerFilters(input, meta);
   setDownloadHeaders(response, 'text/csv; charset=utf-8', `ventas-salice-${filters.from}-${filters.to}.csv`);
   response.write('\ufeff');
-  response.write(csvRow(['Generado', new Date().toISOString()]));
-  response.write(csvRow(['Corte GESI', meta.maxDate]));
-  response.write(csvRow(['Universo', 'Ventas Comercial · empresa 3 · sucursales 3/6 · emisores publicados']));
-  response.write(csvRow(['Filtros', filtersLabel(filters)]));
+  metadataCsv({
+    title: 'Explorador general de ventas',
+    period: `${filters.from} → ${filters.to}`,
+    cutoff: meta.maxDate,
+    universe: 'Ventas Comercial · empresa 3 · sucursales 3/6 · emisores publicados',
+    filters,
+    warnings: meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle no se completaron artificialmente.`] : [],
+  }).forEach((row) => response.write(csvRow(row)));
   response.write('\r\n');
   response.write(csvRow(['Fecha', 'Comprobante', 'Tipo', 'Vendedor', 'Cliente ID', 'Cliente', 'Producto ID', 'Producto', 'Marca', 'Rubro', 'Canal', 'Zona', 'Kilos', 'Unidades', 'Venta neta']));
   forEachSalesExportRow(input, (row) => response.write(csvRow([
@@ -52,23 +83,27 @@ export function exportSalesCsv(response: Response, input: Partial<Record<string,
 function styleHeader(row: ExcelJS.Row) {
   row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF214F3F' } };
-  row.alignment = { vertical: 'middle' };
+  row.alignment = { vertical: 'middle', wrapText: true };
+  row.height = 28;
 }
 
-function addMetadataSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, title: string, cutoff: string, universe: string, filters: object) {
-  const sheet = workbook.addWorksheet('Metadatos');
-  sheet.columns = [{ width: 22 }, { width: 110 }];
-  const titleRow = sheet.addRow([title]);
+function addMetadataSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, metadata: ExportMetadata) {
+  const sheet = workbook.addWorksheet('Metadatos', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
+  sheet.columns = [{ width: 26 }, { width: 92 }];
+  const titleRow = sheet.addRow([metadata.title]);
   titleRow.font = { size: 16, bold: true, color: { argb: 'FF214F3F' } };
   titleRow.commit();
-  for (const values of [
-    ['Generado', new Date().toISOString()],
-    ['Corte operativo', cutoff],
-    ['Universo', universe],
-    ['Filtros', filtersLabel(filters)],
-    ['Fuente', 'API GESI y bases analíticas propias; Power BI no participa de la exportación'],
-  ]) sheet.addRow(values).commit();
+  for (const values of metadataCsv(metadata)) {
+    const row = sheet.addRow(values);
+    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    row.commit();
+  }
   sheet.commit();
+}
+
+function excelDate(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}/.test(value)) return value ?? '';
+  return new Date(`${value.slice(0, 10)}T12:00:00Z`);
 }
 
 export async function exportSalesXlsx(response: Response, input: Partial<Record<string, unknown>>) {
@@ -78,10 +113,17 @@ export async function exportSalesXlsx(response: Response, input: Partial<Record<
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
   workbook.creator = 'Salice Inteligente';
   workbook.created = new Date();
-  addMetadataSheet(workbook, 'Explorador general de ventas', meta.maxDate, 'Ventas Comercial · empresa 3 · sucursales 3/6', filters);
-  const sheet = workbook.addWorksheet('Movimientos');
+  addMetadataSheet(workbook, {
+    title: 'Explorador general de ventas',
+    period: `${filters.from} → ${filters.to}`,
+    cutoff: meta.maxDate,
+    universe: 'Ventas Comercial · empresa 3 · sucursales 3/6',
+    filters,
+    warnings: meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle no se completaron artificialmente.`] : [],
+  });
+  const sheet = workbook.addWorksheet('Movimientos', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
   sheet.columns = [
-    { header: 'Fecha', key: 'date', width: 13 }, { header: 'Comprobante', key: 'document', width: 22 },
+    { header: 'Fecha', key: 'date', width: 14, style: { numFmt: 'dd/mm/yyyy' } }, { header: 'Comprobante', key: 'document', width: 22 },
     { header: 'Tipo', key: 'documentType', width: 17 }, { header: 'Vendedor', key: 'seller', width: 23 },
     { header: 'Cliente ID', key: 'clientId', width: 13 }, { header: 'Cliente', key: 'client', width: 38 },
     { header: 'Producto ID', key: 'productId', width: 16 }, { header: 'Producto', key: 'product', width: 45 },
@@ -89,12 +131,12 @@ export async function exportSalesXlsx(response: Response, input: Partial<Record<
     { header: 'Canal', key: 'channel', width: 22 }, { header: 'Zona', key: 'zone', width: 16 },
     { header: 'Kilos', key: 'kilos', width: 14, style: { numFmt: '#,##0.000' } },
     { header: 'Unidades', key: 'units', width: 14, style: { numFmt: '#,##0.00' } },
-    { header: 'Venta neta', key: 'netAmount', width: 18, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
+    { header: 'Venta neta', key: 'netAmount', width: 22, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
   ];
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();
   forEachSalesExportRow(input, (row) => {
-    sheet.addRow({ ...row, documentType: row.documentType === 'credit_note' ? 'Nota de crédito' : 'Factura' }).commit();
+    sheet.addRow({ ...row, date: excelDate(row.date), documentType: row.documentType === 'credit_note' ? 'Nota de crédito' : 'Factura' }).commit();
   });
   sheet.autoFilter = 'A1:O1';
   sheet.commit();
@@ -112,9 +154,9 @@ function receivableColumns() {
 function receivableValues(row: ReceivableDashboardPayload['rows'][number]) {
   return [
     row.clientId, row.name, row.tradeName, row.seller, row.paymentMethod, row.workflow.responsible,
-    row.workflow.status, row.workflow.nextFollowUpAt, row.pendingBalance, row.overdueBalance, row.overdueShare,
-    row.earliestDue, row.oldestOverdueDays, row.openDocuments, row.overdueDocuments, row.sales30,
-    row.workflow.lastComment, row.workflow.updatedAt,
+    row.workflow.status, excelDate(row.workflow.nextFollowUpAt), row.pendingBalance, row.overdueBalance, row.overdueShare,
+    excelDate(row.earliestDue), row.oldestOverdueDays, row.openDocuments, row.overdueDocuments, row.sales30,
+    row.workflow.lastComment, excelDate(row.workflow.updatedAt),
   ];
 }
 
@@ -123,10 +165,14 @@ export function exportReceivablesCsv(response: Response, input: Partial<Record<s
   if (!payload) throw new Error('La base de saldos pendientes no está disponible.');
   setDownloadHeaders(response, 'text/csv; charset=utf-8', `cuentas-por-cobrar-${payload.sourceMaxDate}.csv`);
   response.write('\ufeff');
-  response.write(csvRow(['Generado', payload.generatedAt]));
-  response.write(csvRow(['Corte GESI', payload.sourceMaxDate]));
-  response.write(csvRow(['Universo', 'Comprobantes débito abiertos con vencimiento válido']));
-  response.write(csvRow(['Filtros', filtersLabel(payload.filters)]));
+  metadataCsv({
+    title: 'Cuentas por cobrar',
+    period: `Cartera vigente al ${payload.sourceMaxDate}; ventas móviles de 30 días`,
+    cutoff: payload.sourceMaxDate,
+    universe: 'Comprobantes débito abiertos con vencimiento válido',
+    filters: payload.filters,
+    warnings: ['Recibos y notas de crédito sin aplicar no se suman como deuda documental.'],
+  }, payload.generatedAt).forEach((row) => response.write(csvRow(row)));
   response.write('\r\n');
   response.write(csvRow(receivableColumns()));
   payload.rows.forEach((row) => response.write(csvRow(receivableValues(row))));
@@ -138,8 +184,17 @@ export async function exportReceivablesXlsx(response: Response, input: Partial<R
   if (!payload) throw new Error('La base de saldos pendientes no está disponible.');
   setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `cuentas-por-cobrar-${payload.sourceMaxDate}.xlsx`);
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
-  addMetadataSheet(workbook, 'Cuentas por cobrar', payload.sourceMaxDate, 'Comprobantes débito abiertos con vencimiento válido', payload.filters);
-  const sheet = workbook.addWorksheet('Cartera');
+  addMetadataSheet(workbook, {
+    title: 'Cuentas por cobrar',
+    period: `Cartera vigente al ${payload.sourceMaxDate}; ventas móviles de 30 días`,
+    cutoff: payload.sourceMaxDate,
+    universe: 'Comprobantes débito abiertos con vencimiento válido',
+    filters: payload.filters,
+    warnings: ['Recibos y notas de crédito sin aplicar no se suman como deuda documental.'],
+  });
+  const sheet = workbook.addWorksheet('Cartera', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
+  const widths = [13, 38, 28, 24, 22, 22, 20, 18, 22, 22, 14, 18, 17, 18, 19, 22, 42, 20];
+  sheet.columns = widths.map((width) => ({ width }));
   sheet.addRow(receivableColumns());
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();
@@ -148,6 +203,7 @@ export async function exportReceivablesXlsx(response: Response, input: Partial<R
     for (const column of [9, 10, 16]) excelRow.getCell(column).numFmt = '$ #,##0.00;[Red]-$ #,##0.00';
     excelRow.getCell(11).value = row.overdueShare / 100;
     excelRow.getCell(11).numFmt = '0.00%';
+    for (const column of [8, 12, 18]) excelRow.getCell(column).numFmt = 'dd/mm/yyyy';
     excelRow.commit();
   });
   sheet.autoFilter = 'A1:R1';
@@ -168,19 +224,21 @@ export async function exportGoalsXlsx(response: Response, versionId?: string, mo
   const version = payload.selectedVersion;
   setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `objetivos-${version.version}-${payload.selectedMonth}.xlsx`);
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: true });
-  addMetadataSheet(
-    workbook,
-    `Objetivos comerciales · ${version.name}`,
-    payload.selectedMonth,
-    `${version.sourceLabel} · versión ${version.version} · ${version.status}`,
-    {},
-  );
-  const sheet = workbook.addWorksheet('Objetivos');
+  addMetadataSheet(workbook, {
+    title: `Objetivos comerciales · ${version.name}`,
+    period: payload.selectedMonth,
+    cutoff: payload.selectedMonth,
+    universe: `${version.sourceLabel} · versión ${version.version} · ${version.status}`,
+    filters: { month: payload.selectedMonth, version: version.version },
+    source: 'Objetivos: configuración versionada de Salice. Resultados reales: API GESI.',
+    warnings: version.status === 'active' ? [] : ['La versión exportada no es el plan activo y no modifica el cumplimiento operativo.'],
+  });
+  const sheet = workbook.addWorksheet('Objetivos', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
   sheet.columns = [
     { header: 'Mes', key: 'month', width: 12 }, { header: 'Producto / lectura', key: 'product', width: 32 },
     { header: 'Vendedor', key: 'seller', width: 24 }, { header: 'Kilos', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
     { header: 'Cuentas', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
-    { header: 'Facturación', key: 'invoicing', width: 18, style: { numFmt: '$ #,##0.00' } },
+    { header: 'Facturación', key: 'invoicing', width: 22, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
   ];
   styleHeader(sheet.getRow(1));
   sheet.getRow(1).commit();

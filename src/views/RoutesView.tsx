@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp,
-  Clock3, FileText, FolderOpen, MapPin, Navigation, Route, Search, Sparkles, Truck,
+  Clock3, FileText, MapPin, Navigation, Route, Search, Sparkles, Truck,
 } from 'lucide-react';
 import { groupDeliveryInvoices } from '../../shared/algorithms';
 import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
@@ -31,14 +31,12 @@ export function RoutesView({
   initialClientId,
   onOpenClient,
   onOpenInvoice,
-  onOpenSheet,
 }: {
   clients: Client[];
   logistics: LogisticsSnapshot;
   initialClientId: number | null;
   onOpenClient: (client: Client) => void;
   onOpenInvoice: (invoiceId: string) => void;
-  onOpenSheet: (sheetId: number) => void;
 }) {
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const coverageFrom = logistics.coverageFrom.slice(0, 10);
@@ -57,8 +55,6 @@ export function RoutesView({
   const [stopMinutes, setStopMinutes] = useState(15);
   const [maxWorkMinutes, setMaxWorkMinutes] = useState(480);
   const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
-  const [sheetLookup, setSheetLookup] = useState('');
-  const sortedSheets = useMemo(() => [...logistics.sheets].sort((a, b) => b.id - a.id), [logistics.sheets]);
 
   const localities = useMemo(() => [...new Set(logistics.invoices.map((invoice) => invoice.locality).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'es')), [logistics.invoices]);
@@ -161,16 +157,7 @@ export function RoutesView({
           <h2>Facturas y fojas de reparto</h2>
           <p>Una foja cerrada confirma el cierre de la carga en GESI; no demuestra que el cliente haya recibido la mercadería.</p>
         </div>
-        <div className="delivery-header-actions">
-          <div className="delivery-coverage"><span>Cobertura</span><strong>{compactDate(coverageFrom)}–{compactDate(coverageThrough)}</strong><small>{number(logistics.sheets.length)} fojas leídas</small></div>
-          <div className="delivery-sheet-lookup">
-            <label><span>ABRIR FOJA</span><select value={sheetLookup} onChange={(event) => setSheetLookup(event.target.value)}>
-              <option value="">Elegir número…</option>
-              {sortedSheets.map((sheet) => <option value={sheet.id} key={sheet.id}>Foja {sheet.id} · {sheet.status === 'closed' ? 'cerrada' : 'abierta'}</option>)}
-            </select></label>
-            <button className="button secondary" disabled={!sheetLookup} onClick={() => onOpenSheet(Number(sheetLookup))}><FolderOpen size={15} /> Abrir</button>
-          </div>
-        </div>
+        <div className="delivery-coverage"><span>Cobertura</span><strong>{compactDate(coverageFrom)}–{compactDate(coverageThrough)}</strong><small>{number(logistics.sheets.length)} fojas leídas</small></div>
       </section>
 
       <section className="delivery-route-kpis">

@@ -132,3 +132,7 @@ El PBIX se conserva en `data/reference/spt-pbix.sqlite` únicamente para verific
 Al comparar el corte 01–17/07/2026, la API actual devolvió 116.461,178 kg y 519 clientes frente a 116.416,178 kg y 519 clientes del PBIX. La diferencia de 45 kg y $129.608,55 corresponde a una factura ingresada el 17/07/2026 a las 18:43:59, después de la foto de referencia. Esto confirma que igualar a la fuerza el número viejo del PBIX produciría un dato operativo desactualizado.
 
 La web agrega etiquetas más explícitas para distinguir cociente de cumplimiento y variación porcentual, filtros globales, evolución diaria acumulada, historia de 13 meses y pestañas de vendedores y trimestre. `pnpm run reconcile:spt` genera un control repetible entre ambas fuentes sin convertir Power BI en una dependencia.
+
+## Simplificación de filtros v0.8.6
+
+La pantalla prioriza mes, vendedor, canal y grupo de artículos. Los demás criterios continúan disponibles en `Más filtros`, separados entre criterios comerciales comunes y específicos del contrato SPT. Producto y cliente aparecen una sola vez; la simplificación no cambia parámetros, universo ni cálculo del endpoint.

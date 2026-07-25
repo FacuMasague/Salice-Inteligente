@@ -24,13 +24,14 @@ type DocumentSort = 'date' | 'documentNumber' | 'client' | 'seller' | 'netAmount
 
 interface SalesExplorerViewProps {
   clients: Client[];
+  navigationRequest?: { id: number; filters: Partial<SalesExplorerFilters> } | null;
   onOpenClient: (clientId: number) => void;
   onOpenProduct: (productId: string) => void;
   onOpenBrand: (brand: string) => void;
   onOpenInvoice: (invoiceId: string) => void;
 }
 
-const emptyFilters: SalesExplorerFilters = { from: '', to: '', seller: '', client: '', product: '', brand: '', category: '', channel: '', zone: '' };
+const emptyFilters: SalesExplorerFilters = { from: '', to: '', seller: '', client: '', product: '', brand: '', category: '', productGroup: '', channel: '', zone: '' };
 const asRecord = (filters: SalesExplorerFilters): Record<string, string> => ({ ...filters });
 const exact = (value: number, digits = 2) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(value);
 
@@ -73,7 +74,7 @@ function SalesTimeline({ report, onSelect }: { report: SalesExplorerPayload; onS
   </div>;
 }
 
-export function SalesExplorerView({ clients, onOpenClient, onOpenProduct, onOpenBrand, onOpenInvoice }: SalesExplorerViewProps) {
+export function SalesExplorerView({ clients, navigationRequest, onOpenClient, onOpenProduct, onOpenBrand, onOpenInvoice }: SalesExplorerViewProps) {
   const [meta, setMeta] = useState<SalesExplorerMeta | null>(null);
   const [report, setReport] = useState<SalesExplorerPayload | null>(null);
   const [filters, setFilters] = useState<SalesExplorerFilters>(emptyFilters);
@@ -97,6 +98,13 @@ export function SalesExplorerView({ clients, onOpenClient, onOpenProduct, onOpen
       setFilters({ ...emptyFilters, from: from.toISOString().slice(0, 10) < payload.minDate ? payload.minDate : from.toISOString().slice(0, 10), to: payload.maxDate });
     }).catch((cause: Error) => { setError(cause.message); setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    if (!meta || !navigationRequest) return;
+    setFilters((current) => ({ ...current, ...navigationRequest.filters }));
+    setPage(1);
+    setTab(navigationRequest.filters.client || navigationRequest.filters.product ? 'documents' : 'periods');
+  }, [meta, navigationRequest?.id]);
 
   useEffect(() => {
     if (!meta || !filters.from || !filters.to) return;
@@ -149,7 +157,7 @@ export function SalesExplorerView({ clients, onOpenClient, onOpenProduct, onOpen
       <div className="data-card-header"><div><span className="section-kicker"><Search size={14} /> Exploración administrativa</span><h2>De la venta al comprobante</h2><p>Todos los indicadores y desgloses usan el mismo universo comercial y los mismos filtros.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
       <div className="admin-filter-grid primary"><label className="date-filter"><span>Desde</span><input type="date" min={meta.minDate} max={filters.to} value={filters.from} onChange={(event) => changeFilter('from', event.target.value)} /></label><label className="date-filter"><span>Hasta</span><input type="date" min={filters.from} max={meta.maxDate} value={filters.to} onChange={(event) => changeFilter('to', event.target.value)} /></label><MultiSelectFilter label="Vendedor" value={filters.seller} options={meta.options.sellers} onChange={(value) => changeFilter('seller', value)} /><MultiSelectFilter label="Cliente" value={filters.client} options={meta.options.clients} onChange={(value) => changeFilter('client', value)} /></div>
       <button className="admin-more-filters" onClick={() => setAdvanced((current) => !current)}><Filter size={14} /> {advanced ? 'Ocultar filtros adicionales' : 'Producto, marca, rubro, canal y zona'} <ChevronRight size={14} className={advanced ? 'rotated' : ''} /></button>
-      {advanced && <div className="admin-filter-grid advanced"><MultiSelectFilter label="Producto" value={filters.product} options={meta.options.products} onChange={(value) => changeFilter('product', value)} /><MultiSelectFilter label="Marca" value={filters.brand} options={meta.options.brands} onChange={(value) => changeFilter('brand', value)} /><MultiSelectFilter label="Rubro" value={filters.category} options={meta.options.categories} onChange={(value) => changeFilter('category', value)} /><MultiSelectFilter label="Canal" value={filters.channel} options={meta.options.channels} onChange={(value) => changeFilter('channel', value)} /><MultiSelectFilter label="Zona" value={filters.zone} options={meta.options.zones} onChange={(value) => changeFilter('zone', value)} /><button className="button ghost" onClick={reset}>Restablecer</button></div>}
+      {advanced && <div className="admin-filter-grid advanced"><MultiSelectFilter label="Producto" value={filters.product} options={meta.options.products} onChange={(value) => changeFilter('product', value)} /><MultiSelectFilter label="Marca" value={filters.brand} options={meta.options.brands} onChange={(value) => changeFilter('brand', value)} /><MultiSelectFilter label="Rubro" value={filters.category} options={meta.options.categories} onChange={(value) => changeFilter('category', value)} /><MultiSelectFilter label="Grupo" value={filters.productGroup} options={meta.options.productGroups} onChange={(value) => changeFilter('productGroup', value)} /><MultiSelectFilter label="Canal" value={filters.channel} options={meta.options.channels} onChange={(value) => changeFilter('channel', value)} /><MultiSelectFilter label="Zona" value={filters.zone} options={meta.options.zones} onChange={(value) => changeFilter('zone', value)} /><button className="button ghost" onClick={reset}>Restablecer</button></div>}
       <SavedViewsBar viewKey="sales-explorer" filters={asRecord(filters)} onApply={applySaved} />
     </section>
 

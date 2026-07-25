@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, Search, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, SlidersHorizontal, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportExportUrl } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
+import { reportFiltersFromLocation } from '../lib/report-links';
 
 type ReportTab = 'summary' | 'sellers' | 'quarters';
 
@@ -177,8 +179,12 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   const [meta, setMeta] = useState<SptReportMeta | null>(null);
   const [filters, setFilters] = useState<SptFilters>(EMPTY_FILTERS);
   const [report, setReport] = useState<SptReportPayload | null>(null);
-  const [tab, setTab] = useState<ReportTab>('summary');
+  const [tab, setTab] = useState<ReportTab>(() => {
+    const linked = reportFiltersFromLocation('spt', { tab: 'summary' });
+    return ['summary', 'sellers', 'quarters'].includes(linked.tab) ? linked.tab as ReportTab : 'summary';
+  });
   const [expanded, setExpanded] = useState(false);
+  const [specificFiltersOpen, setSpecificFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -187,7 +193,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'No se pudo abrir la base SPT');
       return payload as SptReportMeta;
-    }).then((payload) => { setMeta(payload); setFilters({ ...EMPTY_FILTERS, month: payload.latestMonth }); }).catch((cause: Error) => { setError(cause.message); setLoading(false); });
+    }).then((payload) => { setMeta(payload); setFilters(reportFiltersFromLocation('spt', { ...EMPTY_FILTERS, month: payload.latestMonth })); }).catch((cause: Error) => { setError(cause.message); setLoading(false); });
   }, []);
 
   useEffect(() => {
@@ -206,12 +212,13 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     return () => controller.abort();
   }, [filters, meta, tab]);
 
-  const activeFilterCount = useMemo(() => (Object.entries(filters) as [keyof SptFilters, string][]).filter(([key, value]) => key !== 'month' && value).length, [filters]);
+  const selectedFilterCount = useMemo(() => (Object.entries(filters) as [keyof SptFilters, string][]).filter(([key, value]) => key !== 'month' && value).length, [filters]);
+  const advancedFilterCount = useMemo(() => (['brand', 'category', 'product', 'client', 'line', 'subcategory', 'clientType', 'grouping', 'locality'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof SptFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
-  if (!meta && loading) return <div className="page-view spt-page"><div className="spt-loading"><RefreshCw className="spin" size={24} /><strong>Preparando el modelo SPT</strong><span>Leyendo facturas, notas de crédito y maestros de la API de GESI…</span></div></div>;
-  if (!meta || (!report && error)) return <div className="page-view spt-page"><div className="spt-loading error"><Database size={24} /><strong>No pudimos abrir el reporte SPT</strong><span>{error}</span></div></div>;
-  if (!report) return <div className="page-view spt-page"><div className="spt-loading"><RefreshCw className="spin" size={24} /><strong>Calculando comparaciones</strong></div></div>;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando el modelo SPT" detail="Leyendo facturas, notas de crédito y maestros de la API de GESI…" />;
+  if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir el reporte SPT" detail={error} onRetry={() => location.reload()} />;
+  if (!report) return <ReportState state="loading" title="Calculando comparaciones" detail="Aplicando el universo y los filtros seleccionados." />;
 
   const previousRatio = ratio(report.current.kilos, report.previousMonth.kilos);
   const yearRatio = ratio(report.current.kilos, report.previousYear.kilos);
@@ -222,7 +229,12 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   const unavailableDocumentRate = meta.sourceDocumentCount
     ? meta.unavailableDocumentCount / (meta.sourceDocumentCount + meta.unavailableDocumentCount) * 100
     : 0;
-  const selectKeys: SptFilterKey[] = ['seller', 'brand', 'productGroup', 'channel', 'line', 'category', 'subcategory', 'clientType', 'grouping', 'locality'];
+  const commonAdvancedKeys: SptFilterKey[] = ['brand', 'category', 'product', 'client'];
+  const specificAdvancedKeys: SptFilterKey[] = ['line', 'subcategory', 'clientType', 'grouping', 'locality'];
+  const resetFilters = () => {
+    setFilters({ ...EMPTY_FILTERS, month: meta.latestMonth });
+    setSpecificFiltersOpen(false);
+  };
   const savedFilters = { ...filters, tab };
   const applySaved = (saved: Record<string, string>) => {
     setFilters(Object.fromEntries(Object.keys(EMPTY_FILTERS).map((key) => [key, saved[key] ?? (key === 'month' ? meta.latestMonth : '')])) as unknown as SptFilters);
@@ -232,11 +244,20 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   return <div className="page-view spt-page">
     <section className="data-card spt-filter-card" data-tour="spt-overview">
       <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Universo SPT conciliado</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan directamente sobre facturas, notas de crédito y maestros de GESI.</p></div>
-      <div className="spt-filter-primary"><SingleSelectFilter label="Mes" value={filters.month} options={meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update('month', value)} /><SelectFilter label="Vendedor" value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label="Canal" value={filters.channel} options={meta.options.channel} onChange={(value) => update('channel', value)} /><button className={`button secondary spt-more-button ${activeFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)}><Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}<ChevronDown size={13} /></button></div>
-      {expanded && <div className="spt-filter-expanded">{selectKeys.filter((key) => key !== 'seller' && key !== 'channel').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<SelectFilter label="Producto" value={filters.product} options={meta.options.product} onChange={(value) => update('product', value)} /><SelectFilter label="Cliente" value={filters.client} options={meta.options.client} onChange={(value) => update('client', value)} /><button className="button secondary" onClick={() => setFilters({ ...EMPTY_FILTERS, month: meta.latestMonth })}><X size={14} /> Restablecer universo</button></div>}
-      <SavedViewsBar viewKey="spt" filters={savedFilters} onApply={applySaved} />
+      <div className="spt-filter-primary"><SingleSelectFilter label="Mes" value={filters.month} options={meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update('month', value)} /><SelectFilter label="Vendedor" value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label="Canal" value={filters.channel} options={meta.options.channel} onChange={(value) => update('channel', value)} /><SelectFilter label="Grupo de artículo" value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className={`button secondary spt-more-button ${advancedFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}><Filter size={14} /> Más filtros {advancedFilterCount ? `(${advancedFilterCount})` : ''}<ChevronDown size={13} /></button></div>
+      {expanded && <div className="spt-filter-expanded">
+        <div className="spt-filter-group-heading"><div><strong>Filtros comerciales</strong><span>Acotá el análisis por marca, rubro, producto o cliente.</span></div></div>
+        <div className="spt-filter-grid">{commonAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div>
+        <button className={`button ghost spt-specific-toggle ${specificFiltersOpen ? 'active' : ''}`} onClick={() => setSpecificFiltersOpen((value) => !value)} aria-expanded={specificFiltersOpen}><SlidersHorizontal size={14} /> {specificFiltersOpen ? 'Ocultar criterios específicos' : 'Ver criterios específicos'}</button>
+        {specificFiltersOpen && <><div className="spt-filter-group-heading secondary"><div><strong>Clasificación y segmentación</strong><span>Usalos sólo cuando necesitás reproducir un corte puntual del reporte histórico.</span></div></div><div className="spt-filter-grid specific">{specificAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div></>}
+        <div className="spt-filter-footer"><button className="button secondary" disabled={!selectedFilterCount} onClick={resetFilters}><X size={14} /> Restablecer filtros</button></div>
+      </div>}
+      <ReportFilterActions view="spt" filters={savedFilters} labels={{ month: { label: 'Mes', value: (value) => monthLabel(value, true) }, tab: { label: 'Vista' }, ...Object.fromEntries(Object.entries(FILTER_LABELS).map(([key, label]) => [key, { label }])) }} onClear={(key) => key === 'tab' ? setTab('summary') : update(key as keyof SptFilters, key === 'month' ? meta.latestMonth : '')} onReset={() => { resetFilters(); setTab('summary'); }}><SavedViewsBar viewKey="spt" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
       {loading && <div className="spt-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
+
+    <ReportContext universe={`Empresas ${meta.defaultUniverse.companies.join('/')} · universo SPT conciliado`} period={`${report.selectedMonth}-01 → ${report.selectedMonth}-${String(report.cutoffDay).padStart(2, '0')}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.cutoffDay < new Date(Date.UTC(Number(report.selectedMonth.slice(0, 4)), Number(report.selectedMonth.slice(5, 7)), 0)).getUTCDate()} warnings={[...(incompleteHistoricalCoverage ? [`Cobertura histórica disponible desde ${meta.coverageFrom}.`] : []), ...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : [])]} related={[{ view: 'reports', label: 'Abrir Reporte General' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('spt', { ...filters, page: tab === 'summary' ? 'main' : tab }), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     {incompleteHistoricalCoverage
       ? <section className="spt-coverage-warning"><AlertTriangle size={17} /><div><strong>Histórico todavía incompleto</strong><span>GESI está cubierto desde {meta.coverageFrom}. No interpretes como cero las comparaciones con períodos anteriores a esa fecha.</span></div></section>
@@ -245,12 +266,12 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     <div className="spt-tabs"><button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}><Gauge size={15} /> Resumen mensual</button><button className={tab === 'sellers' ? 'active' : ''} onClick={() => setTab('sellers')}><Users size={15} /> Vendedores</button><button className={tab === 'quarters' ? 'active' : ''} onClick={() => setTab('quarters')}><CalendarRange size={15} /> Trimestre</button></div>
 
     <div className="spt-kpis">
-      <article><span className="spt-kpi-icon green"><Scale size={18} /></span><div><small>Kilos MTD</small><strong>{kilos(report.current.kilos)} kg</strong><em>1–{report.cutoffDay} {selectedMonthLong}</em></div></article>
+      <article><span className="spt-kpi-icon green"><Scale size={18} /></span><div><small>Kilos del mes</small><strong>{kilos(report.current.kilos)} kg</strong><em>1–{report.cutoffDay} {selectedMonthLong}</em></div></article>
       <article><span className={`spt-kpi-icon ${previousRatio != null && previousRatio >= 100 ? 'green' : 'red'}`}>{previousRatio != null && previousRatio >= 100 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}</span><div><small>Vs mes anterior</small><strong>{previousRatio == null ? 'Sin base' : `${kilos(previousRatio)}%`}</strong><em>{signedPercent(variation(report.current.kilos, report.previousMonth.kilos))} · misma cantidad de días</em></div></article>
-      <article><span className={`spt-kpi-icon ${yearRatio != null && yearRatio >= 100 ? 'green' : 'blue'}`}><BarChart3 size={18} /></span><div><small>Vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : yearRatio == null ? 'Sin base' : `${kilos(yearRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Pendiente del histórico SQL' : `${signedPercent(variation(report.current.kilos, report.previousYear.kilos))} interanual`}</em></div></article>
+      <article><span className={`spt-kpi-icon ${yearRatio != null && yearRatio >= 100 ? 'green' : 'blue'}`}><BarChart3 size={18} /></span><div><small>Vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : yearRatio == null ? 'Sin base' : `${kilos(yearRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Histórico no disponible' : `${signedPercent(variation(report.current.kilos, report.previousYear.kilos))} interanual`}</em></div></article>
       <article><span className="spt-kpi-icon blue"><Users size={18} /></span><div><small>Clientes</small><strong>{number(report.current.clients)}</strong><em>clientes distintos en el período</em></div></article>
       <article><span className="spt-kpi-icon ochre"><PackageOpen size={18} /></span><div><small>Promedio 3 meses</small><strong>{kilos(report.averageLast3MonthsKilos)} kg</strong><em>tres meses completos anteriores</em></div></article>
-      <article><span className={`spt-kpi-icon ${ytdRatio != null && ytdRatio >= 100 ? 'green' : 'red'}`}><CalendarRange size={18} /></span><div><small>YTD vs anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : ytdRatio == null ? 'Sin base' : `${kilos(ytdRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Pendiente del histórico SQL' : `${signedPercent(variation(report.ytd.kilos, report.previousYtd.kilos))} acumulado`}</em></div></article>
+      <article><span className={`spt-kpi-icon ${ytdRatio != null && ytdRatio >= 100 ? 'green' : 'red'}`}><CalendarRange size={18} /></span><div><small>Acumulado vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : ytdRatio == null ? 'Sin base' : `${kilos(ytdRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Histórico no disponible' : `${signedPercent(variation(report.ytd.kilos, report.previousYtd.kilos))} acumulado`}</em></div></article>
     </div>
 
     {tab === 'summary' && <>

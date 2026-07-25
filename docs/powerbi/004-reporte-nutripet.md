@@ -87,3 +87,7 @@ La v0.2.5 agrega `Reportes → Reporte NutriPet` con:
 La pantalla usa la identidad visual verde/azul de Salice, no la paleta roja del PBIX.
 
 Endpoints: `GET /api/reports/nutripet/meta` y `GET /api/reports/nutripet`.
+
+## Experiencia común v0.8.6
+
+NutriPet comparte con Mars y Baires la estructura visual de filtros, período, indicadores, carga y fuente. Conserva el canal Especializado predeterminado, sus filtros, productos, dimensiones, universo y métricas propias.

@@ -24,8 +24,19 @@ describeWithDatabase('explorador general de ventas', () => {
     expect(meta.options.products.length).toBeGreaterThan(1_000);
     expect(meta.options.brands.length).toBeGreaterThan(0);
     expect(meta.options.categories.length).toBeGreaterThan(0);
+    expect(meta.options.productGroups.length).toBeGreaterThan(0);
     expect(meta.options.channels.length).toBeGreaterThan(0);
     expect(meta.options.zones.length).toBeGreaterThan(0);
+  });
+
+  it('conserva el filtro de grupo al reutilizar el exportador para Ventas Comercial', () => {
+    const meta = getSalesExplorerMeta();
+    const productGroup = meta.options.productGroups[0];
+    const report = buildSalesExplorer({ from: meta.minDate, to: meta.maxDate, productGroup });
+    expect(report?.filters.productGroup).toBe(productGroup);
+    const where = buildSalesExplorerWhere(report!.filters);
+    expect(where.sql).toContain('product_group IN');
+    expect(where.parameters).toContain(productGroup);
   });
 
   it('reconcilia sus indicadores con la consulta canónica bajo los mismos filtros', () => {

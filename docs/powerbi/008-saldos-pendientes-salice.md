@@ -108,3 +108,7 @@ La exportación CSV/XLSX incluye saldo, vencido, antigüedad, documentos, venta 
 La ventana `Centro operativo → Cartera` deja de mostrar comprobantes pertenecientes a clientes inactivos en el maestro GESI. La bandeja administrativa `Cuentas por cobrar` conserva el universo documental de esta ficha para no borrar silenciosamente deuda histórica; son dos superficies con finalidades distintas.
 
 En Cartera, la dimensión temporal se divide en bandas hasta el vencimiento y bandas desde el vencimiento. Es una presentación calculada sobre la fecha exacta de cada comprobante y el corte activo, sin cambiar las métricas conciliadas. Las bandas se pueden combinar con OR dentro de la dimensión y con AND respecto de vendedor, forma de pago, estado y los demás filtros.
+
+## Resumen y gestión v0.8.6
+
+`Reportes → Saldos Pendientes` queda como lectura resumida por vendedor, antigüedad y estado. La tabla operativa por cliente se retira de esa pantalla para evitar duplicar búsqueda, seguimiento y exportación: esas funciones continúan en `Cuentas por cobrar`, que reutiliza este mismo universo documental y sigue siendo el único lugar de gestión.

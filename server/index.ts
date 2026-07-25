@@ -23,6 +23,7 @@ import { buildCommercialInbox, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
 import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
 import { buildDataHealth, loadPlatformAuditSummary } from './data-health.js';
+import { buildExecutiveSummary } from './executive-summary.js';
 import { buildGeneralReport, getGeneralReportMeta, getGeneralReportPath } from './general-report.js';
 import { buildMarsReport, getMarsReportMeta, getMarsReportPath } from './mars-report.js';
 import { buildNonBuyerReport, getNonBuyerReportMeta, getNonBuyerReportPath } from './non-buyers-report.js';
@@ -36,6 +37,7 @@ import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report
 import { buildSalesExplorer, getSalesExplorerDocument, getSalesExplorerMeta, getSalesExplorerPath } from './sales-explorer.js';
 import { buildReceivablesDashboard, getReceivableCaseDetail, RECEIVABLE_STATUSES } from './receivables-dashboard.js';
 import { exportGoalsPdf, exportGoalsXlsx, exportInvoicePdf, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
+import { exportReportXlsx, type ReportExportId } from './report-exports.js';
 import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
 import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
@@ -184,6 +186,14 @@ app.get('/api/metrics/catalog', (_req, res) => {
   res.json(metricCatalogSummary());
 });
 
+app.get('/api/reports/executive-summary', async (_req, res) => {
+  const data = await loadSnapshot();
+  const summary = buildExecutiveSummary(data);
+  if (!summary) return res.status(503).json({ error: 'El resumen inicial no puede construirse porque falta al menos una de sus fuentes analíticas.' });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(summary);
+});
+
 app.get('/api/reports/spt/meta', (_req, res) => {
   const meta = getSptReportMeta();
   if (!meta.available) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
@@ -294,6 +304,14 @@ app.get('/api/reports/pending-balances', (req, res) => {
   if (!report) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(report);
+});
+
+const reportExportIds = new Set<ReportExportId>(['spt', 'mars', 'nutripet', 'baires', 'non-buyers']);
+
+app.get('/api/reports/export/:reportId', async (req, res) => {
+  const reportId = String(req.params.reportId) as ReportExportId;
+  if (!reportExportIds.has(reportId)) return res.status(404).json({ error: 'El reporte solicitado no posee una exportación propia.' });
+  return sendDownload(res, () => exportReportXlsx(res, reportId, req.query));
 });
 
 app.get('/api/admin/sales/meta', (_req, res) => {

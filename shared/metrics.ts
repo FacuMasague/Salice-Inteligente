@@ -1,6 +1,6 @@
 import { REPORT_ENDPOINT_METRICS } from './metric-links.js';
 
-export type MetricUnit = 'ars' | 'kg' | 'units' | 'clients' | 'documents' | 'days' | 'months' | 'date' | 'percent' | 'score';
+export type MetricUnit = 'ars' | 'kg' | 'units' | 'products' | 'clients' | 'documents' | 'days' | 'months' | 'date' | 'percent' | 'score';
 
 export interface MetricDefinition {
   id: string;
@@ -41,7 +41,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Renglón de comprobante e ítem',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['Explorador de ventas', 'Ventas · Comercial', 'SPT', 'Reporte General', 'Cuentas no compradoras', 'Reportes de proveedor'],
+    consumers: ['Resumen inicial', 'Explorador de ventas', 'Ventas · Comercial', 'SPT', 'Reporte General', 'Cuentas no compradoras', 'Reportes de proveedor'],
     caveats: ['No incorpora datos del PBIX.', 'Los conceptos sin ítem se informan como cobertura no asignable.'],
   },
   {
@@ -53,7 +53,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Renglón de comprobante e ítem',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['Explorador de ventas', 'SPT', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
+    consumers: ['Resumen inicial', 'Explorador de ventas', 'SPT', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
     caveats: ['No infiere peso desde el nombre del producto.', 'Conserva diferencias históricas trazables respecto de SQL/Power BI.'],
   },
   {
@@ -103,6 +103,18 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dateBasis: 'Stock al corte y ventas de los 90 días previos',
     consumers: ['Productos', 'Ficha de producto'],
     caveats: ['Queda sin valor con stock cero/negativo/ausente o sin rotación positiva.'],
+  },
+  {
+    id: 'inventory.attention_alerts',
+    label: 'Alertas relevantes de inventario',
+    description: 'Productos de la bandeja de Inventario cuya clasificación vigente requiere atención.',
+    unit: 'products',
+    formula: 'COUNT(productos candidatos WHERE decision_status IN estados de atención)',
+    source: 'GESI API · existencias y ventas con detalle + revisiones locales de oficina',
+    grain: 'Producto',
+    dateBasis: 'Stock al snapshot y rotación de los 90 días previos',
+    consumers: ['Productos · Inventario'],
+    caveats: ['Sólo considera productos con stock positivo o rotación reciente.', 'Una alerta orienta revisión y no modifica stock ni genera reposición.'],
   },
   {
     id: 'inventory.last_sale',
@@ -233,7 +245,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Cliente GESI',
     dateBasis: 'Fecha de emisión del comprobante',
-    consumers: ['Explorador de ventas', 'SPT', 'Ventas · Comercial', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
+    consumers: ['Resumen inicial', 'Explorador de ventas', 'SPT', 'Ventas · Comercial', 'Reporte General', 'Mars', 'NutriPet', 'Baires'],
     caveats: ['Mars puede alternar entre cuenta y sucursal de entrega.', 'No equivale al total de clientes activos.'],
   },
   {
@@ -293,7 +305,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiFinance,
     grain: 'Comprobante abierto',
     dateBasis: 'Estado al corte del snapshot',
-    consumers: ['Cuentas por cobrar', 'Saldos Pendientes', 'Cartera', 'Perfil de cliente'],
+    consumers: ['Resumen inicial', 'Cuentas por cobrar', 'Saldos Pendientes', 'Cartera', 'Perfil de cliente'],
     caveats: ['Recibos y notas de crédito no se presentan como deuda.', 'Los residuales menores a $1.000 permanecen visibles.'],
   },
   {
@@ -305,7 +317,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiFinance,
     grain: 'Comprobante abierto',
     dateBasis: 'Primer vencimiento exacto contra fecha del snapshot',
-    consumers: ['Agenda', 'Cuentas por cobrar', 'Cartera', 'Saldos Pendientes', 'Reporte General', 'Perfiles'],
+    consumers: ['Resumen inicial', 'Agenda', 'Cuentas por cobrar', 'Cartera', 'Saldos Pendientes', 'Reporte General', 'Perfiles'],
     caveats: ['No usa el plazo habitual resumido para decidir si un documento venció.'],
   },
   {
@@ -353,7 +365,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: 'Métrica derivada sobre resultados GESI',
     grain: 'Período seleccionado',
     dateBasis: 'Misma cantidad de días calendario cuando el período está abierto',
-    consumers: ['Ventas · Comercial', 'Reporte General'],
+    consumers: ['Resumen inicial', 'Ventas · Comercial', 'Reporte General'],
     caveats: ['Queda sin valor cuando la base es cero.'],
   },
   {
@@ -365,7 +377,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: 'Configuración de planificación reconstruida desde la fuente externa histórica',
     grain: 'Mes, lectura y dimensión objetivo',
     dateBasis: 'Mes calendario del plan',
-    consumers: ['Reporte General', 'Objetivos comerciales'],
+    consumers: ['Resumen inicial', 'Reporte General', 'Objetivos comerciales'],
     caveats: ['No proviene de GESI.', 'Debe conservar versión, vigencia y trazabilidad.'],
   },
   {
@@ -389,8 +401,20 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     source: gesiMovements,
     grain: 'Cliente o marca, según la vista',
     dateBasis: 'Ventanas móviles inclusivas al último movimiento disponible',
-    consumers: ['Cuentas no compradoras'],
+    consumers: ['Resumen inicial', 'Cuentas no compradoras'],
     caveats: ['Una nota de crédito puede hacer no positiva la ventana.', 'La tasa usa como denominador el universo comprador de 90 días.'],
+  },
+  {
+    id: 'logistics.foja_assignment',
+    label: 'Estado documental de foja',
+    description: 'Cantidad de facturas logísticas identificables sin foja, en foja abierta, en foja cerrada o sin clasificación confiable.',
+    unit: 'documents',
+    formula: 'COUNT(delivery_invoices) GROUP BY assignment_status',
+    source: 'GESI API · facturas y fojas de reparto',
+    grain: 'Factura logística identificable',
+    dateBasis: 'Cobertura logística declarada por el snapshot activo',
+    consumers: ['Resumen inicial', 'Rutas', 'Detalle de factura', 'Ficha de cliente'],
+    caveats: ['Foja cerrada documenta el cierre de la carga en GESI y no confirma entrega.', 'Las facturas anteriores a la cobertura no se clasifican artificialmente como sin foja.'],
   },
   {
     id: 'score.collection_risk',

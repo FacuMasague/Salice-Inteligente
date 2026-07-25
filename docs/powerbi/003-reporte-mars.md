@@ -67,3 +67,7 @@ La base operativa contiene 256.683 renglones desde el 30/12/2024. Tres comproban
 La v0.2.4 agrega `Reportes → Reporte Mars` con selector de cuenta/sucursal, filtros globales, seis KPI, gráficos interactivos de volumen y clientes, quarters, mix sortable por marca, tabla auditable de períodos y trazabilidad visible.
 
 Endpoints: `GET /api/reports/mars/meta` y `GET /api/reports/mars`.
+
+## Experiencia común v0.8.6
+
+Mars comparte con NutriPet y Baires la estructura visual de filtros, período, indicadores, carga y fuente. Conserva su calendario comercial, la alternativa cuenta/sucursal, dimensiones, universo y métricas propias.

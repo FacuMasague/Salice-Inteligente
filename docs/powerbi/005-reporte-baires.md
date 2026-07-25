@@ -70,3 +70,7 @@ La v0.2.6 agrega `Reportes → Reporte Baires` con:
 La pantalla mantiene la identidad visual verde/azul/ocre de Salice y no reproduce la paleta amarilla del PBIX.
 
 Endpoints: `GET /api/reports/baires/meta` y `GET /api/reports/baires`.
+
+## Experiencia común v0.8.6
+
+Baires comparte con Mars y NutriPet la estructura visual de filtros, período, indicadores, carga y fuente. Conserva la segmentación, filtros, dimensiones, universo y métricas propias.

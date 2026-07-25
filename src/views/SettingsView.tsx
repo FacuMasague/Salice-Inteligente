@@ -67,7 +67,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado actualizado</span><h2>Aprendé a usar Salice Inteligente v{APP_VERSION}</h2><p>Incluye la gestión comercial liviana de v0.6 y las rutas de reparto de v0.7, además de operación, objetivos, reportes y productos.</p></div>
+          <div><span className="section-kicker">Recorrido guiado actualizado</span><h2>Aprendé a usar Salice Inteligente v{APP_VERSION}</h2><p>Incluye gestión comercial, rutas y fojas, Centro de reportes, filtros guardados, exportaciones y los reportes renovados de Mars, NutriPet y Baires.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}

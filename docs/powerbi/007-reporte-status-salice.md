@@ -93,3 +93,7 @@ La tabla histórica dejó de ser una constante consumida directamente por el rep
 - exportar el detalle en XLSX y el resumen/cumplimiento en PDF.
 
 Reporte General consulta siempre la única versión activa y recarga fuente, cobertura y objetivos en cada solicitud. Resultados reales, comparaciones y proyección continúan en GESI; activar un plan nunca altera movimientos. Las pruebas existentes conservan las cifras testigo de julio y las nuevas pruebas demuestran clonación, edición, activación, archivo y bloqueo de ediciones posteriores.
+
+## Conexión con Objetivos v0.8.6
+
+El Reporte General explica en su encabezado que los resultados provienen de GESI y que los objetivos pertenecen al plan mensual versionado. Un acceso directo abre `Objetivos comerciales`; la edición y activación de planes no se trasladan al reporte y continúan protegidas por el flujo administrativo existente.

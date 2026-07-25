@@ -1,4 +1,4 @@
-# Salice Inteligente · v0.7.1
+# Salice Inteligente · v0.8.7
 
 Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, reunir señales comerciales y notas de oficina, documentar promesas de pago, generar recomendaciones explicables, revisar facturas para reparto y estimar rutas, y consultar reportes de gestión.
 
@@ -17,34 +17,120 @@ pnpm run dev
 
 ## Estado de los datos
 
-La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 23/07/2026 a las 14:26 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal `Mar del Plata [WPM]` (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
+La aplicación usa un **snapshot real de Salice**, capturado desde GESI el 24/07/2026 a las 13:19 de Argentina. La operación general queda fijada a `empresaID=3`, `sucursalID=3` y al depósito principal `Mar del Plata [WPM]` (`depositoID=2`). Los reportes aplican además sus propios universos documentados, sin cambiar la cartera operativa.
 
 Cobertura del snapshot actual:
 
-- 5.721 clientes conservados: 1.919 activos y 3.802 inactivos según el estado actual de GESI.
-- 2.474 clientes con coordenadas válidas, de los cuales 883 están activos; el mapa abre en Mar del Plata y zona.
-- 13.022 maestros de producto: 1.505 activos y 11.517 inactivos. El catálogo operativo contiene 2.155 productos explicables; 1.280 resultan comercializables con las señales actuales.
-- Existencias completas del depósito 2: 903 productos con U1 positiva, 12.072 en cero y 47 con disponibilidad negativa conservada como incidencia; no falta ningún código maestro.
-- 6.274 facturas dentro de la ventana analítica de 90 días.
-- 26.724 pagos conciliados para calcular comportamiento de pago.
-- 949 comprobantes con saldo abierto en el snapshot normalizado.
-- 28.724 facturas con plazo válido entre compra/emisión y primer vencimiento.
-- 1.090 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
-- 1.833 productos del catálogo operativo con precio de referencia disponible.
-- Cobertura logística desde el 08/06/2026: 3.068 facturas, 2.488 sin foja y 580 en fojas cerradas. GESI entregó 74 fojas —73 cerradas y una abierta—; la foja abierta no contiene facturas en este corte.
+- 5.723 clientes conservados: 1.921 activos y 3.802 inactivos según el estado actual de GESI.
+- 2.476 clientes con coordenadas válidas, de los cuales 885 están activos; el mapa abre en Mar del Plata y zona.
+- 13.023 maestros de producto: 1.506 activos y 11.517 inactivos. El catálogo operativo contiene 2.156 productos explicables; 1.281 resultan comercializables con las señales actuales.
+- Existencias completas del depósito 2: 915 productos con U1 positiva, 12.061 en cero y 47 con disponibilidad negativa conservada como incidencia; no falta ningún código maestro.
+- 6.245 facturas dentro de la ventana analítica de 90 días.
+- 26.634 pagos conciliados para calcular comportamiento de pago.
+- 929 comprobantes con saldo abierto en el snapshot normalizado.
+- 28.614 facturas con plazo válido entre compra/emisión y primer vencimiento.
+- 1.091 clientes con plazo observable; 16 presentan condiciones realmente mixtas.
+- 1.834 productos del catálogo operativo con precio de referencia disponible.
+- Cobertura logística desde el 09/06/2026: 3.127 facturas, 2.509 sin foja, 11 en fojas abiertas y 607 en fojas cerradas. GESI entregó 81 fojas: 77 cerradas y cuatro abiertas.
 
-GESI devuelve error para los maestros de zonas y tipos de cliente, y omitió el detalle de dos facturas. También anuncia 13.023 productos pero devuelve de forma estable 13.022; la captura admite esa diferencia de un registro dentro de la tolerancia de datos vivos. El sistema señala estas limitaciones y no inventa los datos faltantes.
+GESI devuelve error para los maestros de zonas y tipos de cliente y omitió el detalle de dos facturas. El sistema señala estas limitaciones y no inventa los datos faltantes.
 
-La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 565 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
+La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 567 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
+
+### Tutorial y lectura visual de reportes de negocio · v0.8.7
+
+- El tutorial incorpora el Centro de reportes, “¿Cómo estamos?”, filtros activos, vistas guardadas, exportaciones, consulta de fojas y la experiencia vigente de los reportes.
+- Mars, NutriPet y Baires muestran Evolución a ancho completo; Cobertura comparte una fila con Trimestres o Quarters; Marcas ocupa una fila completa antes del detalle.
+- Los meses de Cobertura vuelven a mostrarse horizontalmente en NutriPet y Baires gracias al nuevo espacio disponible.
+- Los tooltips de Cobertura actualizan período, cantidad de clientes y contexto mientras el cursor recorre el gráfico.
+- No se modificaron fórmulas, universos, datos de GESI ni contratos de los reportes.
+
+La ficha completa está en `docs/release-v0.8.7.md`.
+
+### Reportes simplificados y mejor conectados · v0.8.6
+
+- SPT deja a la vista los filtros de uso frecuente y agrupa los criterios avanzados en dos niveles. Producto y cliente ya no aparecen duplicados, pero todos los criterios anteriores continúan disponibles.
+- Mars, NutriPet y Baires comparten una misma estructura visual para filtros, período, indicadores y fuente. Sus universos, calendarios, métricas y particularidades permanecen separados.
+- Los contadores de `Más filtros` reflejan únicamente criterios ocultos. Las tablas y comparaciones reemplazan siglas como MTD, YTD y LY por nombres en español y mantienen visibles todos sus encabezados.
+- El Reporte General explica que los resultados provienen de GESI y los objetivos del plan mensual versionado, e incorpora un acceso directo para administrarlos en `Objetivos comerciales`.
+- Saldos Pendientes se concentra en el resumen por vendedor y antigüedad. La consulta y el seguimiento por cliente continúan en `Cuentas por cobrar`, evitando mantener dos superficies para la misma gestión.
+- Los libros Excel conservan columnas amplias, encabezados congelados, valores tipados y vuelven a mostrar las líneas de cuadrícula para facilitar la lectura en oficina.
+- No se modificaron fórmulas, universos, datos de GESI ni el tutorial.
+
+La ficha completa está en `docs/release-v0.8.6.md`.
+
+### Ajustes de uso de Reportes · v0.8.5
+
+- El selector para consultar cualquier foja capturada se trasladó desde Rutas al encabezado del Centro de reportes. Abre la misma ficha documental de sólo lectura.
+- Los bloques de filtros activos y vistas guardadas ocupan ahora todo el ancho de cada reporte, se adaptan a pantallas angostas y evitan desbordes o recortes.
+- Las acciones para abrir otros reportes o módulos quedan agrupadas a la izquierda; las exportaciones aparecen a continuación, separadas visualmente y alineadas a la derecha.
+- La tabla de detalle de `Ventas · Comercial` reserva espacio real para la flecha de expansión y mantiene visible el nombre completo de la marca.
+- Los Excel amplían columnas numéricas y monetarias, congelan encabezados y conservan fechas y porcentajes como valores tipados. Cuentas por cobrar deja de usar los anchos predeterminados que podían mostrar `######`.
+- “¿Cómo estamos?” deja de incluir Inventario para priorizar las señales más útiles en esta lectura breve.
+- Las tarjetas del Centro de reportes ya no repiten advertencias; las definiciones, límites y salvedades continúan visibles dentro de cada reporte.
+- No se modificaron métricas, universos, datos de GESI ni el tutorial.
+
+La ficha completa está en `docs/release-v0.8.5.md`.
+
+### Resumen inicial “¿Cómo estamos?” · v0.8.4
+
+- El Centro de reportes abre con una lectura compacta de ventas netas, kilos, compradores, comparación equivalente, avance de objetivos, cuentas no compradoras, saldos, variaciones por vendedor y estados de foja.
+- Los bloques no forman un total ni un puntaje general. Cada uno conserva definición, período, fecha de corte, fuente, universo y advertencias propias.
+- Ventas y variaciones reutilizan exactamente el universo y los cortes de `Ventas · Comercial`; los vendedores se ordenan por la mayor diferencia absoluta de venta neta contra el período equivalente.
+- Objetivos muestra el bloque `Objetivos kilos` del Reporte General y mantiene separado el plan mensual versionado de los resultados reales de GESI.
+- Recuperación y cartera reutilizan respectivamente `Cuentas no compradoras` y `Saldos Pendientes`.
+- Fojas cuenta las facturas identificables sin foja, en foja abierta y en foja cerrada. Una foja cerrada continúa siendo un estado documental y no una confirmación de entrega.
+- Cada tarjeta abre el reporte o módulo dueño del dato. La portada no crea gestiones, modifica objetivos, altera stock ni registra actividad humana.
+- El tutorial permanece sin cambios.
+
+La ficha completa está en `docs/release-v0.8.4.md`.
+
+### Exportaciones útiles y auditables · v0.8.3
+
+- SPT, Mars, NutriPet y Baires descargan un único Excel integral con resumen y todos los desgloses del informe; no se crean archivos separados por cada gráfico.
+- Cuentas no compradoras exporta la vista, estado y búsqueda activos con todas las filas coincidentes, aunque la tabla en pantalla todavía muestre sólo los primeros bloques de 100.
+- Ventas Comercial reutiliza el exportador completo del Explorador de ventas, ahora también compatible con el filtro de grupo de artículos.
+- Saldos Pendientes reutiliza la exportación completa de Cuentas por cobrar. Reporte General reutiliza los archivos Excel y PDF de Objetivos comerciales.
+- Cada archivo declara título, momento de generación, período, fecha de corte, universo, filtros, fuente y advertencias. Los importes y cantidades permanecen como números de Excel con formato argentino.
+- No se modificaron fórmulas, universos ni cifras de los reportes. El tutorial permanece sin cambios.
+
+La ficha completa está en `docs/release-v0.8.3.md`.
+
+### Reportes utilizables y conectados · v0.8.1–v0.8.2
+
+- Los ocho reportes muestran los filtros activos como etiquetas removibles y reúnen en el mismo bloque las acciones de restablecer, guardar, recuperar y copiar una vista.
+- Cada pantalla mantiene visible el universo, período, fecha de corte, comparación, estado completo o parcial y advertencias de cobertura.
+- Los filtros y encabezados de tablas extensas permanecen visibles al recorrer el reporte. Los encabezados ordenables conservan el ciclo descendente, ascendente y original.
+- Los estados de carga y error usan una presentación común, y la densidad se adapta a las computadoras de oficina sin alterar los contratos de cada reporte.
+- Los enlaces internos restauran el reporte y sus filtros. También existe navegación contextual entre reportes compatibles.
+- `Ventas · Comercial` continúa en el Explorador de ventas conservando período, vendedor, marca, rubro y, desde cada producto, el producto seleccionado.
+- `Saldos Pendientes` continúa en Cuentas por cobrar con vendedor o cliente seleccionado.
+- `Cuentas no compradoras` abre cliente, vendedor, marca y ventas relacionadas.
+- Los reportes de marcas conservan acceso a las fichas de marca y producto. Reportes no duplica ventas, cobranzas ni gestiones.
+- No se modificaron fórmulas, universos, conciliaciones ni datos fuente. El tutorial permanece sin cambios.
+
+Las fichas completas están en `docs/release-v0.8.1.md` y `docs/release-v0.8.2.md`.
+
+### Centro de reportes · v0.8.0
+
+- El menú lateral reemplaza las ocho entradas independientes por un único acceso llamado `Reportes`.
+- El nuevo centro organiza los reemplazos de Power BI por finalidad: Dirección, Ventas, Cartera y Negocios y marcas.
+- Cada tarjeta explica qué pregunta responde y muestra período disponible, fecha de actualización, fuente operativa y limitaciones relevantes tomadas de su contrato vigente.
+- Los metadatos se consultan desde los ocho endpoints existentes. La versión no modifica fórmulas, universos, filtros ni cifras de los reportes.
+- Cada reporte conserva acceso directo a su pantalla completa. El botón lateral `Reportes` permite regresar al centro desde cualquiera de ellos.
+- La oficina puede marcar reportes favoritos y recuperar los cinco accesos más recientes. Estas preferencias se guardan únicamente en el equipo, sin crear actividad operativa ni modificar GESI.
+- El Reporte General conserva su identificador y funcionamiento previo para no romper navegación ni tutorial. El tutorial no fue modificado en esta entrega.
+
+La ficha completa está en `docs/release-v0.8.0.md`.
 
 ### Comprobantes y fojas navegables · v0.7.1
 
 - El detalle unificado de una factura muestra ahora su estado logístico y, cuando está asignada, permite abrir la foja correspondiente.
 - La ficha de foja reúne estado, repartidor, período, cierre, fecha de expedición cuando exista, zona, subzona, comentarios, cantidad de clientes, comprobantes e importe total.
 - Cada comprobante de la foja abre el mismo detalle unificado y cada cliente mantiene navegación a su perfil.
-- `Centro operativo → Rutas` incorpora un selector para abrir directamente cualquiera de las fojas presentes en el snapshot.
+- Desde v0.8.5, `Reportes` incorpora el selector para abrir directamente cualquiera de las fojas presentes en el snapshot.
 - La navegación es de sólo lectura. Una foja cerrada sigue sin presentarse como envío expedido o entrega realizada.
 - Zona, subzona, comentarios y fecha de expedición se incorporan al contrato normalizado desde esta versión; los snapshots anteriores que no los contienen los muestran como no informados hasta una nueva actualización manual aprobada.
 
@@ -470,6 +556,8 @@ React + Vite
     ├── GET  /api/reports/non-buyers
     ├── GET  /api/reports/pending-balances/meta
     ├── GET  /api/reports/pending-balances
+    ├── GET  /api/reports/executive-summary
+    ├── GET  /api/reports/export/:reportId
     ├── GET  /api/admin/sales
     ├── GET  /api/admin/sales/document
     ├── GET  /api/admin/sales/export
@@ -524,4 +612,4 @@ pnpm run audit:prices
 pnpm run audit:operations
 ```
 
-Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, bandeja comercial semanal, promesas vencidas, notas sin planificación automática, borrado seguro de notas de oportunidades, agrupación de facturas por parada, secuencia manual y sugerida de repartos, asociación con fojas, fecha sugerida no contractual, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, cobertura logística, artefactos activos y supuestos de ruta.
+Las pruebas cubren similitud, compatibilidad de especie, confianza y orden de recomendaciones, exclusión de inactivos, bandeja comercial semanal, promesas vencidas, notas sin planificación automática, borrado seguro de notas de oportunidades, agrupación de facturas por parada, secuencia manual y sugerida de repartos, asociación con fojas, fecha sugerida no contractual, alertas sin duplicados, agrupación de plazos observados, cortes temporales, recarga de SQLite, catálogo central, universos, composición del resumen inicial y reconciliaciones internas. Las cifras históricas se ejecutan únicamente contra el paquete identificado por su fixture. Las auditorías reconcilian ventas, saldos, comprobantes, pagos contra vencimiento, plazos, pertenencia Salice, puntajes, vectores, recomendaciones, cobertura logística, artefactos activos y supuestos de ruta.
