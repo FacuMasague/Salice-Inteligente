@@ -41,7 +41,19 @@ export function formatAiDisplayText(value: string) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 
-  return withoutEvidenceIds.replace(NUMBER_TOKEN, (token) => {
+  const withPlainSignalNames = withoutEvidenceIds
+    .replace(/\bseñales?\s+C\s*\/\s*O\s*\/\s*P\b/gi, 'señales de riesgo de cobranza, oportunidad comercial y prioridad de revisión')
+    .replace(/\bC\s*,\s*O\s+y\s+P\b/g, 'riesgo de cobranza, oportunidad comercial y prioridad de revisión')
+    .replace(/(\briesgo de cobranza[^.!?;,\n]{0,40})\(\s*C\s*=\s*(\d{1,3})\s*\)/gi, '$1($2/100)')
+    .replace(/\b(riesgo de cobranza)\s+C\s*=?\s*(\d{1,3})\b/gi, '$1 $2/100')
+    .replace(/\boportunidad(?: comercial)?\s+O\s*=?\s*(\d{1,3})\b/gi, 'oportunidad comercial $1/100')
+    .replace(/\bprioridad(?: combinada| comercial| de revisión)?\s+P\s*=?\s*(\d{1,3})\b/gi, 'prioridad de revisión $1/100')
+    .replace(/\bC\s*[:=]\s*(\d{1,3})\b/g, 'riesgo de cobranza $1/100')
+    .replace(/\bO\s*[:=]\s*(\d{1,3})\b/g, 'oportunidad comercial $1/100')
+    .replace(/\bP\s*[:=]\s*(\d{1,3})\b/g, 'prioridad de revisión $1/100')
+    .replace(/\bO(?=\s+(?:no|sin)\b)/g, 'La oportunidad comercial');
+
+  return withPlainSignalNames.replace(NUMBER_TOKEN, (token) => {
     const percentage = token.includes('%');
     const parsed = parseNumberToken(token, percentage);
     if (!Number.isFinite(parsed.value)) return token;

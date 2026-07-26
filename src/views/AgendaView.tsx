@@ -185,7 +185,7 @@ export function AgendaView({
 
       <div className="agenda-layout">
         <section className="data-card agenda-list-card">
-          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Lectura semanal</span><h2>Clientes para revisar</h2><p>Orden descendente por prioridad P. C, O y P permanecen separados.</p></div><span className="count-badge">{visibleEntries.length}</span></div>
+          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Lectura semanal</span><h2>Clientes para revisar</h2><p>Orden descendente por prioridad de revisión. Riesgo de cobranza, oportunidad y prioridad permanecen separados.</p></div><span className="count-badge">{visibleEntries.length}</span></div>
           <div className="agenda-entry-list">
             {loading && <div className="agenda-empty"><RefreshCw size={22} /><strong>Cargando bandeja…</strong></div>}
             {error && <div className="agenda-empty error"><AlertTriangle size={22} /><strong>{error}</strong><button className="button secondary" onClick={reload}>Reintentar</button></div>}
@@ -202,7 +202,7 @@ export function AgendaView({
                   <small>{entry.seller} · {entry.locality}</small>
                   <div className="commercial-inbox-source-list">{entry.sources.map((value) => <span key={value} className={value}>{sourceIcon(value)} {sourceLabels[value]}</span>)}</div>
                 </div>
-                <div className="agenda-entry-score"><strong>P{entry.visitPriority}</strong><span>C{entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · O${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
+                <div className="agenda-entry-score"><strong>{entry.visitPriority}</strong><span>Riesgo {entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · Oportunidad ${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
               </button>;
             })}
           </div>
@@ -216,7 +216,7 @@ export function AgendaView({
               <button className="icon-button" aria-label="Abrir ficha completa" onClick={() => onOpen(selectedClient)}><ChevronRight size={18} /></button>
             </header>
 
-            <div className="agenda-client-metrics"><article><span>Riesgo</span><strong>C{selectedEntry.collectionRisk}</strong><small>{money(selectedEntry.overdueOutstanding, true)} vencido</small></article>{selectedOpportunityEligible && <article><span>Oportunidad</span><strong>O{selectedEntry.commercialOpportunity}</strong><small>{selectedEntry.salesDelta >= 0 ? '+' : ''}{selectedEntry.salesDelta}% ventas</small></article>}<article><span>Prioridad combinada</span><strong>P{selectedEntry.visitPriority}</strong><small>no es una planificación</small></article></div>
+            <div className="agenda-client-metrics"><article><span>Riesgo de cobranza</span><strong>{selectedEntry.collectionRisk}/100</strong><small>{money(selectedEntry.overdueOutstanding, true)} vencido</small></article>{selectedOpportunityEligible && <article><span>Oportunidad comercial</span><strong>{selectedEntry.commercialOpportunity}/100</strong><small>{selectedEntry.salesDelta >= 0 ? '+' : ''}{selectedEntry.salesDelta}% ventas</small></article>}<article><span>Prioridad de revisión</span><strong>{selectedEntry.visitPriority}/100</strong><small>no es una planificación</small></article></div>
 
             <section className="commercial-inbox-reasons">
               <div className="section-title-row"><div><span className="section-kicker"><ClipboardList size={14} /> Motivos visibles</span><h3>Por qué aparece en la bandeja</h3></div><span className="count-badge">{selectedEntry.signals.length}</span></div>
@@ -240,7 +240,7 @@ export function AgendaView({
 
             <footer className="agenda-detail-actions">
               {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir cuentas por cobrar</button>}
-              <button className="button secondary" disabled={!selectedClient.coordinates} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> Ver en rutas</button>
+              <button className="button secondary" disabled={!selectedClient.coordinates || selectedClient.locationPrecision === 'locality'} title={selectedClient.locationPrecision === 'locality' ? 'La ubicación debe verificarse antes de usarla en una ruta' : undefined} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> {selectedClient.locationPrecision === 'locality' ? 'Ubicación por verificar' : 'Ver en rutas'}</button>
               <button className="button primary large" onClick={() => setNoteOpen(true)}><MessageSquareText size={16} /> Agregar nota</button>
             </footer>
           </>}

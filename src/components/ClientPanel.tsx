@@ -183,7 +183,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
             {!client.active && <div className="inactive-client-notice"><AlertTriangle size={19} /><div><strong>Fuera de la cartera activa</strong><span>GESI lo marca como inactivo. Se conserva para consulta histórica; última actualización del maestro: {longDate(client.statusUpdatedAt)}.</span></div></div>}
             {client.locationStatus === 'corrected' && <div className="location-correction-notice"><MapPin size={18} /><div><strong>Ubicación corregida automáticamente</strong><span>{client.locationCorrectionReason} La dirección original no fue modificada.</span></div></div>}
             {client.locationStatus === 'review' && <div className="portfolio-review-notice"><AlertTriangle size={18} /><div><strong>Ubicación pendiente de revisión</strong><span>{client.locationCorrectionReason} El cliente continúa disponible fuera del mapa.</span></div></div>}
-            {client.active && client.portfolioStatus === 'review' && <div className="portfolio-review-notice"><AlertTriangle size={18} /><div><strong>Pertenencia a Salice por confirmar</strong><span>Está activo en GESI pero no tiene definición explícita para empresa 3 / sucursal 3. No se excluye automáticamente.</span></div></div>}
+            {client.active && client.portfolioStatus === 'review' && <div className="portfolio-review-notice"><AlertTriangle size={18} /><div><strong>Pertenencia a Salice por confirmar</strong><span>Está activo en el sistema comercial, pero su pertenencia a la cartera Salice todavía no está confirmada. No se excluye automáticamente.</span></div></div>}
             {client.salesBlocked && <div className="sales-block-notice"><AlertTriangle size={18} /><div><strong>GESI informa “bloqueo de ventas”</strong><span>Validar con administración qué uso operativo tiene este campo antes de tomar una decisión.</span></div></div>}
             <section className="metric-grid three">
               <article className="mini-metric">
@@ -195,13 +195,13 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
               </article>
               <article className="mini-metric">
                 <span>Riesgo de cobranza</span>
-                <strong>C{client.collectionRisk}</strong>
+                <strong>{client.collectionRisk}/100</strong>
                 <small>{money(client.overdueOutstanding, true)} vencido · {client.oldestOverdueDays || 0} días máx.</small>
               </article>
               <article className="mini-metric">
                 <span>{isCommercialOpportunityEligible(client) ? 'Oportunidad comercial' : 'Oportunidad no mostrada'}</span>
-                <strong>{isCommercialOpportunityEligible(client) ? `O${client.commercialOpportunity}` : '—'}</strong>
-                <small>{client.salesBlocked ? 'Bloqueo de ventas informado' : client.sales90d <= 0 ? 'Sin compras en 90 días' : `P${client.visitPriority} prioridad combinada`}</small>
+                <strong>{isCommercialOpportunityEligible(client) ? `${client.commercialOpportunity}/100` : '—'}</strong>
+                <small>{client.salesBlocked ? 'Bloqueo de ventas informado' : client.sales90d <= 0 ? 'Sin compras en 90 días' : `Prioridad de revisión ${client.visitPriority}/100`}</small>
               </article>
             </section>
 
@@ -247,7 +247,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
             <section className="panel-section next-action">
               <div className="section-title-row">
                 <div><span className="section-kicker"><CalendarDays size={14} /> {client.active ? 'Referencia del sistema' : 'Registro interno'}</span><h3>{client.active ? `Revisión sugerida · ${longDate(client.nextVisitAt)}` : 'Notas históricas del cliente'}</h3></div>
-                {client.active && <strong className="priority-number">P{client.visitPriority}</strong>}
+                {client.active && <strong className="priority-number">{client.visitPriority}/100</strong>}
               </div>
               <textarea value={note} onChange={(event) => { setNote(event.target.value); setSaved(false); }} maxLength={500} aria-label="Nota general del cliente" placeholder="Nota general del cliente; no programa ni comunica acciones." />
               {saveError && <p className="form-error">{saveError}</p>}
@@ -255,7 +255,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
                 <button className="button secondary" onClick={saveNote} disabled={saving || note === client.note}>
                   {saved ? <Check size={15} /> : <Save size={15} />} {saved ? 'Guardada' : saving ? 'Guardando…' : 'Guardar nota'}
                 </button>
-                {client.active && <button className="button primary" onClick={() => onPlanRoute(client.id)}><Route size={15} /> Agregar a ruta</button>}
+                {client.active && <button className="button primary" disabled={!client.coordinates || client.locationPrecision === 'locality'} title={client.locationPrecision === 'locality' ? 'La ubicación debe verificarse antes de usarla en una ruta' : undefined} onClick={() => onPlanRoute(client.id)}><Route size={15} /> {client.locationPrecision === 'locality' ? 'Ubicación por verificar' : 'Agregar a ruta'}</button>}
               </div>
             </section>
           </>

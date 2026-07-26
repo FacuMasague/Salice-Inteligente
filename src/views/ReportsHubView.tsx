@@ -83,7 +83,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'spt',
     group: 'sales',
-    name: 'SPT Vol vs mes anterior',
+    name: 'Volumen SPT',
     description: '¿Cómo evoluciona el volumen en kilos frente a períodos equivalentes?',
     endpoint: '/api/reports/spt/meta',
     icon: BarChart3,
@@ -156,11 +156,6 @@ function periodLabel(meta?: ReportMeta) {
   if (!from) return `Hasta ${formatDate(through)}`;
   if (!through) return `Desde ${formatDate(from)}`;
   return `${formatDate(from)} — ${formatDate(through)}`;
-}
-
-function sourceLabel(meta?: ReportMeta) {
-  if (!meta) return 'Consultando fuente…';
-  return meta.sourceSystem || 'Fuente no informada';
 }
 
 function QuickAccess({
@@ -257,11 +252,11 @@ export function ReportsHubView({
         <div>
           <span className="section-kicker"><LayoutDashboard size={15} /> Centro de reportes</span>
           <h2>Elegí el reporte según la pregunta que necesitás responder</h2>
-          <p>Los ocho reemplazos de Power BI conservan sus universos y cálculos. Este centro sólo organiza el acceso y hace visibles su cobertura, fuente y límites.</p>
+          <p>Encontrá rápidamente resultados generales, ventas, cartera y desempeño por negocio. Cada reporte conserva sus filtros y explica cómo se calcula cuando necesitás consultarlo.</p>
         </div>
         <div className="report-hub-hero-tools">
           <div className="report-hub-status">
-            <span><Database size={15} /> Paquete activo</span>
+            <span><Database size={15} /> Datos actualizados</span>
             <strong>{formatDate(data.meta.generatedAt, true)}</strong>
             <small>{loading ? 'Consultando metadatos de los reportes…' : availableCount === REPORTS.length ? '8 reportes disponibles para revisión' : `${availableCount} de 8 reportes disponibles`}</small>
           </div>
@@ -310,7 +305,6 @@ export function ReportsHubView({
                 <dl className="report-hub-meta">
                   <div><dt><CalendarDays size={13} /> Período disponible</dt><dd>{periodLabel(meta)}</dd></div>
                   <div><dt><Clock3 size={13} /> Actualización</dt><dd>{formatDate(meta?.capturedAt || data.meta.generatedAt, true)}</dd></div>
-                  <div><dt><Database size={13} /> Fuente</dt><dd title={sourceLabel(meta)}>{sourceLabel(meta)}</dd></div>
                 </dl>
                 <button className="report-hub-open" onClick={() => onOpenReport(report.id)}>Abrir reporte <ArrowRight size={15} /></button>
               </article>;

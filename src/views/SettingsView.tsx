@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BookOpen, BrainCircuit, CheckCircle2, ClipboardCheck, Database, HardDrive, Map, MessageSquareText, PlayCircle, RefreshCcw, Route, Search, ShieldCheck, Users, WalletCards } from 'lucide-react';
+import { AlertTriangle, BarChart3, BookOpen, BrainCircuit, CheckCircle2, ClipboardCheck, Database, HardDrive, Map, MessageSquareText, PlayCircle, RefreshCcw, Search, ShieldCheck, WalletCards } from 'lucide-react';
 import type { DashboardData } from '../../shared/models';
 import type { AiSystemStatus } from '../../shared/ai';
 import type { DataHealthPayload } from '../../shared/data-health';
 import type { MetricDefinition, ReportUniverseDefinition } from '../../shared/metrics';
-import { SavedViewsBar } from '../components/SavedViewsBar';
+import { TUTORIALS, type TutorialSection } from '../components/TutorialOverlay';
 import { longDate, number } from '../lib/format';
 
-const lessons = [
-  { icon: Map, title: 'Mapa operativo', text: 'Indicadores, cartera Salice, agrupación de puntos y fichas.' },
-  { icon: ClipboardCheck, title: 'Bandeja comercial', text: 'Señales, oportunidades, compromisos y notas sin planificación paralela.' },
-  { icon: Users, title: 'Clientes', text: 'GESI, pertenencia, riesgo, oportunidad y filtros.' },
-  { icon: Users, title: 'Vendedores', text: 'Desempeño, cartera, cobranza, territorio y clientes prioritarios.' },
-  { icon: WalletCards, title: 'Cobranzas', text: 'Antigüedad, saldo pendiente y pago contra vencimiento.' },
-  { icon: BarChart3, title: 'Reportes', text: 'Gestión general, volumen SPT, ventas comerciales, proveedores y cuentas no compradoras.' },
-  { icon: BarChart3, title: 'Productos', text: 'Disponibilidad, comparación y ranking de 33 vectores.' },
-  { icon: Route, title: 'Rutas', text: 'Facturas, fojas abiertas/cerradas, paradas y recorridos estimados.' },
+const tutorialCards: { id: TutorialSection; icon: typeof Map }[] = [
+  { id: 'operations', icon: Map },
+  { id: 'administration', icon: ClipboardCheck },
+  { id: 'reports', icon: BarChart3 },
 ];
 
 interface SystemStatus {
@@ -57,7 +52,7 @@ function refreshDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value));
 }
 
-export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutorial }: { data: DashboardData; dataHealth: DataHealthPayload | null; tutorialCompleted: boolean; onStartTutorial: () => void }) {
+export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutorial }: { data: DashboardData; dataHealth: DataHealthPayload | null; tutorialCompleted: Record<TutorialSection, boolean>; onStartTutorial: (section: TutorialSection) => void }) {
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [catalog, setCatalog] = useState<MetricCatalogPayload | null>(null);
   const [metricQuery, setMetricQuery] = useState('');
@@ -78,47 +73,48 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Tutorial vigente hasta v0.8.7</span><h2>Aprendé a usar las funciones operativas</h2><p>Incluye gestión comercial, rutas y fojas, Centro de reportes, filtros guardados, exportaciones y los reportes renovados de Mars, NutriPet y Baires. La infraestructura de IA se documentará en el tutorial únicamente al cerrar v0.9 y con autorización.</p></div>
+          <div><span className="section-kicker">Guías interactivas</span><h2>Elegí qué sección querés aprender</h2><p>Cada recorrido explica una parte concreta del programa, cambia de pantalla automáticamente y no modifica ningún dato.</p></div>
         </div>
-        <div className="settings-tutorial-action">
-          {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
-          <button className="button primary large" onClick={onStartTutorial}><PlayCircle size={17} /> {tutorialCompleted ? 'Repetir tutorial' : 'Iniciar tutorial'}</button>
+        <div className="tutorial-selector-grid">
+          {tutorialCards.map(({ id, icon: Icon }) => {
+            const definition = TUTORIALS[id];
+            const completed = tutorialCompleted[id];
+            return <article key={id}>
+              <div className="tutorial-selector-icon"><Icon size={21} /></div>
+              <div><span>{definition.label}</span><strong>{definition.title}</strong><p>{definition.description}</p><small>{definition.steps.length} pasos · recorrido independiente</small></div>
+              {completed && <em><CheckCircle2 size={14} /> Completado</em>}
+              <button className={`button ${completed ? 'secondary' : 'primary'}`} onClick={() => onStartTutorial(id)}><PlayCircle size={16} /> {completed ? 'Repetir' : 'Comenzar'}</button>
+            </article>;
+          })}
         </div>
       </section>
-
-      <SavedViewsBar viewKey="settings" filters={{ metricQuery }} onApply={(saved) => setMetricQuery(saved.metricQuery ?? '')} />
 
       <section className={`data-card data-health-card ${dataHealth?.overall ?? 'unavailable'}`}>
         <div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Estado de los datos</span><h2>Frescura, fuentes y última validación</h2><p>La pantalla siempre conserva la última foto aprobada; una captura fallida no reemplaza estos datos.</p></div><span className={`data-health-badge ${dataHealth?.freshness.level ?? 'unknown'}`}>{dataHealth ? freshnessLabels[dataHealth.freshness.level] : 'Consultando…'}</span></div>
         {dataHealth ? <>
           <div className="data-source-grid">{dataHealth.sources.map((source) => <article key={source.id}><div><span className={`source-health-dot ${source.level}`} /><strong>{source.label}</strong><em>{sourceLabels[source.level]}</em></div><p>{source.detail}</p><small>{source.coverageFrom ? `Cobertura ${source.coverageFrom} → ${source.coverageThrough}` : `Corte ${source.coverageThrough}`}</small></article>)}</div>
-          <div className="data-health-footer"><span><strong>{dataHealth.freshness.label}</strong> · advertencia desde {dataHealth.freshness.warningAfterHours} h; desactualizado desde {dataHealth.freshness.staleAfterHours} h.</span>{dataHealth.quality && <span><ShieldCheck size={14} /> Auditoría {dataHealth.quality.passed}/{dataHealth.quality.total} · {dataHealth.quality.warnings} salvedades</span>}{dataHealth.refresh.lastAttempt?.status === 'failed' && <span className="refresh-failure"><AlertTriangle size={14} /> Último intento fallido en {dataHealth.refresh.lastAttempt.stage}: {dataHealth.refresh.lastAttempt.error}</span>}{dataHealth.refresh.current && <span>Actualización manual en curso · {dataHealth.refresh.current.stage}</span>}</div>
-          <details className="refresh-history"><summary><span>Historial de actualizaciones manuales</span><em>{dataHealth.refresh.recent.length ? `${dataHealth.refresh.recent.length} ejecuciones` : 'Sin ejecuciones registradas en v0.3'}</em></summary>{dataHealth.refresh.recent.length > 0 && <div>{dataHealth.refresh.recent.map((run) => <article key={run.id}><span className={`refresh-run-status ${run.status}`}>{refreshStatusLabels[run.status]}</span><p><strong>{refreshDate(run.startedAt)}</strong><small>{run.trigger === 'manual-resume' ? 'Reanudación manual' : 'Actualización manual'} · etapa {run.stage}</small></p><p><strong>{run.durationMs == null ? 'Duración pendiente' : `${Math.max(1, Math.round(run.durationMs / 1000))} s`}</strong><small>{run.qualityStatus ?? 'Calidad pendiente'} · {run.warnings} salvedades</small></p>{run.error && <p className="refresh-run-error">{run.error}</p>}</article>)}</div>}</details>
-        </> : <p className="settings-card-copy">No se pudo leer el estado consolidado. El snapshot activo continúa disponible.</p>}
+          <div className="data-health-footer"><span><strong>{dataHealth.freshness.label}</strong> · advertencia desde {dataHealth.freshness.warningAfterHours} h; desactualizado desde {dataHealth.freshness.staleAfterHours} h.</span>{dataHealth.quality && <span><ShieldCheck size={14} /> Auditoría {dataHealth.quality.passed}/{dataHealth.quality.total} · {dataHealth.quality.warnings} salvedades</span>}{dataHealth.refresh.lastAttempt?.status === 'failed' && <span className="refresh-failure"><AlertTriangle size={14} /> El último intento no se completó; se conservan los datos disponibles.</span>}{dataHealth.refresh.current && <span>Actualización en curso · {dataHealth.refresh.current.stage}</span>}</div>
+          <details className="refresh-history"><summary><span>Historial de actualizaciones</span><em>{dataHealth.refresh.recent.length ? `${dataHealth.refresh.recent.length} ejecuciones` : 'Sin ejecuciones registradas'}</em></summary>{dataHealth.refresh.recent.length > 0 && <div>{dataHealth.refresh.recent.map((run) => <article key={run.id}><span className={`refresh-run-status ${run.status}`}>{refreshStatusLabels[run.status]}</span><p><strong>{refreshDate(run.startedAt)}</strong><small>{run.trigger === 'manual-resume' ? 'Reanudación' : 'Actualización'} · etapa {run.stage}</small></p><p><strong>{run.durationMs == null ? 'Duración pendiente' : `${Math.max(1, Math.round(run.durationMs / 1000))} s`}</strong><small>{run.qualityStatus ?? 'Calidad pendiente'} · {run.warnings} salvedades</small></p>{run.error && <p className="refresh-run-error">La ejecución no pudo completarse.</p>}</article>)}</div>}</details>
+        </> : <p className="settings-card-copy">No se pudo leer el estado consolidado. Los datos actuales continúan disponibles.</p>}
       </section>
 
       <div className="settings-grid">
         <section className="data-card settings-card settings-wide-card">
           <div className="data-card-header">
             <div>
-              <span className="section-kicker"><BrainCircuit size={14} /> IA auditable · v0.9.5</span>
-              <h2>Calidad, utilidad y costo medidos</h2>
-              <p>Las pantallas leen resultados guardados. Una narrativa problemática se oculta sin afectar los reportes determinísticos.</p>
+              <span className="section-kicker"><BrainCircuit size={14} /> Asistencia con IA · Beta</span>
+              <h2>Análisis disponibles, calidad y costo</h2>
+              <p>La IA agrega una lectura explicativa. Los reportes y cálculos normales siguen funcionando aunque la asistencia no esté disponible.</p>
             </div>
             <span className={`data-health-badge ${system?.ai.configured ? 'fresh' : 'warning'}`}>
-              {system ? (system.ai.configured ? 'Clave configurada' : 'Sin clave') : 'Consultando…'}
+              {system ? (system.ai.configured ? 'Disponible' : 'No configurada') : 'Consultando…'}
             </span>
           </div>
-          <div className="coverage-list">
-            <p><span>Snapshot activo</span><strong>{system?.ai.activeSnapshotAt ? longDate(system.ai.activeSnapshotAt) : 'Cargando…'}</strong></p>
-            <p><span>Ejecución actual</span><strong>{system?.ai.current ? `${aiRunStatusLabels[system.ai.current.status]} · ${longDate(system.ai.current.startedAt)}` : 'Sin procesos en curso'}</strong></p>
-            <p><span>Última ejecución</span><strong>{system?.ai.lastRun ? `${aiRunStatusLabels[system.ai.lastRun.status]} · ${longDate(system.ai.lastRun.startedAt)}` : 'Sin ejecuciones'}</strong></p>
-            <p><span>Correspondiente al snapshot activo</span><strong>{system?.ai.activeSnapshotRun ? aiRunStatusLabels[system.ai.activeSnapshotRun.status] : 'No disponible'}</strong></p>
-            <p><span>Entidades procesadas / reutilizadas</span><strong>{system?.ai.lastRun ? `${number(system.ai.lastRun.completed)} / ${number(system.ai.lastRun.reused)}` : '0 / 0'}</strong></p>
-            <p><span>Consumo del mes</span><strong>{system ? `${number(system.ai.usage.currentMonth.inputTokens)} entrada · ${number(system.ai.usage.currentMonth.outputTokens)} salida` : 'Cargando…'}</strong></p>
-            <p><span>Gasto del mes / histórico</span><strong>{system ? `USD ${system.ai.usage.currentMonth.estimatedCostUsd.toFixed(4)} / USD ${system.ai.usage.allTime.estimatedCostUsd.toFixed(4)}` : 'Cargando…'}</strong></p>
-            <p><span>Límites por actualización</span><strong>{system ? `${number(system.ai.limits.maxEntitiesPerRun)} entidades · ${number(system.ai.limits.maxEstimatedInputTokensPerRun)} tokens · USD ${system.ai.limits.maxEstimatedCostUsdPerRun.toFixed(2)}` : 'Cargando…'}</strong></p>
-            <p><span>Modelo y tarifa registrada</span><strong>gpt-5.6-terra · {system?.ai.pricing.version ?? 'cargando'}</strong></p>
+          <div className="coverage-list ai-user-summary">
+            <p><span>Contenido disponible</span><strong>{system ? `${number(system.ai.artifactCounts.valid)} análisis vigentes` : 'Cargando…'}</strong></p>
+            <p><span>Datos analizados</span><strong>{system?.ai.activeSnapshotAt ? longDate(system.ai.activeSnapshotAt) : 'No disponibles'}</strong></p>
+            <p><span>Actividad actual</span><strong>{system?.ai.current ? `${aiRunStatusLabels[system.ai.current.status]} · ${longDate(system.ai.current.startedAt)}` : 'Sin procesos en curso'}</strong></p>
+            <p><span>Gasto del mes</span><strong>{system ? `USD ${system.ai.usage.currentMonth.estimatedCostUsd.toFixed(4)}` : 'Cargando…'}</strong></p>
           </div>
           {system && <div className={`ai-budget-banner ${system.ai.budget.alert}`}>
             <div><strong>Presupuesto mensual</strong><span>USD {system.ai.budget.spentUsd.toFixed(4)} consumidos de USD {system.ai.budget.monthlyLimitUsd.toFixed(2)}</span></div>
@@ -134,7 +130,13 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
             <article><span><MessageSquareText size={15} /> Feedback humano</span><strong>{number(system.ai.feedback.total)} evaluaciones</strong><small>{number(system.ai.feedback.useful)} útiles · {number(system.ai.feedback.corrections)} correcciones</small></article>
             <article><span><RefreshCcw size={15} /> Reintentos</span><strong>{number(system.ai.usage.currentMonth.retries)}</strong><small>{number(system.ai.usage.currentMonth.attempts)} solicitudes durante el mes</small></article>
           </div>}
-          {system && <div className="ai-function-usage">
+          {system && <details className="ai-technical-details"><summary><span>Ver consumo y funcionamiento técnico</span><em>Modelo, solicitudes y resultados</em></summary><div className="ai-technical-body"><div className="coverage-list">
+            <p><span>Último intento</span><strong>{system.ai.lastRun ? `${aiRunStatusLabels[system.ai.lastRun.status]} · ${longDate(system.ai.lastRun.startedAt)}` : 'Sin ejecuciones'}</strong></p>
+            <p><span>Resultados nuevos / reutilizados</span><strong>{system.ai.lastRun ? `${number(system.ai.lastRun.completed)} / ${number(system.ai.lastRun.reused)}` : '0 / 0'}</strong></p>
+            <p><span>Consumo del mes</span><strong>{number(system.ai.usage.currentMonth.inputTokens)} entrada · {number(system.ai.usage.currentMonth.outputTokens)} salida</strong></p>
+            <p><span>Límite por actualización</span><strong>USD {system.ai.limits.maxEstimatedCostUsdPerRun.toFixed(2)}</strong></p>
+            <p><span>Modelo</span><strong>gpt-5.6-terra · {system.ai.pricing.version}</strong></p>
+          </div><div className="ai-function-usage">
             <header><strong>Consumo y resultados por función · mes actual</strong><span>Costo medido sobre intentos reales</span></header>
             {system.ai.usage.functions.length
               ? system.ai.usage.functions.map((item) => <article key={item.functionKey}>
@@ -143,27 +145,22 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
                 <strong>USD {item.estimatedCostUsd.toFixed(4)}</strong>
               </article>)
               : <p>Este mes todavía no registró solicitudes pagas ni resultados de IA.</p>}
-          </div>}
-          {system && <details className="ai-run-history">
+          </div>
+          <details className="ai-run-history">
             <summary>Ver consumo por actualización <span>{system.ai.usage.recentRuns.length} ejecuciones</span></summary>
             <div>{system.ai.usage.recentRuns.slice(0, 8).map((run) => <article key={run.id}>
               <div><strong>{longDate(run.startedAt)}</strong><small>{aiRunStatusLabels[run.status]} · {run.trigger === 'refresh' ? 'actualización' : 'ejecución manual'}</small></div>
               <div><span>{run.completed} nuevos</span><span>{run.reused} reutilizados</span><span>{run.skipped} omitidos</span><span>{run.failed} fallidos</span></div>
               <strong>USD {run.estimatedCostUsd.toFixed(4)}</strong>
             </article>)}</div>
-          </details>}
-          {system?.ai.lastRun?.error && <div className="settings-rule"><AlertTriangle size={16} /><span>{system.ai.lastRun.error}</span></div>}
-        </section>
-
-        <section className="data-card settings-card">
-          <div className="data-card-header"><div><span className="section-kicker"><BookOpen size={14} /> Contenido</span><h2>Qué vas a aprender</h2></div></div>
-          <div className="settings-lessons">{lessons.map(({ icon: Icon, title, text }, index) => <article key={title}><span>{index + 1}</span><Icon size={18} /><div><strong>{title}</strong><p>{text}</p></div></article>)}</div>
+          </details></div></details>}
+          {system?.ai.lastRun?.error && <div className="settings-rule"><AlertTriangle size={16} /><span>El último intento tuvo un problema. Los {number(system.ai.artifactCounts.valid)} análisis disponibles se conservan y los reportes normales no se ven afectados.</span></div>}
         </section>
 
         <section className="data-card settings-card" data-tour="portfolio-rules">
           <div className="data-card-header"><div><span className="section-kicker"><ShieldCheck size={14} /> Universo de clientes</span><h2>GESI y cartera Salice son señales distintas</h2></div><span className="count-badge">Regla conservadora</span></div>
           <div className="status-audit-summary"><div><strong>{number(confirmed)}</strong><span>activos con sucursal Salice confirmada</span></div><div className="review"><strong>{number(review)}</strong><span>activos cuya pertenencia debe revisarse</span></div></div>
-          <p className="settings-card-copy">El estado 1 de GESI sigue definiendo actividad. La definición empresa 3 / sucursal 3 se muestra como segunda señal: los casos sin esa definición no se excluyen hasta validarlos con Salice.</p>
+          <p className="settings-card-copy">El estado comercial sigue definiendo la actividad. La pertenencia confirmada a la cartera Salice se muestra como una segunda señal: los casos dudosos no se excluyen hasta validarlos.</p>
           <div className="settings-rule"><Database size={16} /><span>{number(inactive)} inactivos permanecen disponibles como histórico. La cobranza conserva sus documentos abiertos.</span></div>
         </section>
 
@@ -177,6 +174,9 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
           <div className="coverage-list"><p><span>Geocodificación de activos</span><strong>{geocodeRate}% · {number(activeGeocoded)} / {number(active)}</strong></p><p><span>Productos con precio</span><strong>{number(coverage?.pricedProducts ?? 0)} / {number(data.products.length)}</strong></p><p><span>Pagos conciliados</span><strong>{number(coverage?.paymentSamples ?? 0)}</strong></p><p><span>Facturas con plazo válido</span><strong>{number(coverage?.creditTermInvoices ?? 0)} / {number(coverage?.invoices365d ?? 0)}</strong></p><p><span>Fojas logísticas abiertas / cerradas</span><strong>{number(coverage?.logistics?.openSheets ?? 0)} / {number(coverage?.logistics?.closedSheets ?? 0)}</strong></p><p><span>Facturas sin foja / con foja cerrada</span><strong>{number(coverage?.logistics?.unassignedInvoices ?? 0)} / {number(coverage?.logistics?.closedSheetInvoices ?? 0)}</strong></p><p><span>Clientes con condición realmente mixta</span><strong>{number(coverage?.clientsWithMixedCreditTerms ?? 0)}</strong></p><p><span>Detalles de factura omitidos por GESI</span><strong>{number(coverage?.omittedInvoiceDetails ?? 0)}</strong></p></div>
         </section>
 
+        <details className="settings-advanced-section">
+          <summary><HardDrive size={20} /><div><strong>Información técnica y diagnóstico</strong><span>Catálogo de productos, almacenamiento, fórmulas y alcance de los reportes.</span></div></summary>
+          <div className="settings-grid advanced-settings-grid">
         <section className="data-card settings-card">
           <div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Universo de productos</span><h2>Maestro, catálogo y existencias no son lo mismo</h2></div><span className={`data-health-badge ${inventory?.completeZeroStockUniverse ? 'fresh' : 'warning'}`}>{inventory?.completeZeroStockUniverse ? 'Ceros verificados' : 'Captura anterior'}</span></div>
           <p className="settings-card-copy">El maestro completo se conserva para auditoría. El catálogo operativo incluye maestros activos, productos vendidos recientemente o artículos con existencia no nula. GESI no entrega una marca inequívoca de discontinuación.</p>
@@ -186,13 +186,13 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
 
         <section className="data-card settings-card" data-tour="storage-rules">
           <div className="data-card-header"><div><span className="section-kicker"><HardDrive size={14} /> Persistencia local</span><h2>Datos humanos separados de GESI</h2></div><span className="algorithm-pill">SQLite</span></div>
-          <p className="settings-card-copy">Notas, recordatorios históricos, seguimientos, vistas y objetivos se guardan fuera del snapshot importado. Así sobreviven a futuras actualizaciones de GESI.</p>
-          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Gestiones registradas</span><strong>{system ? number(system.activities) : 'Cargando…'}</strong></p><p><span>Promesas pendientes</span><strong>{system ? number(system.pendingPromises) : 'Cargando…'}</strong></p><p><span>Tareas manuales pendientes</span><strong>{system ? number(system.pendingAgendaItems) : 'Cargando…'}</strong></p><p><span>Cuentas con seguimiento administrativo</span><strong>{system ? number(system.receivableCases) : 'Cargando…'}</strong></p><p><span>Vistas de filtros guardadas</span><strong>{system ? number(system.savedViews) : 'Cargando…'}</strong></p><p><span>Versiones de objetivos</span><strong>{system ? number(system.goalVersions) : 'Cargando…'}</strong></p><p><span>Generaciones de datos recuperables</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Backups de información humana</span><strong>{system ? number(system.operationalBackups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Foto actual migrada'}</strong></p></div>
+          <p className="settings-card-copy">Notas, recordatorios históricos, seguimientos, vistas y objetivos se conservan por separado. Así sobreviven a futuras actualizaciones de los datos comerciales.</p>
+          <div className="coverage-list"><p><span>Notas persistidas</span><strong>{system ? number(system.notes) : 'Cargando…'}</strong></p><p><span>Gestiones registradas</span><strong>{system ? number(system.activities) : 'Cargando…'}</strong></p><p><span>Promesas pendientes</span><strong>{system ? number(system.pendingPromises) : 'Cargando…'}</strong></p><p><span>Tareas manuales pendientes</span><strong>{system ? number(system.pendingAgendaItems) : 'Cargando…'}</strong></p><p><span>Cuentas con seguimiento administrativo</span><strong>{system ? number(system.receivableCases) : 'Cargando…'}</strong></p><p><span>Vistas de filtros guardadas</span><strong>{system ? number(system.savedViews) : 'Cargando…'}</strong></p><p><span>Versiones de objetivos</span><strong>{system ? number(system.goalVersions) : 'Cargando…'}</strong></p><p><span>Generaciones de datos recuperables</span><strong>{system ? number(system.backups) : 'Cargando…'}</strong></p><p><span>Backups de información humana</span><strong>{system ? number(system.operationalBackups) : 'Cargando…'}</strong></p><p><span>Última sincronización registrada</span><strong>{system?.lastSync ? longDate(system.lastSync.snapshotAt) : 'Datos actuales disponibles'}</strong></p></div>
         </section>
 
         <section className="data-card settings-card settings-wide-card">
-          <div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Reglas explicables</span><h2>Tres puntajes y clasificación de producto</h2></div><span className="algorithm-pill">Base determinística · IA auditada</span></div>
-          <div className="score-definition-grid"><article><strong>C · Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas de GESI. Se calcula sin IA.</p></article><article><strong>O · Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix. Se calcula sin IA.</p></article><article><strong>P · Prioridad de visita</strong><p>58% riesgo de cobranza + 42% oportunidad. No se presenta como una predicción y se calcula sin IA.</p></article><article><strong>Bandeja y notas</strong><p>Las señales orientan una revisión. Las notas documentan hechos externos y nunca completan ni modifican una sugerencia.</p></article><article><strong>Promesas exigibles</strong><p>Suma de compromisos locales pendientes con fecha igual o anterior al día elegido; no equivale a cobranza cobrada.</p></article><article><strong>Saldo accionable</strong><p>Un residual menor a $1.000 permanece visible, pero no genera por sí solo una tarea o alerta de cobranza.</p></article><article><strong>Vector v2.2</strong><p>33 dimensiones explicables. Los productos de la línea base conservan su cálculo determinístico; sólo una alta posterior puede recibir un vector IA validado. Las correcciones humanas requieren motivo e historial y siempre prevalecen.</p></article></div>
+          <div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Reglas explicables</span><h2>Tres señales y clasificación de producto</h2></div><span className="algorithm-pill">Reglas verificables · IA auditada</span></div>
+          <div className="score-definition-grid"><article><strong>Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas. Se expresa de 0 a 100 y se calcula sin IA.</p></article><article><strong>Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix. Se expresa de 0 a 100 y se calcula sin IA.</p></article><article><strong>Prioridad de revisión</strong><p>Combina 58% del riesgo de cobranza y 42% de la oportunidad. Ordena la revisión, pero no planifica una visita.</p></article><article><strong>Bandeja y notas</strong><p>Las señales orientan una revisión. Las notas documentan hechos externos y nunca completan ni modifican una sugerencia.</p></article><article><strong>Promesas exigibles</strong><p>Suma de compromisos locales pendientes con fecha igual o anterior al día elegido; no equivale a cobranza cobrada.</p></article><article><strong>Saldo accionable</strong><p>Un residual menor a $1.000 permanece visible, pero no genera por sí solo una tarea o alerta de cobranza.</p></article><article><strong>Clasificación de productos</strong><p>Las características del catálogo son explicables. Las correcciones humanas requieren motivo, conservan historial y siempre prevalecen.</p></article></div>
         </section>
 
         <section className="data-card settings-card settings-wide-card metric-catalog-card">
@@ -204,6 +204,8 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
           <div className="data-card-header"><div><span className="section-kicker"><ShieldCheck size={14} /> Universos documentados</span><h2>Cada reporte conserva su alcance</h2><p>Empresa, sucursal, exclusiones y corte temporal se documentan por separado.</p></div><span className="count-badge">{catalog?.universes.length ?? 0} universos</span></div>
           <div className="universe-definition-grid">{catalog?.universes.map((universe) => <article key={universe.id}><div><strong>{universe.label}</strong><span>Empresa {universe.companies.join('/')} · sucursal {universe.branches.join('/') || 'según reporte'}</span></div><p><b>Incluye:</b> {universe.included.join(' ')}</p><p><b>Excluye:</b> {universe.excluded.length ? universe.excluded.join(' · ') : 'Sin exclusiones adicionales.'}</p><small>{universe.dateRule}</small></article>)}</div>
         </section>
+          </div>
+        </details>
       </div>
     </div>
   );

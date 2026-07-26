@@ -6,7 +6,7 @@ import { ClientMap } from '../components/ClientMap';
 import { ClientPanel } from '../components/ClientPanel';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { money, number } from '../lib/format';
+import { money, number, zoneLabel } from '../lib/format';
 
 interface MapDashboardProps {
   clients: Client[];
@@ -44,6 +44,10 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
     return matchesMultiFilter(regional ? 'regional' : 'outside', scope);
   });
   const zones = useMemo(() => [...new Set(scopedClients.map((client) => client.zone))], [scopedClients]);
+  const zoneOptions = useMemo(() => zones.map((value) => {
+    const localities = [...new Set(scopedClients.filter((client) => client.zone === value).map((client) => client.locality).filter(Boolean))];
+    return { value, label: zoneLabel(value, localities.length === 1 ? localities[0] : '') };
+  }), [scopedClients, zones]);
   const filtered = scopedClients.filter((client) => matchesMultiFilter(client.zone, zone)
     && matchesMultiFilter(client.health, health)
     && matchesMultiFilter(client.portfolioStatus, portfolioStatus)
@@ -87,7 +91,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
               <MultiSelectFilter label="Estado GESI" value={clientVisibility} options={[{ value: 'active', label: 'Activos' }, { value: 'inactive', label: 'Inactivos' }]} onChange={(value) => { onClientVisibilityChange(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Cartera Salice" value={portfolioStatus} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolioStatus(value); onSelect(null); }} />
               <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original de GESI' }, { value: 'corrected', label: 'Corregida automáticamente' }]} onChange={(value) => { setLocationStatus(value); onSelect(null); }} />
-              <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />
+              <MultiSelectFilter label="Zona" value={zone} options={zoneOptions} onChange={setZone} />
               <MultiSelectFilter label="Riesgo" value={health} options={[{ value: 'healthy', label: 'Riesgo bajo' }, { value: 'attention', label: 'Atención' }, { value: 'critical', label: 'Riesgo alto' }]} onChange={setHealth} />
             </div>
           </div>

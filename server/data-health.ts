@@ -56,7 +56,7 @@ export function buildDataHealth(
     freshness,
     sources: [
       {
-        id: 'snapshot', label: 'Snapshot operativo', level: snapshotLevel,
+        id: 'snapshot', label: 'Datos principales', level: snapshotLevel,
         capturedAt: snapshot.meta.generatedAt, coverageFrom: '', coverageThrough: snapshot.meta.generatedAt.slice(0, 10),
         records: snapshot.clients.length + snapshot.products.length,
         detail: `${snapshot.clients.length} clientes · ${snapshot.products.length} productos`,

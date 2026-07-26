@@ -85,7 +85,7 @@ export function DeliverySheetDetailDrawer({
             <div><span className="section-kicker"><FileText size={14} /> Comprobantes asignados</span><h3>Contenido de la foja</h3></div>
             <span className="count-badge">{number(invoices.length)}</span>
           </div>
-          {!invoices.length && <p className="section-description">Esta foja no contiene facturas identificables en el snapshot activo.</p>}
+          {!invoices.length && <p className="section-description">Esta foja no contiene facturas identificables en los datos actuales.</p>}
           <div className="delivery-sheet-invoice-list">
             {invoices.map((invoice) => {
               const client = clientById.get(invoice.clientId);

@@ -1,13 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShoppingBasket, Sparkles, Store, Target, Users, WalletCards, X } from 'lucide-react';
-import { APP_VERSION, VECTOR_LABELS, type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
+import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShoppingBasket, Store, Target, Users, WalletCards, X } from 'lucide-react';
+import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
 import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawer';
 import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
 import { ProductPanel } from './components/ProductPanel';
-import { TUTORIAL_STEPS, TutorialOverlay, type TutorialView } from './components/TutorialOverlay';
+import { TUTORIALS, TutorialOverlay, type TutorialSection, type TutorialView } from './components/TutorialOverlay';
 import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
 import { number } from './lib/format';
 import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportViewId } from './lib/report-center';
@@ -58,9 +58,9 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
   receivables: { title: 'Cuentas por cobrar', subtitle: 'Cartera, responsables, estados y seguimiento administrativo' },
   goals: { title: 'Objetivos comerciales', subtitle: 'Planificación propia, versiones, cambios y cumplimiento' },
-  'report-center': { title: 'Reportes', subtitle: 'Accesos organizados por finalidad, cobertura y fuente' },
+  'report-center': { title: 'Reportes', subtitle: 'Accesos organizados por finalidad y cobertura' },
   reports: { title: 'Reporte General', subtitle: 'Objetivos, resultados y estado comercial de Salice' },
-  spt: { title: 'SPT Vol vs mes anterior', subtitle: 'Volumen en kilos, evolución, vendedores y comparación temporal' },
+  spt: { title: 'Volumen SPT', subtitle: 'Kilos, evolución, vendedores y comparación entre períodos' },
   'commercial-sales': { title: 'Ventas · Comercial', subtitle: 'Venta neta, evolución, marcas y composición del negocio' },
   mars: { title: 'Reporte Mars', subtitle: 'Volumen, clientes y períodos comerciales del proveedor Mars' },
   nutripet: { title: 'Reporte NutriPet', subtitle: 'Volumen, cobertura y evolución mensual del proveedor NutriPet' },
@@ -78,13 +78,6 @@ const nav: { id: View; label: string; icon: typeof Map }[] = [
   { id: 'products', label: 'Productos', icon: Boxes },
   { id: 'brands', label: 'Marcas', icon: Store },
 ];
-
-function localizedDisclaimer(meta: DashboardData['meta']) {
-  if (!meta.disclaimer) return '';
-  const coverageValues = [...new Set(Object.values(meta.coverage ?? {}).filter((value): value is number => typeof value === 'number' && value >= 1000))]
-    .sort((left, right) => right - left);
-  return coverageValues.reduce((text, value) => text.replace(new RegExp(`\\b${value}\\b`, 'g'), number(value)), meta.disclaimer);
-}
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -104,8 +97,12 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
-  const [tutorialStep, setTutorialStep] = useState<number | null>(null);
-  const [tutorialCompleted, setTutorialCompleted] = useState(() => localStorage.getItem('salice-tutorial-v087') === 'completed');
+  const [tutorial, setTutorial] = useState<{ section: TutorialSection; stepIndex: number } | null>(null);
+  const [tutorialCompleted, setTutorialCompleted] = useState<Record<TutorialSection, boolean>>(() => ({
+    operations: localStorage.getItem('salice-tutorial-v010-operations') === 'completed',
+    administration: localStorage.getItem('salice-tutorial-v010-administration') === 'completed',
+    reports: localStorage.getItem('salice-tutorial-v010-reports') === 'completed',
+  }));
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -153,7 +150,7 @@ export default function App() {
         fetch('/api/dashboard', { cache: 'no-store' }),
         fetch('/api/system/data-health', { cache: 'no-store' }),
       ]);
-      if (!dashboardResponse.ok) throw new Error('No se pudo releer el snapshot');
+      if (!dashboardResponse.ok) throw new Error('No se pudieron releer los datos');
       setData(await dashboardResponse.json());
       if (healthResponse.ok) setDataHealth(await healthResponse.json());
     } catch (cause) {
@@ -251,8 +248,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (tutorialStep == null || !data) return;
-    const step = TUTORIAL_STEPS[tutorialStep];
+    if (!tutorial || !data) return;
+    const step = TUTORIALS[tutorial.section].steps[tutorial.stepIndex];
     setView(step.view);
     setSidebarOpen(false);
     if (step.target === 'client-panel') {
@@ -266,7 +263,7 @@ export default function App() {
       setSelectedId(null);
       setClientProfileOpen(false);
     }
-  }, [data, tutorialStep]);
+  }, [data, tutorial]);
 
   const selected = useMemo(() => data?.clients.find((client) => client.id === selectedId) || null, [data, selectedId]);
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
@@ -317,13 +314,21 @@ export default function App() {
     selectView('receivables');
   };
   const toggleSidebarSection = (section: SidebarSection) => setSidebarSections((current) => ({ ...current, [section]: !current[section] }));
-  const planRoute = (clientId: number) => { if (!data?.clients.find((client) => client.id === clientId)?.active) return; setRouteClientId(clientId); setView('routes'); setSelectedId(null); setClientProfileOpen(false); };
+  const planRoute = (clientId: number) => {
+    const client = data?.clients.find((candidate) => candidate.id === clientId);
+    if (!client?.active || !client.coordinates || client.locationPrecision === 'locality') return;
+    setRouteClientId(clientId);
+    setView('routes');
+    setSelectedId(null);
+    setClientProfileOpen(false);
+  };
   const noteSaved = (clientId: number, note: string) => setData((current) => current ? ({ ...current, clients: current.clients.map((client) => client.id === clientId ? { ...client, note } : client) }) : current);
-  const startTutorial = () => setTutorialStep(0);
+  const startTutorial = (section: TutorialSection) => setTutorial({ section, stepIndex: 0 });
   const finishTutorial = () => {
-    localStorage.setItem('salice-tutorial-v087', 'completed');
-    setTutorialCompleted(true);
-    setTutorialStep(null);
+    if (!tutorial) return;
+    localStorage.setItem(`salice-tutorial-v010-${tutorial.section}`, 'completed');
+    setTutorialCompleted((current) => ({ ...current, [tutorial.section]: true }));
+    setTutorial(null);
     setSelectedId(null);
     setView('settings');
   };
@@ -346,13 +351,13 @@ export default function App() {
     .map((brand) => ({ brand, sales90d: data.products.filter((product) => product.brand === brand).reduce((sum, product) => sum + product.sales90d, 0) }))
     .sort((a, b) => b.sales90d - a.sales90d || a.brand.localeCompare(b.brand, 'es')).slice(0, 5), [data, normalizedGlobalQuery]);
   const nextTutorialStep = () => {
-    if (tutorialStep == null) return;
-    if (tutorialStep === TUTORIAL_STEPS.length - 1) finishTutorial();
-    else setTutorialStep(tutorialStep + 1);
+    if (!tutorial) return;
+    if (tutorial.stepIndex === TUTORIALS[tutorial.section].steps.length - 1) finishTutorial();
+    else setTutorial((current) => current ? { ...current, stepIndex: current.stepIndex + 1 } : null);
   };
 
-  if (error) return <main className="boot-screen"><div className="boot-logo">S</div><h1>No pudimos abrir Salice Inteligente</h1><p>{error}. Ejecutá <code>pnpm run dev</code> y volvé a intentar.</p><button className="button primary" onClick={() => location.reload()}><RefreshCw size={16} /> Reintentar</button></main>;
-  if (!data) return <main className="boot-screen"><div className="boot-logo loading">S</div><h1>Preparando el centro operativo</h1><p>Cargando clientes, productos y cuenta corriente…</p></main>;
+  if (error) return <main className="boot-screen"><img className="boot-logo" src="/salice-logo.png" alt="Salice" /><h1>No pudimos abrir Salice Inteligente</h1><p>{error}. Verificá que el servicio de datos esté disponible y volvé a intentar.</p><button className="button primary" onClick={() => location.reload()}><RefreshCw size={16} /> Reintentar</button></main>;
+  if (!data) return <main className="boot-screen"><img className="boot-logo loading" src="/salice-logo.png" alt="Salice" /><h1>Preparando el centro operativo</h1><p>Cargando clientes, productos y cuenta corriente…</p></main>;
 
   const currentTitle = titles[view];
   const snapshotDate = new Date(data.meta.generatedAt);
@@ -362,7 +367,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="brand"><div className="brand-mark"><span>S</span></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
+        <div className="brand"><div className="brand-mark"><img src="/salice-logo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
         <div className="sidebar-scroll">
           <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection('operations')}><span>Centro operativo</span>{sidebarSections.operations ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
@@ -374,9 +379,8 @@ export default function App() {
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={viewSection[view] === 'reports' ? 'active' : ''} onClick={() => selectView('report-center')}><LayoutDashboard size={19} /><span>Reportes</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.system && <nav className="main-nav muted-nav" id="sidebar-system"><button className={view === 'settings' ? 'active' : ''} onClick={() => selectView('settings')}><Settings2 size={19} /><span>Configuración</span></button></nav>}
-          <div className="sidebar-insight"><div><Sparkles size={16} /><span>Motor activo</span></div><strong>{number(data.products.length)} productos</strong><p>vectorizados en {number(Object.keys(VECTOR_LABELS).length)} dimensiones</p></div>
         </div>
-        <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>v{APP_VERSION} · {data.meta.sourceLabel}</strong><small>{data.meta.source === 'demo' ? 'Esperando URL de GESI' : 'Snapshot conectado'}</small></div></div>
+        <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>Datos disponibles</strong><small>{data.meta.source === 'demo' ? 'Información demostrativa' : `Actualizados · ${snapshotLabel}`}</small></div></div>
       </aside>
       {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
@@ -389,20 +393,17 @@ export default function App() {
             <div className={`global-search ${searchOpen ? 'open' : ''}`}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
               {searchOpen && <div className="global-search-results">
                 {normalizedGlobalQuery.length < 2 && <p>Escribí al menos 2 caracteres para buscar en toda la base.</p>}
-                {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · P{client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}
+                {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · prioridad {client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!sellerResults.length && <><span className="search-result-label">Vendedores</span>{sellerResults.map((seller) => <button key={seller} onMouseDown={(event) => event.preventDefault()} onClick={() => openSeller(seller)}><Users size={15} /><div><strong>{seller}</strong><span>Abrir cartera y desempeño</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!brandResults.length && <><span className="search-result-label">Marcas</span>{brandResults.map((item) => <button key={item.brand} onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(item.brand)}><Store size={15} /><div><strong>{item.brand}</strong><span>Abrir productos y desempeño de la marca</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!productResults.length && <><span className="search-result-label">Productos</span>{productResults.map((product) => <div className="global-product-search-result" key={product.id}><button onMouseDown={(event) => event.preventDefault()} onClick={() => openProduct(product)}><Package size={15} /><div><strong>{product.name}</strong><span>{product.sku} · stock {product.stock}</span></div><ChevronRight size={15} /></button><button className="global-search-brand-link" onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(product.brand)}><Store size={12} /><span>{product.brand}</span></button></div>)}</>}
                 {normalizedGlobalQuery.length >= 2 && !clientResults.length && !sellerResults.length && !brandResults.length && !productResults.length && <p>No encontramos coincidencias.</p>}
               </div>}
             </div>
-            <div className="sync-action-wrap"><button className={`sync-chip ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} disabled={reloadingData || Boolean(dataHealth?.refresh.current)} onClick={refreshFromGesi} title="Capturar GESI ahora, auditar el paquete y publicarlo sólo si es válido"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? `Actualizando · ${dataHealth?.refresh.current?.stage ?? 'iniciando'}` : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Modo demo' : 'Snapshot validado')}</strong><span>Foto · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</button>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
+            <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
             <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{number(notifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
-            <div className="user-avatar">FM</div>
           </div>
         </header>
-
-        {data.meta.disclaimer && <div className={`demo-banner ${data.meta.source === 'gesi' ? 'connected' : ''}`}><Database size={15} /><span><strong>{data.meta.source === 'demo' ? 'Prototipo con datos demostrativos.' : 'Snapshot real de Salice.'}</strong> {localizedDisclaimer(data.meta)}</span></div>}
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
           {view === 'map' && <MapDashboard clients={data.clients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
@@ -410,7 +411,7 @@ export default function App() {
           {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
           {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
-          {view === 'products' && <ProductsView products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={tutorialStep != null && TUTORIAL_STEPS[tutorialStep]?.target === 'vector-explorer'} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
+          {view === 'products' && <ProductsView products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={false} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
           {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
           {view === 'routes' && <RoutesView clients={data.clients} logistics={data.logistics} initialClientId={routeClientId} onOpenClient={openClient} onOpenInvoice={openInvoice} />}
           {view === 'sales-explorer' && <SalesExplorerView clients={data.clients} navigationRequest={salesExplorerRequest} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
@@ -444,7 +445,7 @@ export default function App() {
         onOpenClient={openClientById}
         onOpenInvoice={openInvoice}
       />}
-      {tutorialStep != null && <TutorialOverlay stepIndex={tutorialStep} onBack={() => setTutorialStep((value) => value == null ? null : Math.max(0, value - 1))} onNext={nextTutorialStep} onClose={() => setTutorialStep(null)} />}
+      {tutorial && <TutorialOverlay definition={TUTORIALS[tutorial.section]} stepIndex={tutorial.stepIndex} onBack={() => setTutorial((current) => current ? { ...current, stepIndex: Math.max(0, current.stepIndex - 1) } : null)} onNext={nextTutorialStep} onClose={() => setTutorial(null)} />}
     </div>
   );
 }

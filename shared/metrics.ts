@@ -418,7 +418,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
   },
   {
     id: 'score.collection_risk',
-    label: 'C · Riesgo de cobranza',
+    label: 'Riesgo de cobranza',
     description: 'Puntaje explicable de presión de cobranza.',
     unit: 'score',
     formula: 'Reglas versionadas de vencido, antigüedad, monto y conducta de pago',
@@ -430,7 +430,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
   },
   {
     id: 'score.commercial_opportunity',
-    label: 'O · Oportunidad comercial',
+    label: 'Oportunidad comercial',
     description: 'Puntaje explicable de oportunidad por recencia, caída y amplitud del mix.',
     unit: 'score',
     formula: 'Reglas versionadas de compras y composición comercial',
@@ -454,7 +454,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
   },
   {
     id: 'score.visit_priority',
-    label: 'P · Prioridad de visita',
+    label: 'Prioridad de revisión',
     description: 'Prioridad combinada para ordenar acciones comerciales y administrativas.',
     unit: 'score',
     formula: '0.58 * C + 0.42 * O',

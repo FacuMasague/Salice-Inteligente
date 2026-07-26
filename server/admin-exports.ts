@@ -1,11 +1,14 @@
 import type { Response } from 'express';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import { resolve } from 'node:path';
 import type { CommercialGoalsPayload, InvoiceDetailPayload, ReceivableDashboardPayload } from '../shared/models.js';
 import { buildGeneralReport } from './general-report.js';
 import { getCommercialGoalsPayload } from './operational-store.js';
 import { buildReceivablesDashboard } from './receivables-dashboard.js';
 import { forEachSalesExportRow, getSalesExplorerMeta, normalizeSalesExplorerFilters } from './sales-explorer.js';
+
+const SALICE_LOGO_PATH = resolve(process.cwd(), 'public/salice-logo.png');
 
 function safeFilePart(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'salice';
@@ -264,14 +267,16 @@ export function exportGoalsPdf(response: Response, versionId?: string, month?: s
     timeZone: 'America/Argentina/Buenos_Aires',
   }).format(new Date());
   setDownloadHeaders(response, 'application/pdf', `objetivos-${version.version}-${payload.selectedMonth}.pdf`);
-  const document = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `Objetivos comerciales ${payload.selectedMonth}`, Author: 'Salice Inteligente' } });
+  const document = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `Objetivos comerciales ${payload.selectedMonth}`, Author: 'Salice' } });
   document.pipe(response);
-  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(20).text('Salice Inteligente');
-  document.fillColor('#1f2d28').fontSize(15).text('Objetivos comerciales y cumplimiento');
+  document.image(SALICE_LOGO_PATH, 42, 34, { fit: [54, 47], align: 'center', valign: 'center' });
+  document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(20).text('Objetivos comerciales', 112, 39);
+  document.fillColor('#1f2d28').fontSize(12).text('Plan y cumplimiento', 112, 65);
+  document.y = 95;
   document.moveDown(.4).font('Helvetica').fontSize(9).fillColor('#65736d')
     .text(`Plan: ${version.name} · versión ${version.version} · ${versionStatus}`)
     .text(`Mes: ${payload.selectedMonth} · generado ${generatedAt}`)
-    .text('Resultados reales: API GESI. Objetivos: configuración versionada de Salice.');
+    .text('Resultados reales: datos comerciales disponibles. Objetivos: plan versionado de Salice.');
   const totals = goalTotals(payload);
   document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Plan cargado');
   document.font('Helvetica').fontSize(10)
@@ -310,7 +315,7 @@ export function exportGoalsPdf(response: Response, versionId?: string, month?: s
     document.text(`${seller}: ${formatNumber(values.kilos, 'kg')}${values.invoicing ? ` · ${formatNumber(values.invoicing, 'ars')}` : ''}`);
   });
   document.moveDown(1).fontSize(8).fillColor('#65736d')
-    .text('Documento generado por Salice Inteligente. Power BI no participa de este cálculo ni de esta exportación.');
+    .text('Documento generado por Salice. Los resultados se calculan con los datos comerciales disponibles.');
   document.end();
 }
 
@@ -324,13 +329,14 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
   setDownloadHeaders(response, 'application/pdf', `${invoice.number || invoice.id}.pdf`);
   const document = new PDFDocument({
     size: 'A4', margin: 42,
-    info: { Title: `${invoice.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} ${invoice.number}`, Author: 'Salice Inteligente' },
+    info: { Title: `${invoice.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} ${invoice.number}`, Author: 'Salice' },
   });
   document.pipe(response);
 
   document.rect(0, 0, 595, 112).fill('#214f3f');
-  document.fillColor('#f5f0df').font('Helvetica-Bold').fontSize(20).text('Salice Inteligente', 42, 35);
-  document.fillColor('#ffffff').fontSize(12).text(invoice.kind === 'credit_note' ? 'NOTA DE CRÉDITO' : 'COMPROBANTE DE VENTA', 42, 66);
+  document.roundedRect(42, 20, 72, 72, 12).fill('#ffffff');
+  document.image(SALICE_LOGO_PATH, 49, 27, { fit: [58, 58], align: 'center', valign: 'center' });
+  document.fillColor('#ffffff').font('Helvetica-Bold').fontSize(12).text(invoice.kind === 'credit_note' ? 'NOTA DE CRÉDITO' : 'COMPROBANTE DE VENTA', 132, 47);
   document.fillColor('#d8b36a').fontSize(18).text(invoice.number, 325, 42, { width: 228, align: 'right' });
   document.fillColor('#d8e5df').font('Helvetica').fontSize(8).text(`Corte operativo ${date(invoice.sourceMaxDate)}`, 325, 70, { width: 228, align: 'right' });
 
@@ -394,7 +400,7 @@ export function exportInvoicePdf(response: Response, invoice: InvoiceDetailPaylo
   document.fillColor('#214f3f').font('Helvetica-Bold').fontSize(15).text(formatNumber(invoice.amount, 'ars'), 360, y + 43, { width: 193, align: 'right' });
   if (invoice.outstanding > 0) document.fillColor('#a24b3d').fontSize(9).text(`Saldo abierto ${formatNumber(invoice.outstanding, 'ars')}`, 360, y + 63, { width: 193, align: 'right' });
   document.fillColor('#7a867f').font('Helvetica').fontSize(7.5).text(
-    `Generado ${generatedAt}. Fuente: API GESI y bases analíticas propias. ${invoice.detailAvailable ? 'Detalle disponible en la base comercial.' : 'Detalle de productos no disponible en GESI.'} Power BI no participa de este documento.`,
+    `Generado ${generatedAt}. ${invoice.detailAvailable ? 'Detalle disponible en la base comercial.' : 'El origen de datos no informó el detalle de productos.'}`,
     42, y + 92, { width: 511, align: 'left' },
   );
   document.end();

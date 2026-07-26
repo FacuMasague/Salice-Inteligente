@@ -284,6 +284,6 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     {tab === 'sellers' && <SellerTab report={report} onOpenSeller={onOpenSeller} />}
     {tab === 'quarters' && <QuarterTab report={report} />}
 
-    <section className="spt-source-note"><Database size={15} /><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos · cobertura solicitada {meta.coverageFrom} a {meta.maxDate} · filtro de empresas 3/6. Los filtros de grupos, canales, rubros y vendedores fueron verificados en Power BI; los datos operativos provienen de GESI.</span></div></section>
+    <details className="business-report-source-note"><summary><Database size={15} /> Información técnica del reporte</summary><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos · cobertura solicitada {meta.coverageFrom} a {meta.maxDate} · filtro de empresas 3/6.</span></div></details>
   </div>;
 }

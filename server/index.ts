@@ -7,6 +7,7 @@ import { buildProductClientOpportunities, isCommercialOpportunityEligible } from
 import {
   APP_VERSION,
   SAVED_VIEW_KEYS,
+  type Client,
   type ClientTrendDirection,
   type CommercialActivityType,
   type PaymentPromiseStatus,
@@ -967,10 +968,21 @@ app.get('/api/products/:id/client-opportunities', async (req, res) => {
 });
 
 app.post('/api/routes/optimize', async (req, res) => {
-  const orderedClientIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds.map(Number).filter(Number.isInteger) : [];
+  const orderedClientIds: number[] = Array.isArray(req.body?.clientIds)
+    ? req.body.clientIds.map((value: unknown) => Number(value)).filter((value: number) => Number.isInteger(value))
+    : [];
   const invoiceIds = Array.isArray(req.body?.invoiceIds) ? req.body.invoiceIds.map(String) : [];
   if (!orderedClientIds.length || !invoiceIds.length) return res.status(400).json({ error: 'Elegí al menos una parada con facturas.' });
   const data = await loadSnapshot();
+  const selectedClients = orderedClientIds
+    .map((clientId) => data.clients.find((client) => client.id === clientId))
+    .filter((client): client is Client => client != null);
+  const unsafeClients = selectedClients.filter((client) => !client.coordinates || client.locationPrecision === 'locality');
+  if (unsafeClients.length) {
+    return res.status(400).json({
+      error: `No se puede calcular el recorrido: ${unsafeClients.length} cliente(s) no tienen una ubicación exacta verificada.`,
+    });
+  }
   const selectedInvoiceIDs = new Set(invoiceIds);
   const invoices = data.logistics.invoices.filter((invoice) => selectedInvoiceIDs.has(invoice.id) && orderedClientIds.includes(invoice.clientId));
   if (!invoices.length) return res.status(400).json({ error: 'Las facturas elegidas no pertenecen al snapshot logístico activo.' });

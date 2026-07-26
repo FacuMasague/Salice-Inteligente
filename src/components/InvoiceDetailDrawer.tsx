@@ -86,7 +86,7 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
         </section>
       </div>}
 
-      {detail && <footer className="invoice-detail-footer"><span>Fuente operativa: API GESI y bases analíticas propias.</span><a className="button primary" href={`/api/invoices/pdf?id=${encodeURIComponent(detail.id)}`} download><Download size={16} /> Descargar PDF</a></footer>}
+      {detail && <footer className="invoice-detail-footer"><span>Comprobante generado con los datos disponibles.</span><a className="button primary" href={`/api/invoices/pdf?id=${encodeURIComponent(detail.id)}`} download><Download size={16} /> Descargar PDF</a></footer>}
     </aside>
   </div>;
 }
