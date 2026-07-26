@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { METRIC_CATALOG, REPORT_UNIVERSES } from '../shared/metrics.js';
 import { SNAPSHOT_REVISION, type DashboardData } from '../shared/models.js';
+import { applyClientLocationQuality } from '../shared/client-location.js';
 import { evaluateProductVectorVersionGovernance, type ProductVectorComparisonEvidence } from '../shared/product-vector-version-governance.js';
 import { getActiveBundleManifest, resolveActiveDataPaths, verifyDataBundleManifest } from '../server/data-bundle.js';
 import { checkOperationalIntegrity } from '../server/operations-backup.js';
@@ -49,6 +50,12 @@ const [snapshotRaw, stagingRaw, snapshotFile, stagingFile, sptFile, pendingFile]
 ]);
 const snapshot = JSON.parse(snapshotRaw) as DashboardData;
 const staging = JSON.parse(stagingRaw) as DashboardData;
+const locationQuality = applyClientLocationQuality(snapshot.clients);
+const activeCorrectedLocations = locationQuality.clients.filter((client) => client.active && client.locationStatus === 'corrected').length;
+const activeLocationsToReview = locationQuality.clients.filter((client) => client.active && client.locationStatus === 'review').length;
+const activeLocationsInBuenosAires = locationQuality.clients.filter((client) => client.active && client.coordinates
+  && client.coordinates[0] >= -35.1 && client.coordinates[0] <= -34.3
+  && client.coordinates[1] >= -59.2 && client.coordinates[1] <= -57.8).length;
 const sptDatabase = new DatabaseSync(sptPath, { readOnly: true });
 const pendingDatabase = new DatabaseSync(pendingPath, { readOnly: true });
 const sptMeta = metadata(sptDatabase);
@@ -85,8 +92,26 @@ const operationsIntegrity = (() => {
 const administrativeStorage = (() => {
   try {
     const operations = new DatabaseSync(operationsPath, { readOnly: true });
-    const requiredTables = ['receivable_cases', 'receivable_case_events', 'client_trend_reviews', 'inventory_alert_reviews', 'inventory_alert_review_events', 'saved_views', 'commercial_opportunity_links', 'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes', 'product_vector_corrections', 'product_vector_correction_events', 'product_price_snapshots'];
-    const requiredTriggers = ['prevent_inventory_review_event_update', 'prevent_inventory_review_event_delete', 'prevent_vector_correction_event_update', 'prevent_vector_correction_event_delete', 'prevent_product_price_snapshot_update', 'prevent_product_price_snapshot_delete'];
+    const requiredTables = [
+      'receivable_cases', 'receivable_case_events', 'client_trend_reviews', 'inventory_alert_reviews',
+      'inventory_alert_review_events', 'saved_views', 'commercial_opportunity_links',
+      'commercial_goal_versions', 'commercial_goals', 'commercial_goal_changes',
+      'product_vector_corrections', 'product_vector_correction_events', 'product_price_snapshots',
+      'ai_prompt_versions', 'ai_enrichment_runs', 'ai_artifacts', 'ai_attempts', 'ai_feedback',
+      'ai_quality_reviews',
+      'ai_product_vector_baseline_runs', 'ai_product_vector_baselines',
+    ];
+    const requiredTriggers = [
+      'prevent_inventory_review_event_update', 'prevent_inventory_review_event_delete',
+      'prevent_vector_correction_event_update', 'prevent_vector_correction_event_delete',
+      'prevent_product_price_snapshot_update', 'prevent_product_price_snapshot_delete',
+      'prevent_ai_prompt_update', 'prevent_ai_prompt_delete', 'prevent_ai_artifact_update',
+      'prevent_ai_artifact_delete', 'prevent_ai_attempt_update', 'prevent_ai_attempt_delete',
+      'prevent_ai_feedback_update', 'prevent_ai_feedback_delete',
+      'prevent_ai_quality_update', 'prevent_ai_quality_delete',
+      'prevent_ai_vector_baseline_run_update', 'prevent_ai_vector_baseline_run_delete',
+      'prevent_ai_vector_baseline_update', 'prevent_ai_vector_baseline_delete',
+    ];
     const tables = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name));
     const triggers = new Set((operations.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger'").all() as { name: string }[]).map((row) => row.name));
     const missing = requiredTables.filter((table) => !tables.has(table));
@@ -106,6 +131,12 @@ const inventory = snapshot.meta.coverage?.inventory;
 add('inventory-context', 'El inventario pertenece a Salice y al depósito principal', inventory?.companyId === 3 && inventory.branchId === 3 && inventory.warehouseId === 2, inventory ? `Empresa ${inventory.companyId} / sucursal ${inventory.branchId} / depósito ${inventory.warehouseId} · ${inventory.warehouseLabel}` : 'Sin metadata de inventario');
 add('inventory-zero-universe', 'El inventario distingue existencia cero de producto ausente', inventory?.completeZeroStockUniverse === true && inventory.missingStockProducts === 0, inventory ? `${inventory.uniqueStockProducts}/${inventory.uniqueMasterProducts} maestros con fila · ${inventory.zeroStockProducts} ceros observados` : 'Sin metadata de inventario');
 add('product-catalog-traceability', 'Cada producto explica por qué participa en el catálogo operativo', snapshot.products.every((product) => product.catalogParticipation?.length > 0), `${snapshot.products.length} productos evaluados`);
+add(
+  'client-location-quality',
+  'Las coordenadas de clientes incompatibles quedan corregidas o aisladas del mapa',
+  activeLocationsInBuenosAires === 0,
+  `${activeCorrectedLocations} activos corregidos · ${activeLocationsToReview} activos a revisar · ${activeLocationsInBuenosAires} activos dibujados en Capital`,
+);
 const logistics = snapshot.meta.coverage?.logistics;
 const logisticsInvoices = snapshot.logistics?.invoices ?? [];
 const logisticsSheets = snapshot.logistics?.sheets ?? [];
@@ -149,11 +180,11 @@ add(
 add('operations-integrity', 'La persistencia operativa supera integrity_check', operationsIntegrity === 'ok', operationsIntegrity);
 add(
   'administrative-storage',
-  'La persistencia operativa contiene todos los contratos hasta v0.7.0',
+  'La persistencia operativa contiene todos los contratos hasta v0.9.6',
   !administrativeStorage.error && administrativeStorage.missing.length === 0 && administrativeStorage.missingTriggers.length === 0,
   administrativeStorage.error || (administrativeStorage.missing.length || administrativeStorage.missingTriggers.length
     ? `Faltan tablas: ${administrativeStorage.missing.join(', ') || 'ninguna'} · triggers: ${administrativeStorage.missingTriggers.join(', ') || 'ninguno'}`
-    : 'Seguimientos, listas y oportunidades vinculadas, incidencias de inventario auditables, correcciones vectoriales, historial de precios y objetivos disponibles'),
+    : 'Gestión humana, línea base vectorial y artefactos de IA disponibles'),
 );
 add(
   'active-commercial-plan',

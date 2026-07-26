@@ -1,6 +1,19 @@
-# Respaldo de información operativa · v0.3.3
+# Respaldo de información operativa · v0.9.5
 
-`data/operations.sqlite` contiene notas, tareas, gestiones, promesas e historial de actualizaciones. No forma parte del snapshot GESI y nunca se revierte al cambiar una foto analítica.
+`data/operations.sqlite` contiene notas, tareas, gestiones, promesas, historial de actualizaciones y auditoría de IA. No forma parte del snapshot GESI y nunca se revierte al cambiar una foto analítica.
+
+La primera ejecución que detecta un esquema de IA incompleto crea una copia consistente antes de migrarlo. El esquema v0.9.5 exige ocho tablas:
+
+- versiones de prompts;
+- ejecuciones;
+- artefactos;
+- intentos;
+- feedback;
+- controles de calidad;
+- ejecuciones de línea base vectorial;
+- productos incluidos en cada línea base.
+
+Prompts, salidas, intentos, feedback, controles de calidad y líneas base quedan protegidos como historia append-only o versionada. Los respaldos locales no deben compartirse porque también contienen información operativa.
 
 ## Verificar y respaldar
 

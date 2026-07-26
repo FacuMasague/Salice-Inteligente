@@ -14,4 +14,5 @@ export const MANUAL_REFRESH_STAGES: ManualRefreshStage[] = [
   { id: 'snapshot-audit', label: 'Auditoría integral del snapshot', script: 'scripts/audit-data.ts', mutatesActiveData: false },
   { id: 'vector-audit', label: 'Auditoría del catálogo vectorial', script: 'scripts/audit-product-vectors.ts', mutatesActiveData: false },
   { id: 'platform-audit', label: 'Auditoría cruzada de fuentes y métricas', script: 'scripts/audit-platform.ts', mutatesActiveData: false },
+  { id: 'executive-summary', label: 'Resumen ejecutivo candidato', script: 'scripts/build-executive-summary.ts', mutatesActiveData: false },
 ];

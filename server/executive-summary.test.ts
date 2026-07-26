@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { resolveActiveDataPaths } from './data-bundle';
-import { buildExecutiveSummary } from './executive-summary';
+import { buildExecutiveSummary, loadExecutiveSummary } from './executive-summary';
 import { loadSnapshot } from './store';
 
 const paths = resolveActiveDataPaths();
@@ -52,5 +52,11 @@ describeWithSources('Resumen inicial ¿Cómo estamos?', () => {
       + (summary?.logistics.openSheet ?? 0)
       + (summary?.logistics.closedSheet ?? 0)
       + (summary?.logistics.unknown ?? 0)).toBe(data.logistics.invoices.length);
+  }, 30_000);
+
+  it('carga el resumen persistido del mismo corte cuando el paquete lo incluye', async () => {
+    const data = await loadSnapshot();
+    const summary = await loadExecutiveSummary(data);
+    expect(summary?.snapshotAt).toBe(data.meta.generatedAt);
   }, 30_000);
 });

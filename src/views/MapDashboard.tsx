@@ -31,6 +31,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   const [zone, setZone] = useState('');
   const [health, setHealth] = useState('');
   const [portfolioStatus, setPortfolioStatus] = useState('');
+  const [locationStatus, setLocationStatus] = useState('');
   const [scope, setScope] = useState('regional');
   const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const visibleByStatus = useMemo(() => clients.filter((client) => (
@@ -38,14 +39,15 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   )), [clients, clientVisibility]);
   const mappedClients = useMemo(() => visibleByStatus.filter((client) => client.coordinates !== null), [visibleByStatus]);
   const scopedClients = mappedClients.filter((client) => {
-    const regional = client.coordinates![0] >= -39.5 && client.coordinates![0] <= -36.5
-      && client.coordinates![1] >= -59.5 && client.coordinates![1] <= -56.5;
+    const regional = client.coordinates![0] >= -39.7 && client.coordinates![0] <= -35.7
+      && client.coordinates![1] >= -60.8 && client.coordinates![1] <= -56.2;
     return matchesMultiFilter(regional ? 'regional' : 'outside', scope);
   });
   const zones = useMemo(() => [...new Set(scopedClients.map((client) => client.zone))], [scopedClients]);
   const filtered = scopedClients.filter((client) => matchesMultiFilter(client.zone, zone)
     && matchesMultiFilter(client.health, health)
-    && matchesMultiFilter(client.portfolioStatus, portfolioStatus));
+    && matchesMultiFilter(client.portfolioStatus, portfolioStatus)
+    && matchesMultiFilter(client.locationStatus ?? 'original', locationStatus));
   const portfolio = activeClients.reduce((sum, client) => sum + client.sales90d, 0);
   const debt = activeClients.reduce((sum, client) => sum + client.balance, 0);
   const critical = activeClients.filter((client) => client.health === 'critical').length;
@@ -53,11 +55,12 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   const previousQuarter = trend.slice(0, 3).reduce((sum, value) => sum + value, 0);
   const currentQuarter = trend.slice(3).reduce((sum, value) => sum + value, 0);
   const portfolioDelta = previousQuarter ? Math.round((currentQuarter - previousQuarter) / previousQuarter * 100) : 0;
-  const savedFilters = { scope, clientVisibility, portfolioStatus, zone, health, selectedClientId: selected ? String(selected.id) : '' };
+  const savedFilters = { scope, clientVisibility, portfolioStatus, locationStatus, zone, health, selectedClientId: selected ? String(selected.id) : '' };
   const applySaved = (saved: Record<string, string>) => {
     setScope(saved.scope || 'regional');
     onClientVisibilityChange(saved.clientVisibility || 'active');
     setPortfolioStatus(saved.portfolioStatus || '');
+    setLocationStatus(saved.locationStatus || '');
     setZone(saved.zone || '');
     setHealth(saved.health || '');
     const selectedClient = clients.find((client) => client.id === Number(saved.selectedClientId));
@@ -83,12 +86,13 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
               <MultiSelectFilter label="Alcance" value={scope} options={[{ value: 'regional', label: 'Mar del Plata y zona' }, { value: 'outside', label: 'Resto de Argentina' }]} onChange={(value) => { setScope(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Estado GESI" value={clientVisibility} options={[{ value: 'active', label: 'Activos' }, { value: 'inactive', label: 'Inactivos' }]} onChange={(value) => { onClientVisibilityChange(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Cartera Salice" value={portfolioStatus} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolioStatus(value); onSelect(null); }} />
+              <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original de GESI' }, { value: 'corrected', label: 'Corregida automáticamente' }]} onChange={(value) => { setLocationStatus(value); onSelect(null); }} />
               <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />
               <MultiSelectFilter label="Riesgo" value={health} options={[{ value: 'healthy', label: 'Riesgo bajo' }, { value: 'attention', label: 'Atención' }, { value: 'critical', label: 'Riesgo alto' }]} onChange={setHealth} />
             </div>
           </div>
           <ClientMap clients={filtered} selectedId={selected?.id ?? null} onSelect={onSelect} />
-          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
+          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
         </section>
         {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
       </div>

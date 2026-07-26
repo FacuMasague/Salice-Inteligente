@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, CalendarRange, ChevronRight, PackageSearch, Scale, ShoppingBag, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { NutriPetBrandRow, NutriPetFilterKey, NutriPetFilters, NutriPetMonthlyPoint, NutriPetProductRow, NutriPetReportMeta, NutriPetReportPayload } from '../../shared/models';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -234,6 +235,7 @@ export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProdu
     </BusinessReportFilters>
 
     <ReportContext universe="Empresa 3 / sucursal 3 · grupo Nutri Pet · canal Especializado por defecto" period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison={report.comparisonAvailable ? 'Mes anterior, mismo mes del año anterior y acumulado equivalente' : 'Comparación fuera de cobertura'} partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : []} related={[{ view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('nutripet', filters), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     <BusinessReportPeriodNote partial={report.isPartial} title={`${monthLabel(report.selectedMonth, true)} · corte al ${report.periodEnd.split('-').reverse().join('/')}`} detail={report.isPartial ? `Mes en curso: ${report.elapsedDays} días. Mes anterior, año anterior y acumulado se comparan usando el mismo día de corte.` : 'Mes completo. Las comparaciones usan períodos calendario equivalentes.'} />

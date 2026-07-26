@@ -1,11 +1,12 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
+  ChevronDown,
   CircleDollarSign,
   PackageSearch,
-  RefreshCw,
   Route,
+  Sparkles,
   Target,
   TrendingDown,
   TrendingUp,
@@ -18,6 +19,8 @@ import type {
   ExecutiveSummaryDestination,
   ExecutiveSummaryPayload,
 } from '../../shared/models';
+import { AiExecutiveBriefCard } from './AiInsights';
+import { formatAiDisplayText } from '../lib/ai-display';
 import { money, number } from '../lib/format';
 
 function percent(value: number | null, signed = false) {
@@ -96,48 +99,44 @@ function Card({
 }
 
 export function ExecutiveSummary({
+  summary,
   onOpen,
 }: {
+  summary: ExecutiveSummaryPayload | null;
   onOpen: (destination: ExecutiveSummaryDestination) => void;
 }) {
-  const [summary, setSummary] = useState<ExecutiveSummaryPayload | null>(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/reports/executive-summary')
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'No se pudo construir el resumen.');
-        return payload as ExecutiveSummaryPayload;
-      })
-      .then((payload) => { if (active) setSummary(payload); })
-      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : 'No se pudo construir el resumen.'); });
-    return () => { active = false; };
-  }, []);
-
-  if (error) return <section className="executive-summary-state error"><AlertTriangle size={18} /><div><strong>El resumen inicial no está disponible</strong><span>{error}</span></div></section>;
-  if (!summary) return <section className="executive-summary-state"><RefreshCw className="spin" size={18} /><div><strong>Armando “¿Cómo estamos?”</strong><span>Consultando las fuentes aceptadas de cada bloque…</span></div></section>;
+  if (!summary) return <section className="executive-summary-state error"><AlertTriangle size={18} /><div><strong>El resumen inicial no está disponible</strong><span>La actualización activa no incluye todas las fuentes necesarias.</span></div></section>;
 
   const netPositive = (summary.sales.netVariation ?? 0) >= 0;
+  const overview = summary.aiBrief?.output.currentState
+    ?? `Ventas ${netPositive ? 'estables o en crecimiento' : 'por debajo del período comparable'}, con ${percent(summary.goals.completion)} de avance sobre el objetivo mensual.`;
   return (
-    <section className="executive-summary" aria-label="Resumen inicial ¿Cómo estamos?">
-      <div className="executive-summary-heading">
+    <details className="executive-summary" aria-label="Resumen inicial ¿Cómo estamos?">
+      <summary className="executive-summary-toggle">
         <div>
-          <span className="section-kicker">Lectura inicial · sin mezclar universos</span>
+          <span className="section-kicker"><Sparkles size={13} /> {summary.aiBrief ? 'Lectura general asistida' : 'Lectura general disponible'}</span>
           <h2>¿Cómo estamos?</h2>
-          <p>Una entrada breve a las señales principales. Cada bloque conserva su definición y abre el reporte o módulo que permite profundizar.</p>
+          <p>{formatAiDisplayText(overview)}</p>
         </div>
-        <span>Actualizado {new Intl.DateTimeFormat('es-AR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hourCycle: 'h23',
-        }).format(new Date(summary.snapshotAt))}</span>
-      </div>
-      <div className="executive-summary-grid">
+        <div className="executive-summary-toggle-meta">
+          <span>Actualizado {new Intl.DateTimeFormat('es-AR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).format(new Date(summary.snapshotAt))}</span>
+          <strong><span className="when-closed">Ver indicadores</span><span className="when-open">Ocultar indicadores</span><ChevronDown size={15} /></strong>
+        </div>
+      </summary>
+      <div className="executive-summary-content">
+        <div className="executive-summary-expanded-intro">
+          <span>Detalle por fuente</span>
+          <p>Cada bloque conserva su definición y abre el reporte o módulo que permite profundizar.</p>
+        </div>
+        <AiExecutiveBriefCard artifact={summary.aiBrief} expanded />
+        <div className="executive-summary-grid">
         <Card title="Ventas del período" eyebrow="Ventas · Comercial" icon={<CircleDollarSign size={19} />} tone="green" context={summary.sales.context} onOpen={() => onOpen(summary.sales.context.destination)} wide>
           <div className="executive-primary-value"><strong>{money(summary.sales.netAmount, true)}</strong><span>{kilos(summary.sales.kilos)} · {number(summary.sales.buyers)} compradores</span></div>
           <div className={`executive-change ${netPositive ? 'positive' : 'negative'}`}>{netPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}<span><strong>{percent(summary.sales.netVariation, true)}</strong><small>venta neta · {percent(summary.sales.kiloVariation, true)} kilos</small></span></div>
@@ -174,7 +173,8 @@ export function ExecutiveSummary({
           {!!summary.logistics.unknown && <div className="executive-mini-note warning">{number(summary.logistics.unknown)} sin clasificación confiable</div>}
           <div className="executive-mini-note"><Route size={12} /> {number(summary.logistics.invoices)} facturas en cobertura</div>
         </Card>
+        </div>
       </div>
-    </section>
+    </details>
   );
 }

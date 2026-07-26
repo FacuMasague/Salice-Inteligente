@@ -1,7 +1,7 @@
 {
   "name": "salice-inteligente",
   "private": true,
-  "version": "0.8.7",
+  "version": "0.9.6",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,blue \"pnpm run dev:api\" \"pnpm run dev:web\"",
@@ -16,6 +16,9 @@
     "sync:gesi": "tsx scripts/sync-gesi.ts",
     "refresh:gesi": "tsx scripts/refresh-gesi-manual.ts",
     "refresh:gesi:resume": "tsx scripts/refresh-gesi-manual.ts --resume",
+    "enrich:ai": "tsx scripts/enrich-ai.ts",
+    "enrich:ai:resume": "tsx scripts/enrich-ai.ts --resume",
+    "evaluate:ai-effort": "tsx scripts/evaluate-commercial-ai-effort.ts",
     "adopt:data-bundle": "tsx scripts/adopt-data-bundle.ts",
     "audit:data": "tsx scripts/audit-data.ts",
     "audit:platform": "tsx scripts/audit-platform.ts",
@@ -36,12 +39,14 @@
     "test:reconciliation": "vitest run server/historical-report-reconciliation.test.ts"
   },
   "dependencies": {
+    "ajv": "^8.20.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.525.0",
+    "openai": "^6.49.0",
     "pdfkit": "^0.19.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

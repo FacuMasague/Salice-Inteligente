@@ -20,6 +20,7 @@ async function candidate(workspace: string, id: string, capturedAt: string) {
   const snapshot = JSON.stringify({ meta: { generatedAt: capturedAt, revision: 9 }, clients: [], products: [] });
   await writeFile(paths.snapshot, snapshot);
   await writeFile(paths.staging, snapshot);
+  await writeFile(paths.executiveSummary, JSON.stringify({ snapshotAt: capturedAt }));
   for (const path of [paths.commercial, paths.pendingBalances]) {
     const database = new DatabaseSync(path);
     database.exec('CREATE TABLE report_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -40,7 +41,7 @@ describe('activación atómica de paquetes de datos', () => {
     await activateDataBundle(second.manifest, workspace);
     const active = resolveActiveDataPaths(workspace);
     expect(active.bundleId).toBe('second');
-    expect([active.snapshot, active.commercial, active.pendingBalances].every((path) => path.includes('/second/'))).toBe(true);
+    expect([active.snapshot, active.commercial, active.pendingBalances, active.executiveSummary].every((path) => path.includes('/second/'))).toBe(true);
   });
 
   it('conserva intacto el paquete anterior si falla una verificación intermedia', async () => {

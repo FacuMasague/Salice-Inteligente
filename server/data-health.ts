@@ -38,6 +38,8 @@ export function buildDataHealth(
   if ((coverage?.omittedInvoiceDetails ?? 0) > 0) limitations.push(`GESI omitió el detalle de ${coverage?.omittedInvoiceDetails} factura(s) del snapshot operativo.`);
   if (spt.unavailableDocumentCount > 0) limitations.push(`${spt.unavailableDocumentCount} comprobante(s) no tienen detalle en la base comercial histórica.`);
   if ((coverage?.activePortfolioReviewClients ?? 0) > 0) limitations.push(`${coverage?.activePortfolioReviewClients} clientes activos requieren confirmar pertenencia a la cartera Salice.`);
+  if ((coverage?.correctedLocationClients ?? 0) > 0) limitations.push(`${coverage?.correctedLocationClients} ubicaciones incompatibles con GESI se muestran como referencias aproximadas y trazables de su localidad.`);
+  if ((coverage?.locationReviewClients ?? 0) > 0) limitations.push(`${coverage?.locationReviewClients} ubicaciones quedaron fuera del mapa hasta poder confirmar su localidad.`);
 
   let overall: DataHealthLevel = freshness.level === 'stale' ? 'stale' : freshness.level === 'unknown' ? 'unavailable' : 'healthy';
   if (!spt.available || !pending.available) overall = 'unavailable';

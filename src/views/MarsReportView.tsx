@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Building2, CalendarRange, Database, PawPrint, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { MarsBrandRow, MarsFilterKey, MarsFilters, MarsPeriodPoint, MarsReportMeta, MarsReportPayload } from '../../shared/models';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -222,6 +223,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     </BusinessReportFilters>
 
     <ReportContext universe="Empresa 3 / sucursal 3 · grupo Pet Nutrition" period={`${report.selected.start} → ${report.isPartial ? report.sourceMaxDate : report.selected.end}`} cutoff={report.sourceMaxDate} comparison="Período anterior, mismo período del año anterior y acumulado equivalente" partial={report.isPartial} warnings={[...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : []), ...(meta.clientTypeCatalogSource !== 'gesi_api' ? ['Tipos de cliente mostrados desde catálogo de referencia validado.'] : [])]} related={[{ view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('mars', filters), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     <BusinessReportPeriodNote partial={report.isPartial} title={`${report.selected.label} · ${dateLabel(report.selected.start)} al ${dateLabel(report.isPartial ? report.sourceMaxDate : report.selected.end)}`} detail={report.isPartial ? `Período en curso: ${report.elapsedDays} de ${report.selected.days} días. Las comparaciones acumuladas y por marca usan el mismo número de días del año anterior.` : `Período completo de ${report.selected.days} días.`} />

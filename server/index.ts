@@ -16,6 +16,7 @@ import {
 } from '../shared/models.js';
 import { VECTOR_KEYS } from '../shared/product-vectors.js';
 import { parseLocalizedNumber } from '../shared/localized-number.js';
+import type { AiFeedbackRating } from '../shared/ai.js';
 import { REPORT_ENDPOINT_METRICS } from '../shared/metric-links.js';
 import { metricCatalogSummary } from '../shared/metrics.js';
 import { classifyInventoryProduct, type InventoryExceptionType, type InventoryReviewStatus } from '../shared/inventory-decisions.js';
@@ -23,7 +24,7 @@ import { buildCommercialInbox, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
 import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
 import { buildDataHealth, loadPlatformAuditSummary } from './data-health.js';
-import { buildExecutiveSummary } from './executive-summary.js';
+import { loadExecutiveSummary } from './executive-summary.js';
 import { buildGeneralReport, getGeneralReportMeta, getGeneralReportPath } from './general-report.js';
 import { buildMarsReport, getMarsReportMeta, getMarsReportPath } from './mars-report.js';
 import { buildNonBuyerReport, getNonBuyerReportMeta, getNonBuyerReportPath } from './non-buyers-report.js';
@@ -42,6 +43,15 @@ import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
 import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
 import { countOperationalBackups } from './operations-backup.js';
+import { auditStoredAiArtifacts, getAiSystemStatus } from './ai-enrichment.js';
+import {
+  attachCommercialExplanations,
+  getExecutiveBrief,
+  getReportNarrative,
+  getSellerSummaries,
+} from './ai-artifacts.js';
+import type { AiReportId } from './ai-functions.js';
+import { AiStore, prepareAiSchema } from './ai-store.js';
 import {
   activateCommercialGoalVersion,
   addReceivableComment,
@@ -137,6 +147,14 @@ async function sendDownload(response: express.Response, action: () => void | Pro
   }
 }
 
+async function withReportNarrative<T extends object>(reportId: AiReportId, report: T) {
+  const snapshotAt = (await loadSnapshot()).meta.generatedAt;
+  return {
+    ...report,
+    aiNarrative: getReportNarrative(reportId, report, snapshotAt),
+  };
+}
+
 app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'] }));
 app.use(express.json({ limit: '1mb' }));
 for (const [path, metricIds] of Object.entries(REPORT_ENDPOINT_METRICS)) {
@@ -152,7 +170,12 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.get('/api/dashboard', async (_req, res) => {
-  res.json(await loadSnapshot());
+  const data = await loadSnapshot();
+  const summary = await loadExecutiveSummary(data);
+  res.json({
+    ...data,
+    executiveSummary: summary ? { ...summary, aiBrief: getExecutiveBrief(summary) } : null,
+  });
 });
 
 app.get('/api/products/demand-analysis', async (req, res) => {
@@ -188,10 +211,10 @@ app.get('/api/metrics/catalog', (_req, res) => {
 
 app.get('/api/reports/executive-summary', async (_req, res) => {
   const data = await loadSnapshot();
-  const summary = buildExecutiveSummary(data);
+  const summary = await loadExecutiveSummary(data);
   if (!summary) return res.status(503).json({ error: 'El resumen inicial no puede construirse porque falta al menos una de sus fuentes analíticas.' });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(summary);
+  return res.json({ ...summary, aiBrief: getExecutiveBrief(summary) });
 });
 
 app.get('/api/reports/spt/meta', (_req, res) => {
@@ -201,11 +224,11 @@ app.get('/api/reports/spt/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/spt', (req, res) => {
+app.get('/api/reports/spt', async (req, res) => {
   const report = buildSptReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base analítica SPT de GESI todavía no fue construida.', path: getSptReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('spt', report));
 });
 
 app.get('/api/reports/commercial-sales/meta', (_req, res) => {
@@ -215,11 +238,11 @@ app.get('/api/reports/commercial-sales/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/commercial-sales', (req, res) => {
+app.get('/api/reports/commercial-sales', async (req, res) => {
   const report = buildCommercialSalesReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base comercial de GESI todavía no fue construida.', path: getCommercialSalesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('commercial-sales', report));
 });
 
 app.get('/api/reports/general/meta', (_req, res) => {
@@ -229,11 +252,11 @@ app.get('/api/reports/general/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/general', (req, res) => {
+app.get('/api/reports/general', async (req, res) => {
   const report = buildGeneralReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base del Reporte General todavía no fue construida.', path: getGeneralReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('general', report));
 });
 
 app.get('/api/reports/mars/meta', (_req, res) => {
@@ -243,11 +266,11 @@ app.get('/api/reports/mars/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/mars', (req, res) => {
+app.get('/api/reports/mars', async (req, res) => {
   const report = buildMarsReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base Mars de GESI todavía no fue construida.', path: getMarsReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('mars', report));
 });
 
 app.get('/api/reports/nutripet/meta', (_req, res) => {
@@ -257,11 +280,11 @@ app.get('/api/reports/nutripet/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/nutripet', (req, res) => {
+app.get('/api/reports/nutripet', async (req, res) => {
   const report = buildNutriPetReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base NutriPet de GESI todavía no fue construida.', path: getNutriPetReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('nutripet', report));
 });
 
 app.get('/api/reports/baires/meta', (_req, res) => {
@@ -271,11 +294,11 @@ app.get('/api/reports/baires/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/baires', (req, res) => {
+app.get('/api/reports/baires', async (req, res) => {
   const report = buildBairesReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base Baires de GESI todavía no fue construida.', path: getBairesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('baires', report));
 });
 
 app.get('/api/reports/non-buyers/meta', (_req, res) => {
@@ -285,11 +308,11 @@ app.get('/api/reports/non-buyers/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/non-buyers', (req, res) => {
+app.get('/api/reports/non-buyers', async (req, res) => {
   const report = buildNonBuyerReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base de cuentas no compradoras todavía no fue construida.', path: getNonBuyerReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('non-buyers', report));
 });
 
 app.get('/api/reports/pending-balances/meta', (_req, res) => {
@@ -299,11 +322,11 @@ app.get('/api/reports/pending-balances/meta', (_req, res) => {
   return res.json(meta);
 });
 
-app.get('/api/reports/pending-balances', (req, res) => {
+app.get('/api/reports/pending-balances', async (req, res) => {
   const report = buildPendingBalancesReport(req.query);
   if (!report) return res.status(503).json({ error: 'La base de Saldos Pendientes todavía no fue construida.', path: getPendingBalancesReportPath() });
   res.setHeader('Cache-Control', 'no-store');
-  return res.json(report);
+  return res.json(await withReportNarrative('pending-balances', report));
 });
 
 const reportExportIds = new Set<ReportExportId>(['spt', 'mars', 'nutripet', 'baires', 'non-buyers']);
@@ -716,7 +739,62 @@ app.delete('/api/saved-views/:id', (req, res) => (
 ));
 
 app.get('/api/system/status', async (_req, res) => {
-  res.json({ ...operationalStatus(), backups: await getBackupCount(), operationalBackups: await countOperationalBackups() });
+  const data = await loadSnapshot();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ...operationalStatus(),
+    backups: await getBackupCount(),
+    operationalBackups: await countOperationalBackups(),
+    ai: getAiSystemStatus(data.meta.generatedAt),
+  });
+});
+
+const aiFeedbackRatings = new Set<AiFeedbackRating>(['useful', 'not_useful', 'incorrect', 'incomplete']);
+
+app.get('/api/ai/artifacts/:artifactId/feedback', (req, res) => {
+  const store = new AiStore();
+  try {
+    const artifact = store.artifactIdentity(String(req.params.artifactId));
+    if (!artifact) return res.status(404).json({ error: 'Lectura de IA no encontrada.' });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+      feedback: store.listFeedback(
+        artifact.id,
+        String(req.query.entityType ?? artifact.entity_type),
+        String(req.query.entityId ?? artifact.entity_id),
+      ),
+    });
+  } finally {
+    store.close();
+  }
+});
+
+app.post('/api/ai/artifacts/:artifactId/feedback', (req, res) => {
+  const rating = String(req.body?.rating ?? '') as AiFeedbackRating;
+  if (!aiFeedbackRatings.has(rating)) return res.status(400).json({ error: 'Elegí una valoración válida.' });
+  const correction = String(req.body?.correction ?? '').trim();
+  if (correction.length > 500) return res.status(400).json({ error: 'La corrección no puede superar 500 caracteres.' });
+  if ((rating === 'incorrect' || rating === 'incomplete') && correction.length < 5) {
+    return res.status(400).json({ error: 'Agregá una corrección breve para indicar qué falta o qué es incorrecto.' });
+  }
+  const store = new AiStore();
+  try {
+    const artifact = store.artifactIdentity(String(req.params.artifactId));
+    if (!artifact) return res.status(404).json({ error: 'Lectura de IA no encontrada.' });
+    const feedback = store.addFeedback({
+      artifactId: artifact.id,
+      snapshotAt: artifact.snapshot_at,
+      promptVersion: artifact.prompt_version,
+      rating,
+      correction,
+      subjectEntityType: String(req.body?.entityType ?? artifact.entity_type),
+      subjectEntityId: String(req.body?.entityId ?? artifact.entity_id),
+      actor: 'Oficina Salice',
+    });
+    return res.status(201).json({ feedback });
+  } finally {
+    store.close();
+  }
 });
 
 app.get('/api/system/data-health', async (_req, res) => {
@@ -752,7 +830,17 @@ app.get('/api/agenda', async (req, res) => {
   const activities = listActivities({ limit: 1000 });
   const promises = listPromises({ limit: 1000 });
   const items = listAgendaItems({ includeCancelled: false });
-  res.json(buildCommercialInbox(data, date, seller, items, activities, promises, listReceivableCases()));
+  const inbox = buildCommercialInbox(data, date, seller, items, activities, promises, listReceivableCases());
+  res.json(attachCommercialExplanations(inbox, data.meta.generatedAt));
+});
+
+app.get('/api/ai/seller-summaries', async (_req, res) => {
+  const data = await loadSnapshot();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    snapshotAt: data.meta.generatedAt,
+    summaries: getSellerSummaries(data.meta.generatedAt),
+  });
 });
 
 app.get('/api/notifications', async (_req, res) => {
@@ -915,8 +1003,10 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 await ensureSnapshot();
+await prepareAiSchema();
 rebuildAllReceivableCasesFromEvents();
 const startupSnapshot = await loadSnapshot();
+auditStoredAiArtifacts(startupSnapshot.meta.generatedAt);
 reconcileInventoryAlertReviews(startupSnapshot.products, startupSnapshot.meta.generatedAt);
 await initializeProductPriceHistory(startupSnapshot);
 const startupClients = new Map(startupSnapshot.clients.map((client) => [client.id, client]));

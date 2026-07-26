@@ -3,7 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { APP_VERSION, SNAPSHOT_REVISION, type DashboardData } from '../shared/models.js';
 import { createDemoSnapshot } from './data/demo-snapshot.js';
 import { getActiveBundleManifest, resolveActiveDataPaths, verifyDataBundleManifest } from './data-bundle.js';
+import { applyAiProductVectors } from './ai-artifacts.js';
 import { importSnapshotNotes, mergeOperationalData } from './operational-store.js';
+import { applyClientLocationQuality } from '../shared/client-location.js';
 
 const legacySnapshotPath = resolve(process.cwd(), 'data/snapshot.json');
 const backupDirectory = resolve(process.cwd(), 'data/backups');
@@ -65,8 +67,26 @@ export async function loadSnapshot(): Promise<DashboardData> {
     cachedPath = path;
     cachedMtime = info.mtimeMs;
   }
-  const merged = mergeOperationalData(cachedSnapshot);
-  return { ...merged, meta: { ...merged.meta, version: APP_VERSION } };
+  // La capa de IA sólo puede afectar productos con un artefacto validado. Las
+  // correcciones humanas se aplican después y, por lo tanto, siempre prevalecen.
+  const merged = mergeOperationalData(applyAiProductVectors(cachedSnapshot));
+  const locations = applyClientLocationQuality(merged.clients);
+  return {
+    ...merged,
+    clients: locations.clients,
+    meta: {
+      ...merged.meta,
+      version: APP_VERSION,
+      coverage: merged.meta.coverage ? {
+        ...merged.meta.coverage,
+        geocodedClients: locations.clients.filter((client) => client.coordinates).length,
+        activeGeocodedClients: locations.clients.filter((client) => client.active && client.coordinates).length,
+        inactiveGeocodedClients: locations.clients.filter((client) => !client.active && client.coordinates).length,
+        correctedLocationClients: locations.clients.filter((client) => client.active && client.locationStatus === 'corrected').length,
+        locationReviewClients: locations.clients.filter((client) => client.active && client.locationStatus === 'review').length,
+      } : undefined,
+    },
+  };
 }
 
 export async function saveSnapshot(snapshot: DashboardData) {

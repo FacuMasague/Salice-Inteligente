@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, CalendarRange, CheckCircle2, ChevronRight, Database, Gauge, Info, PackageCheck, Target, TrendingUp, Users } from 'lucide-react';
 import type { Client, DashboardData, GeneralPerformanceRow, GeneralReportMeta, GeneralReportMode, GeneralReportPayload } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
@@ -176,6 +177,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand, onOpenGoa
     </section>
 
     <ReportContext universe={`${modes.find((item) => item.id === mode)?.label} · empresa 3 / sucursal 3`} period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes fuente no disponibles en GESI.`] : []} related={[{ view: 'spt', label: 'Abrir SPT' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} actions={<button className="button secondary compact" onClick={onOpenGoals}><Target size={14} /> Administrar objetivos</button>} exports={<ReportExportActions links={[{ href: `/api/admin/goals/export?format=xlsx&month=${encodeURIComponent(month)}`, label: 'Plan mensual Excel', kind: 'xlsx' }, { href: `/api/admin/goals/export?format=pdf&month=${encodeURIComponent(month)}`, label: 'Plan y avance PDF', kind: 'pdf' }]} />} />
+    <AiNarrativeCard artifact={report.aiNarrative} />
 
     <div className="general-kpis">
       <article><span className="general-kpi-icon green"><BarChart3 size={20} /></span><div><small>Resultado real</small><strong>{metric(report.actual, report.unit, true)}</strong><em>Hasta el {new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(new Date(`${report.periodEnd}T12:00:00`))}</em></div></article>

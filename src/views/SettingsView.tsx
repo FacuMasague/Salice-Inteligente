@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Database, HardDrive, Map, PlayCircle, Route, Search, ShieldCheck, Users, WalletCards } from 'lucide-react';
-import { APP_VERSION, type DashboardData } from '../../shared/models';
+import { AlertTriangle, BarChart3, BookOpen, BrainCircuit, CheckCircle2, ClipboardCheck, Database, HardDrive, Map, MessageSquareText, PlayCircle, RefreshCcw, Route, Search, ShieldCheck, Users, WalletCards } from 'lucide-react';
+import type { DashboardData } from '../../shared/models';
+import type { AiSystemStatus } from '../../shared/ai';
 import type { DataHealthPayload } from '../../shared/data-health';
 import type { MetricDefinition, ReportUniverseDefinition } from '../../shared/metrics';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -29,6 +30,7 @@ interface SystemStatus {
   backups: number;
   operationalBackups: number;
   lastSync: { completedAt: string; snapshotAt: string; status: string } | null;
+  ai: AiSystemStatus;
 }
 
 interface MetricCatalogPayload {
@@ -41,6 +43,15 @@ interface MetricCatalogPayload {
 const freshnessLabels = { current: 'Actual', attention: 'Revisar', stale: 'Desactualizado', unknown: 'Sin fecha' };
 const sourceLabels = { healthy: 'Consistente', attention: 'Con salvedades', stale: 'Desactualizada', unavailable: 'No disponible' };
 const refreshStatusLabels = { running: 'En curso', success: 'Aprobada', failed: 'Fallida' };
+const aiRunStatusLabels = { running: 'En curso', completed: 'Completo', partial: 'Parcial', failed: 'Fallido', skipped: 'Sin funciones habilitadas' };
+const aiFunctionLabels = {
+  product_vectorization: 'Vectores de producto',
+  report_narrative: 'Narrativas de reportes',
+  executive_summary: 'Resumen ejecutivo',
+  commercial_inbox_explanation: 'Bandeja comercial',
+  seller_summary: 'Carteras de vendedores',
+  report_coherence: 'Coherencia global',
+};
 
 function refreshDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value));
@@ -67,7 +78,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
         <div className="settings-tutorial-copy">
           <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Recorrido guiado actualizado</span><h2>Aprendé a usar Salice Inteligente v{APP_VERSION}</h2><p>Incluye gestión comercial, rutas y fojas, Centro de reportes, filtros guardados, exportaciones y los reportes renovados de Mars, NutriPet y Baires.</p></div>
+          <div><span className="section-kicker">Tutorial vigente hasta v0.8.7</span><h2>Aprendé a usar las funciones operativas</h2><p>Incluye gestión comercial, rutas y fojas, Centro de reportes, filtros guardados, exportaciones y los reportes renovados de Mars, NutriPet y Baires. La infraestructura de IA se documentará en el tutorial únicamente al cerrar v0.9 y con autorización.</p></div>
         </div>
         <div className="settings-tutorial-action">
           {tutorialCompleted && <span><CheckCircle2 size={15} /> Completado en este equipo</span>}
@@ -87,6 +98,63 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
       </section>
 
       <div className="settings-grid">
+        <section className="data-card settings-card settings-wide-card">
+          <div className="data-card-header">
+            <div>
+              <span className="section-kicker"><BrainCircuit size={14} /> IA auditable · v0.9.5</span>
+              <h2>Calidad, utilidad y costo medidos</h2>
+              <p>Las pantallas leen resultados guardados. Una narrativa problemática se oculta sin afectar los reportes determinísticos.</p>
+            </div>
+            <span className={`data-health-badge ${system?.ai.configured ? 'fresh' : 'warning'}`}>
+              {system ? (system.ai.configured ? 'Clave configurada' : 'Sin clave') : 'Consultando…'}
+            </span>
+          </div>
+          <div className="coverage-list">
+            <p><span>Snapshot activo</span><strong>{system?.ai.activeSnapshotAt ? longDate(system.ai.activeSnapshotAt) : 'Cargando…'}</strong></p>
+            <p><span>Ejecución actual</span><strong>{system?.ai.current ? `${aiRunStatusLabels[system.ai.current.status]} · ${longDate(system.ai.current.startedAt)}` : 'Sin procesos en curso'}</strong></p>
+            <p><span>Última ejecución</span><strong>{system?.ai.lastRun ? `${aiRunStatusLabels[system.ai.lastRun.status]} · ${longDate(system.ai.lastRun.startedAt)}` : 'Sin ejecuciones'}</strong></p>
+            <p><span>Correspondiente al snapshot activo</span><strong>{system?.ai.activeSnapshotRun ? aiRunStatusLabels[system.ai.activeSnapshotRun.status] : 'No disponible'}</strong></p>
+            <p><span>Entidades procesadas / reutilizadas</span><strong>{system?.ai.lastRun ? `${number(system.ai.lastRun.completed)} / ${number(system.ai.lastRun.reused)}` : '0 / 0'}</strong></p>
+            <p><span>Consumo del mes</span><strong>{system ? `${number(system.ai.usage.currentMonth.inputTokens)} entrada · ${number(system.ai.usage.currentMonth.outputTokens)} salida` : 'Cargando…'}</strong></p>
+            <p><span>Gasto del mes / histórico</span><strong>{system ? `USD ${system.ai.usage.currentMonth.estimatedCostUsd.toFixed(4)} / USD ${system.ai.usage.allTime.estimatedCostUsd.toFixed(4)}` : 'Cargando…'}</strong></p>
+            <p><span>Límites por actualización</span><strong>{system ? `${number(system.ai.limits.maxEntitiesPerRun)} entidades · ${number(system.ai.limits.maxEstimatedInputTokensPerRun)} tokens · USD ${system.ai.limits.maxEstimatedCostUsdPerRun.toFixed(2)}` : 'Cargando…'}</strong></p>
+            <p><span>Modelo y tarifa registrada</span><strong>gpt-5.6-terra · {system?.ai.pricing.version ?? 'cargando'}</strong></p>
+          </div>
+          {system && <div className={`ai-budget-banner ${system.ai.budget.alert}`}>
+            <div><strong>Presupuesto mensual</strong><span>USD {system.ai.budget.spentUsd.toFixed(4)} consumidos de USD {system.ai.budget.monthlyLimitUsd.toFixed(2)}</span></div>
+            <div className="ai-budget-track"><span style={{ width: `${Math.min(100, system.ai.budget.usedPercent)}%` }} /></div>
+            <small>{system.ai.budget.alert === 'exceeded'
+              ? 'Presupuesto mensual superado.'
+              : system.ai.budget.alert === 'warning'
+                ? `Alerta: se utilizó ${system.ai.budget.usedPercent.toFixed(1)}% del presupuesto.`
+                : `Quedan USD ${system.ai.budget.remainingUsd.toFixed(4)} · alerta al ${system.ai.budget.warningPercent}%.`}</small>
+          </div>}
+          {system && <div className="ai-governance-summary">
+            <article><span><ShieldCheck size={15} /> Control de calidad</span><strong>{number(system.ai.quality.passed)} aprobadas</strong><small>{number(system.ai.quality.blocked)} bloqueadas · {number(system.ai.quality.warnings)} con aviso</small></article>
+            <article><span><MessageSquareText size={15} /> Feedback humano</span><strong>{number(system.ai.feedback.total)} evaluaciones</strong><small>{number(system.ai.feedback.useful)} útiles · {number(system.ai.feedback.corrections)} correcciones</small></article>
+            <article><span><RefreshCcw size={15} /> Reintentos</span><strong>{number(system.ai.usage.currentMonth.retries)}</strong><small>{number(system.ai.usage.currentMonth.attempts)} solicitudes durante el mes</small></article>
+          </div>}
+          {system && <div className="ai-function-usage">
+            <header><strong>Consumo y resultados por función · mes actual</strong><span>Costo medido sobre intentos reales</span></header>
+            {system.ai.usage.functions.length
+              ? system.ai.usage.functions.map((item) => <article key={item.functionKey}>
+                <div><strong>{aiFunctionLabels[item.functionKey]}</strong><small>{number(item.inputTokens)} entrada · {number(item.outputTokens)} salida</small></div>
+                <div><span>{item.completed} nuevos</span><span>{item.reused} reutilizados</span><span>{item.skipped} omitidos</span><span>{item.failed} fallidos</span></div>
+                <strong>USD {item.estimatedCostUsd.toFixed(4)}</strong>
+              </article>)
+              : <p>Este mes todavía no registró solicitudes pagas ni resultados de IA.</p>}
+          </div>}
+          {system && <details className="ai-run-history">
+            <summary>Ver consumo por actualización <span>{system.ai.usage.recentRuns.length} ejecuciones</span></summary>
+            <div>{system.ai.usage.recentRuns.slice(0, 8).map((run) => <article key={run.id}>
+              <div><strong>{longDate(run.startedAt)}</strong><small>{aiRunStatusLabels[run.status]} · {run.trigger === 'refresh' ? 'actualización' : 'ejecución manual'}</small></div>
+              <div><span>{run.completed} nuevos</span><span>{run.reused} reutilizados</span><span>{run.skipped} omitidos</span><span>{run.failed} fallidos</span></div>
+              <strong>USD {run.estimatedCostUsd.toFixed(4)}</strong>
+            </article>)}</div>
+          </details>}
+          {system?.ai.lastRun?.error && <div className="settings-rule"><AlertTriangle size={16} /><span>{system.ai.lastRun.error}</span></div>}
+        </section>
+
         <section className="data-card settings-card">
           <div className="data-card-header"><div><span className="section-kicker"><BookOpen size={14} /> Contenido</span><h2>Qué vas a aprender</h2></div></div>
           <div className="settings-lessons">{lessons.map(({ icon: Icon, title, text }, index) => <article key={title}><span>{index + 1}</span><Icon size={18} /><div><strong>{title}</strong><p>{text}</p></div></article>)}</div>
@@ -123,8 +191,8 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
         </section>
 
         <section className="data-card settings-card settings-wide-card">
-          <div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Reglas explicables</span><h2>Tres puntajes y clasificación de producto</h2></div><span className="algorithm-pill">Sin IA operativa</span></div>
-          <div className="score-definition-grid"><article><strong>C · Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas de GESI.</p></article><article><strong>O · Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix.</p></article><article><strong>P · Prioridad de visita</strong><p>58% riesgo de cobranza + 42% oportunidad. No se presenta como una predicción.</p></article><article><strong>Bandeja y notas</strong><p>Las señales orientan una revisión. Las notas documentan hechos externos y nunca completan ni modifican una sugerencia.</p></article><article><strong>Promesas exigibles</strong><p>Suma de compromisos locales pendientes con fecha igual o anterior al día elegido; no equivale a cobranza cobrada.</p></article><article><strong>Saldo accionable</strong><p>Un residual menor a $1.000 permanece visible, pero no genera por sí solo una tarea o alerta de cobranza.</p></article><article><strong>Vector v2.2</strong><p>33 dimensiones determinísticas agrupadas por especie, edad y porte, posicionamiento, tipo, necesidad y sabor. Las correcciones humanas requieren motivo e historial; ninguna IA modifica el vector automáticamente.</p></article></div>
+          <div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Reglas explicables</span><h2>Tres puntajes y clasificación de producto</h2></div><span className="algorithm-pill">Base determinística · IA auditada</span></div>
+          <div className="score-definition-grid"><article><strong>C · Riesgo de cobranza</strong><p>Vencimientos, antigüedad, monto, demora histórica y marcas administrativas de GESI. Se calcula sin IA.</p></article><article><strong>O · Oportunidad comercial</strong><p>Recencia de compra, caída de ventas, inactividad reciente y amplitud del mix. Se calcula sin IA.</p></article><article><strong>P · Prioridad de visita</strong><p>58% riesgo de cobranza + 42% oportunidad. No se presenta como una predicción y se calcula sin IA.</p></article><article><strong>Bandeja y notas</strong><p>Las señales orientan una revisión. Las notas documentan hechos externos y nunca completan ni modifican una sugerencia.</p></article><article><strong>Promesas exigibles</strong><p>Suma de compromisos locales pendientes con fecha igual o anterior al día elegido; no equivale a cobranza cobrada.</p></article><article><strong>Saldo accionable</strong><p>Un residual menor a $1.000 permanece visible, pero no genera por sí solo una tarea o alerta de cobranza.</p></article><article><strong>Vector v2.2</strong><p>33 dimensiones explicables. Los productos de la línea base conservan su cálculo determinístico; sólo una alta posterior puede recibir un vector IA validado. Las correcciones humanas requieren motivo e historial y siempre prevalecen.</p></article></div>
         </section>
 
         <section className="data-card settings-card settings-wide-card metric-catalog-card">

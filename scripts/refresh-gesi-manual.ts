@@ -17,6 +17,8 @@ import {
   pruneDataBundles,
   resolveActiveDataPaths,
 } from '../server/data-bundle.js';
+import { runAiEnrichment } from '../server/ai-enrichment.js';
+import { prepareAiSchema } from '../server/ai-store.js';
 import type { DashboardData } from '../shared/models.js';
 import { MANUAL_REFRESH_STAGES } from '../shared/refresh-plan.js';
 
@@ -24,6 +26,8 @@ const workspace = process.cwd();
 const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
 const rawCapturePath = resolve(workspace, 'data/raw/gesi-salice-latest.json');
 const resumeRequested = process.argv.includes('--resume');
+
+await prepareAiSchema();
 
 let stages = MANUAL_REFRESH_STAGES;
 if (resumeRequested) {
@@ -59,6 +63,7 @@ const candidateEnvironment: NodeJS.ProcessEnv = {
   SALICE_STAGING_PATH: bundlePaths.staging,
   SALICE_PENDING_BALANCES_OUTPUT_PATH: bundlePaths.pendingBalances,
   SALICE_PENDING_BALANCES_DB_PATH: bundlePaths.pendingBalances,
+  SALICE_EXECUTIVE_SUMMARY_OUTPUT_PATH: bundlePaths.executiveSummary,
   SALICE_PLATFORM_AUDIT_OUTPUT_PATH: resolve(bundlePaths.directory, 'quality/platform-audit.json'),
   SALICE_VECTOR_AUDIT_OUTPUT_PATH: resolve(bundlePaths.directory, 'quality/product-vectors.json'),
   SALICE_PREVIOUS_SNAPSHOT_PATH: previousSnapshotPath,
@@ -112,9 +117,24 @@ try {
   bundleActivated = true;
   recordSuccessfulSync(snapshot);
   const warnings = Number(platformAudit.summary?.warnings ?? snapshot.meta.coverage?.omittedInvoiceDetails ?? 0);
-  completeRefreshRun(run.id, snapshot, warnings, platformAudit.status ?? 'passed');
   await pruneDataBundles(run.id, 3, workspace).catch((error) => console.warn(`No se pudieron depurar paquetes antiguos: ${String(error)}`));
-  console.log('\nActualización manual completada. El manifiesto activo cambió en una única operación atómica.');
+  console.log('\nEl manifiesto activo cambió en una única operación atómica.');
+  currentStage = 'ai-enrichment';
+  updateRefreshRunStage(run.id, currentStage);
+  try {
+    const aiRun = await runAiEnrichment({
+      snapshot,
+      snapshotAt: snapshot.meta.generatedAt,
+      bundleId: run.id,
+      trigger: 'refresh',
+      workspace,
+    });
+    console.log(`Enriquecimiento IA: ${aiRun.status} · ${aiRun.completed} nuevos · ${aiRun.reused} reutilizados · USD ${aiRun.estimatedCostUsd.toFixed(4)}.`);
+  } catch (error) {
+    console.warn(`El snapshot quedó aprobado, pero el enriquecimiento IA no pudo completarse: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  completeRefreshRun(run.id, snapshot, warnings, platformAudit.status ?? 'passed');
+  console.log('Actualización manual completada con el resumen ejecutivo listo para cargar.');
 } catch (error) {
   console.error(bundleActivated
     ? `\nLa actualización falló en ${currentStage} después de activar el paquete. Los datos permanecen activos, pero falló el registro operativo posterior.`
