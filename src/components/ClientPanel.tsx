@@ -181,6 +181,8 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
         {tab === 'summary' && (
           <>
             {!client.active && <div className="inactive-client-notice"><AlertTriangle size={19} /><div><strong>Fuera de la cartera activa</strong><span>GESI lo marca como inactivo. Se conserva para consulta histórica; última actualización del maestro: {longDate(client.statusUpdatedAt)}.</span></div></div>}
+            {client.locationStatus === 'corrected' && <div className="location-correction-notice"><MapPin size={18} /><div><strong>Ubicación corregida automáticamente</strong><span>{client.locationCorrectionReason} La dirección original no fue modificada.</span></div></div>}
+            {client.locationStatus === 'review' && <div className="portfolio-review-notice"><AlertTriangle size={18} /><div><strong>Ubicación pendiente de revisión</strong><span>{client.locationCorrectionReason} El cliente continúa disponible fuera del mapa.</span></div></div>}
             {client.active && client.portfolioStatus === 'review' && <div className="portfolio-review-notice"><AlertTriangle size={18} /><div><strong>Pertenencia a Salice por confirmar</strong><span>Está activo en GESI pero no tiene definición explícita para empresa 3 / sucursal 3. No se excluye automáticamente.</span></div></div>}
             {client.salesBlocked && <div className="sales-block-notice"><AlertTriangle size={18} /><div><strong>GESI informa “bloqueo de ventas”</strong><span>Validar con administración qué uso operativo tiene este campo antes de tomar una decisión.</span></div></div>}
             <section className="metric-grid three">

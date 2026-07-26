@@ -36,7 +36,7 @@ function positive(product: Product, key: VectorKey, threshold = 65) {
   return product.vector[key] >= threshold;
 }
 
-function contradiction(product: Product) {
+export function productVectorContradictions(product: Product) {
   const reasons: string[] = [];
   if (positive(product, 'perros') && positive(product, 'gatos') && !product.vectorMeta.declaredCombinations?.species) reasons.push('Especie perro y gato simultánea');
   if (positive(product, 'cachorros') && positive(product, 'senior') && !product.vectorMeta.declaredCombinations?.lifeStage) reasons.push('Etapa cachorro y senior simultánea');
@@ -88,7 +88,7 @@ export function analyzeProductVectors(current: DashboardData, previous: Dashboar
     if (product.pricePosition !== 'unknown') row[product.pricePosition] += 1;
     cohortMap.set(key, row);
   }
-  const contradictions = current.products.flatMap((product) => contradiction(product).map((reason) => ({ productId: product.id, name: product.name, reason })));
+  const contradictions = current.products.flatMap((product) => productVectorContradictions(product).map((reason) => ({ productId: product.id, name: product.name, reason })));
   const declaredCombinations = current.products.filter((product) => product.vectorMeta.declaredCombinations && Object.keys(product.vectorMeta.declaredCombinations).length)
     .map((product) => ({ productId: product.id, name: product.name, combinations: product.vectorMeta.declaredCombinations! }));
   const emptyVectors = current.products.filter((product) => VECTOR_KEYS.every((key) => product.vector[key] === 0)).length;

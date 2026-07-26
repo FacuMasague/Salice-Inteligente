@@ -1,0 +1,177 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { AiFunctionDefinition, AiProvider } from '../shared/ai';
+import { FakeAiProvider, AiProviderError } from './ai-provider';
+import { runAiEnrichment } from './ai-enrichment';
+import { aiLimits } from './ai-config';
+import { AiStore } from './ai-store';
+
+const directories: string[] = [];
+afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
+
+const schema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { summary: { type: 'string' } },
+  required: ['summary'],
+};
+
+function definition(evidence: unknown = { netSales: 1250 }): AiFunctionDefinition {
+  return {
+    key: 'report_narrative',
+    model: 'gpt-5.6-terra',
+    effort: 'medium',
+    prompt: 'Describí sólo la evidencia recibida.',
+    promptVersion: 1,
+    schemaVersion: 1,
+    schemaName: 'salice_test_summary',
+    schema,
+    maxOutputTokens: 120,
+    buildJobs: () => [{ entityType: 'report', entityId: 'general', evidence, evidenceRefs: ['metric:net-sales'] }],
+  };
+}
+
+async function testStore() {
+  const directory = await mkdtemp(resolve(tmpdir(), 'salice-ai-'));
+  directories.push(directory);
+  return new AiStore(resolve(directory, 'operations.sqlite'));
+}
+
+describe('orquestador de enriquecimiento IA', () => {
+  it('no consume proveedor cuando v0.9.0 todavía no tiene funciones habilitadas', async () => {
+    const store = await testStore();
+    const provider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-1',
+      trigger: 'manual',
+      definitions: [],
+      provider,
+      store,
+    });
+    expect(run.status).toBe('skipped');
+    expect(provider.calls).toHaveLength(0);
+    store.close();
+  });
+
+  it('reutiliza por hash la misma entrada semántica en otro snapshot', async () => {
+    const store = await testStore();
+    const provider = new FakeAiProvider({ summary: 'Ventas estables.' });
+    const first = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-1',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    const second = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-25T16:19:50.818Z',
+      bundleId: 'bundle-2',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    expect(first.completed).toBe(1);
+    expect(second.reused).toBe(1);
+    expect(provider.calls).toHaveLength(1);
+    const repeated = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-25T16:19:50.818Z',
+      bundleId: 'bundle-2',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    expect(repeated.reused).toBe(1);
+    expect(provider.calls).toHaveLength(1);
+    store.close();
+  });
+
+  it('reintenta una sola vez una salida estructural inválida y registra ambos intentos', async () => {
+    const store = await testStore();
+    let invocation = 0;
+    const provider = new FakeAiProvider(() => (++invocation === 1 ? { wrong: true } : { summary: 'Salida válida.' }));
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-1',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    expect(run.status).toBe('completed');
+    expect(run.completed).toBe(1);
+    expect(provider.calls).toHaveLength(2);
+    store.close();
+  });
+
+  it('aísla una falla del proveedor y conserva un resultado auditable sin lanzar la excepción', async () => {
+    const store = await testStore();
+    const provider: AiProvider = {
+      name: 'failing',
+      analyze: async () => { throw new AiProviderError('Proveedor temporalmente fuera de servicio.', true, 503); },
+    };
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-1',
+      trigger: 'refresh',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    expect(run.status).toBe('failed');
+    expect(run.failed).toBe(1);
+    expect(run.error).toMatch(/fuera de servicio/);
+    store.close();
+  });
+
+  it('rechaza evidencia sensible antes de invocar al proveedor', async () => {
+    const store = await testStore();
+    const provider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-1',
+      trigger: 'manual',
+      definitions: [definition({ metrics: { netSales: 1 }, telefono: '223...' })],
+      provider,
+      store,
+    });
+    expect(run.failed).toBe(1);
+    expect(provider.calls).toHaveLength(0);
+    store.close();
+  });
+
+  it('aplica un techo monetario antes de iniciar una solicitud que podría excederlo', async () => {
+    const store = await testStore();
+    const provider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-cost-cap',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+      limits: {
+        ...aiLimits({}),
+        maxEstimatedCostUsdPerRun: 0.0001,
+      },
+    });
+    expect(run.status).toBe('skipped');
+    expect(run.skipped).toBe(1);
+    expect(provider.calls).toHaveLength(0);
+    expect(run.error).toMatch(/Límite de costo/);
+    store.close();
+  });
+});

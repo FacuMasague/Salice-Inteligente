@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ChevronRight,
@@ -12,6 +12,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import type { Client } from '../../shared/models';
+import type { AiSellerSummary, AiStoredArtifact } from '../../shared/ai';
 import {
   buildSellerPortfolioProfiles,
   matchesPortfolioLens,
@@ -20,6 +21,7 @@ import {
   type SellerPortfolioProfile,
 } from '../../shared/portfolio-analysis';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { AiSellerSummaryCard } from '../components/AiInsights';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number, paymentDelay, shortDate } from '../lib/format';
@@ -78,6 +80,18 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
   const [clientQuery, setClientQuery] = useState('');
   const [lens, setLens] = useState<PortfolioLens>('all');
   const [portfolioSort, setPortfolioSort] = useState(emptySort<PortfolioSortKey>());
+  const [aiSummaries, setAiSummaries] = useState<AiStoredArtifact<AiSellerSummary>[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/ai/seller-summaries', { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('IA no disponible')))
+      .then((payload) => setAiSummaries(payload.snapshotAt === snapshotDate ? payload.summaries ?? [] : []))
+      .catch(() => {
+        if (!controller.signal.aborted) setAiSummaries([]);
+      });
+    return () => controller.abort();
+  }, [snapshotDate]);
 
   const profiles = useMemo(() => buildSellerPortfolioProfiles(clients), [clients]);
   const normalized = query.trim().toLocaleLowerCase('es');
@@ -92,6 +106,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
     return profile.prioritySignalClients;
   });
   const selected = profiles.find((profile) => profile.name === selectedSeller) ?? profiles[0] ?? null;
+  const selectedAiSummary = selected ? aiSummaries.find((item) => item.entityId === selected.name) ?? null : null;
   const totalClients = profiles.reduce((sum, profile) => sum + profile.activeClients, 0);
   const totalSales = profiles.reduce((sum, profile) => sum + profile.sales90d, 0);
   const highRisk = profiles.reduce((sum, profile) => sum + profile.criticalClients, 0);
@@ -168,6 +183,8 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
           <article><small>Prioridad promedio</small><strong>P{Math.round(selected.averagePriority)}</strong><span>{selected.prioritySignalClients} con prioridad alta</span></article>
         </div>
       </section>
+
+      <AiSellerSummaryCard artifact={selectedAiSummary} />
 
       <div className="seller-chart-grid">
         <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Ventas</span><h2>Evolución mensual</h2><p>Seis meses del snapshot, suma de la cartera activa.</p></div></div><SalesChart profile={selected} snapshotDate={snapshotDate} /></section>

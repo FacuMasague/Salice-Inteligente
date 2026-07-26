@@ -1,4 +1,4 @@
-# Salice Inteligente · v0.8.7
+# Salice Inteligente · v0.9.6
 
 Aplicación web operativa y personalizada para Salice Distribuciones S.A. Permite explorar ventas hasta el comprobante, administrar la cartera abierta, versionar objetivos comerciales, reunir señales comerciales y notas de oficina, documentar promesas de pago, generar recomendaciones explicables, revisar facturas para reparto y estimar rutas, y consultar reportes de gestión.
 
@@ -35,9 +35,43 @@ Cobertura del snapshot actual:
 
 GESI devuelve error para los maestros de zonas y tipos de cliente y omitió el detalle de dos facturas. El sistema señala estas limitaciones y no inventa los datos faltantes.
 
+Desde v0.9.6 las coordenadas de GESI se contrastan con la localidad declarada. Una incompatibilidad evidente se sustituye por una referencia aproximada y trazable de la localidad; si tampoco existe una localidad confiable, el cliente se conserva pero no se dibuja hasta revisarlo. Los módulos `Mapa operativo` y `Clientes` permiten aislar las ubicaciones corregidas.
+
 La v0.2.3 mantiene el estado 1 como señal de actividad, pero separa una segunda dimensión: 1.354 activos tienen definición explícita para empresa 3 / sucursal 3 y 567 quedan para revisar pertenencia, sin excluirlos automáticamente hasta validar la regla con Salice.
 
 ## Qué incluye esta versión
+
+### IA auditable y funciones almacenadas · v0.9.0–v0.9.5
+
+- El backend incorpora el SDK oficial de OpenAI mediante un adaptador desacoplado y un proveedor falso para pruebas.
+- Las llamadas usan Responses API, `store: false`, `gpt-5.6-terra`, esfuerzo explícito y Structured Outputs con esquemas estrictos.
+- Ejecuciones, prompts, artefactos, intentos, tokens, duración, errores, costo estimado, feedback y la línea base vectorial se guardan en tablas append-only o versionadas de `operations.sqlite`.
+- Cada entrada se canoniza y recibe hashes SHA-256. Una entrada semántica ya resuelta puede vincularse al snapshot vigente sin repetir la llamada.
+- Los paquetes de evidencia tienen límites de tamaño y rechazan campos personales o secretos. Nunca se envían snapshots, bases SQLite ni archivos brutos.
+- Existen límites configurables por función, ejecución, entidad, tokens, salida y costo. El techo predeterminado es USD 1 por actualización y los reintentos están limitados a un único intento adicional.
+- `refresh:gesi` ejecuta el enriquecimiento después de completar y registrar la activación determinística. Si OpenAI falla, el snapshot continúa aprobado.
+- `Configuración` muestra consumo mensual e histórico, presupuesto, resultados por función y actualización, reintentos, calidad, feedback y errores; consultar esa pantalla nunca llama a OpenAI.
+- `pnpm run enrich:ai` y `pnpm run enrich:ai:resume` permiten ejecución y reanudación administrativas explícitas.
+- v0.9.1 procesa únicamente productos posteriores a la línea base y activa su vector sólo si supera las auditorías existentes; las correcciones humanas conservan prioridad.
+- v0.9.2 almacena narrativas verificables para los ocho reportes y sólo las muestra cuando coinciden snapshot y hash de evidencia.
+- v0.9.3 agrega una lectura ejecutiva almacenada a “¿Cómo estamos?” sin sumar universos, crear puntajes ni generar tareas.
+- v0.9.4 explica los clientes ya seleccionados por la bandeja y resume carteras activas. Usa Terra Low después de compararlo contra Medium.
+- v0.9.5 audita evidencia, cifras, universos, comparaciones y contradicciones; bloquea sólo las narrativas problemáticas; registra feedback y correcciones humanas versionadas; y mide costo mensual, por función y por actualización. También presenta las lecturas como resúmenes plegables y precalcula “¿Cómo estamos?”.
+- No existe ajuste automático de prompts, aprendizaje autónomo ni fine-tuning automático.
+- La primera ejecución real produjo 17 artefactos válidos por USD 0,4144; repetirla sobre el mismo snapshot reutilizó los 17 con costo cero.
+- El tutorial permanece sin cambios.
+
+Las fichas completas están en `docs/release-v0.9.0.md` a `docs/release-v0.9.6.md`.
+
+### Calidad geográfica de clientes · v0.9.6
+
+- Valida las coordenadas entregadas por GESI contra la localidad y la zona comercial real de Salice.
+- Conserva la coordenada original para auditoría y marca toda sustitución como aproximada, sin presentarla como domicilio exacto.
+- Los casos no corregibles dejan de dibujarse en lugares falsos, pero permanecen disponibles en clientes, ventas y reportes.
+- `Mapa operativo` y `Clientes` incorporan el filtro `Ubicación`, con acceso específico a `Corregida automáticamente`.
+- El alcance regional incluye Mar del Plata, costa atlántica y pueblos observados de la provincia.
+
+La ficha completa está en `docs/release-v0.9.6.md`.
 
 ### Tutorial y lectura visual de reportes de negocio · v0.8.7
 
@@ -375,7 +409,7 @@ La definición técnica, los estados y las reglas de auditoría están en `docs/
 
 ### Integridad y trazabilidad · v0.3.3
 
-- Cada actualización manual construye un paquete inmutable con snapshot, staging, base comercial y saldos pendientes. Los cuatro artefactos se auditan antes de publicar un único manifiesto activo mediante reemplazo atómico; una falla deja intacta la generación anterior.
+- Cada actualización manual construye un paquete inmutable con snapshot, staging, base comercial, saldos pendientes y el resumen ejecutivo “¿Cómo estamos?”. Los cinco artefactos se auditan antes de publicar un único manifiesto activo mediante reemplazo atómico; una falla deja intacta la generación anterior.
 - El manifiesto registra corte, revisión, tamaño y checksum SHA-256 de cada artefacto. El servidor resuelve todos los módulos desde la misma generación y recarga automáticamente cuando cambia el manifiesto.
 - Las agregaciones canónicas de kilos, unidades, venta neta y clientes, junto con cumplimiento, variación y participación, se ejecutan desde helpers compartidos. Los universos principales poseen un contrato ejecutable alineado con el catálogo documental.
 - `pnpm run audit:vectors` genera cobertura por dimensión, combinaciones declaradas, contradicciones, perfiles de baja confianza, cohortes de precio, cambios frente a la foto anterior, variaciones fuertes de precio por kilo y una muestra de recomendaciones con confianza insuficiente. `pnpm run compare:vectors` contrasta v2.1 contra v2.2 antes de activar el motor nuevo.
@@ -452,7 +486,7 @@ La definición y las limitaciones del motor están documentadas en `docs/product
 - Búsqueda global de clientes/productos y bandeja dinámica de promesas exigibles y riesgos de cobranza altos.
 - Snapshot GESI de sólo lectura, respaldos automáticos y almacenamiento SQLite separado para notas, recordatorios históricos, promesas y ejecuciones de sincronización.
 
-La IA no interviene en la operación diaria de esta versión. La clasificación se construye mediante reglas reproducibles y cada afinidad positiva conserva evidencia. Las correcciones de oficina son acciones humanas explícitas con motivo, autor e historial; ninguna IA modifica automáticamente vectores ni algoritmos operativos.
+La infraestructura de IA de v0.9 se ejecuta únicamente después de actualizar datos o mediante un comando administrativo. No interviene al navegar ni modifica la operación. La clasificación continúa construyéndose mediante reglas reproducibles y cada afinidad positiva conserva evidencia. Las correcciones de oficina son acciones humanas explícitas con motivo, autor e historial; ninguna IA modifica automáticamente vectores ni algoritmos operativos.
 
 ## Capturar y activar una nueva foto manual
 
@@ -494,7 +528,7 @@ data/operations-backups/                copias consistentes de información huma
 data/reference/spt-pbix.sqlite          referencia opcional de conciliación
 ```
 
-Los archivos de datos están ignorados por Git. La activación ocurre solamente después de validar referencias, totales, fechas, vectores y consistencia financiera. Si cualquier etapa falla, el manifiesto conserva la generación anterior sin reemplazar ningún archivo activo; el error queda registrado en `operations.sqlite` y visible en Configuración.
+Los archivos de datos están ignorados por Git. La activación ocurre solamente después de validar referencias, totales, fechas, vectores y consistencia financiera. Si cualquier etapa determinística falla, el manifiesto conserva la generación anterior sin reemplazar ningún archivo activo. Después de una activación válida, v0.9 ejecuta el enriquecimiento IA en una etapa independiente: un error del proveedor no invalida el snapshot y queda registrado en `operations.sqlite`, visible en Configuración.
 
 La base SPT se actualiza desde GESI. El historial de 2025 se obtiene con un backfill mensual y reanudable: cada mes se guarda antes de avanzar, por lo que una pausa o límite de la API no obliga a comenzar de nuevo.
 

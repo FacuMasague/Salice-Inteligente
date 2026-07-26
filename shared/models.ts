@@ -1,3 +1,10 @@
+import type {
+  AiCommercialExplanation,
+  AiExecutiveBrief,
+  AiReportNarrative,
+  AiStoredArtifact,
+} from './ai.js';
+
 export type Health = 'healthy' | 'attention' | 'critical';
 export type InvoiceStatus = 'paid' | 'open' | 'due_soon' | 'overdue';
 export type PortfolioStatus = 'confirmed' | 'review';
@@ -10,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.8.7';
+export const APP_VERSION = '0.9.6';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -188,6 +195,15 @@ export interface Client {
   address: string;
   locality: string;
   coordinates: [number, number] | null;
+  /**
+   * Trazabilidad de la ubicación mostrada. `corrected` usa una referencia
+   * aproximada de la localidad cuando las coordenadas de GESI son incompatibles;
+   * `review` no se dibuja hasta contar con una ubicación confiable.
+   */
+  locationStatus?: 'original' | 'corrected' | 'review';
+  originalCoordinates?: [number, number] | null;
+  locationCorrectionReason?: string;
+  locationPrecision?: 'exact' | 'locality';
   zone: string;
   segment: string;
   channel: string;
@@ -248,6 +264,8 @@ export interface SnapshotMeta {
     inactiveClients: number;
     activeGeocodedClients: number;
     inactiveGeocodedClients: number;
+    correctedLocationClients?: number;
+    locationReviewClients?: number;
     rawProducts: number;
     catalogProducts: number;
     invoices365d: number;
@@ -359,6 +377,7 @@ export interface DashboardData {
   clients: Client[];
   products: Product[];
   logistics: LogisticsSnapshot;
+  executiveSummary?: ExecutiveSummaryPayload | null;
 }
 
 export type SptFilterKey =
@@ -429,6 +448,7 @@ export interface SptQuarterPoint {
 }
 
 export interface SptReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   page: SptReportPage;
@@ -519,6 +539,7 @@ export interface CommercialSalesBrandTotal extends CommercialSalesMetrics {
 }
 
 export interface CommercialSalesReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   periodMode: CommercialSalesPeriodMode;
@@ -637,6 +658,7 @@ export interface MarsBrandRow extends MarsMetrics {
 }
 
 export interface MarsReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   filters: MarsFilters;
@@ -725,6 +747,7 @@ export interface NutriPetProductRow extends NutriPetMetrics {
 }
 
 export interface NutriPetReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   selectedMonth: string;
@@ -810,6 +833,7 @@ export interface BairesBreakdownRow extends BairesMetrics {
 }
 
 export interface BairesReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   selectedMonth: string;
@@ -895,6 +919,7 @@ export interface GeneralTrendPoint {
 }
 
 export interface GeneralReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   selectedMonth: string;
@@ -1121,6 +1146,7 @@ export interface PendingBalanceAgingRow {
 }
 
 export interface PendingBalanceReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   salesWindowFrom: string;
@@ -1435,6 +1461,7 @@ export interface NonBuyerSellerRow {
 }
 
 export interface NonBuyerReportPayload {
+  aiNarrative?: AiStoredArtifact<AiReportNarrative> | null;
   generatedAt: string;
   sourceMaxDate: string;
   filters: NonBuyerFilters;
@@ -1472,6 +1499,7 @@ export interface ExecutiveSummaryContext {
 }
 
 export interface ExecutiveSummaryPayload {
+  aiBrief?: AiStoredArtifact<AiExecutiveBrief> | null;
   generatedAt: string;
   snapshotAt: string;
   sales: {
@@ -1644,6 +1672,7 @@ export interface CommercialInboxSignal {
 }
 
 export interface CommercialInboxEntry {
+  aiExplanation?: AiStoredArtifact<AiCommercialExplanation> | null;
   clientId: number;
   clientName: string;
   seller: string;

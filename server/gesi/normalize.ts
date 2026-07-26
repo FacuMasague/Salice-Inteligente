@@ -13,6 +13,7 @@ import {
   type Purchase,
 } from '../../shared/models.js';
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
+import { applyClientLocationQuality } from '../../shared/client-location.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
@@ -392,7 +393,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       : null,
   })));
 
-  const clients: Client[] = capture.clients
+  const rawClients: Client[] = capture.clients
     .map((row) => {
       const id = number(row.clienteID);
       const gesiStateId = number(row.estadoID);
@@ -551,7 +552,9 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         invoices: [...openInvoices.sort((a, b) => a.dueAt.localeCompare(b.dueAt)), ...paidInvoices],
         note: text(row.notas),
       };
-    })
+    });
+  const locationQuality = applyClientLocationQuality(rawClients);
+  const clients = locationQuality.clients
     .sort((a, b) => b.visitPriority - a.visitPriority || a.tradeName.localeCompare(b.tradeName));
 
   const invoiceIDs = new Set(invoices.map(documentIdentity));
@@ -701,8 +704,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         geocodedClients,
         activeClients,
         inactiveClients,
-        activeGeocodedClients,
-        inactiveGeocodedClients,
+      activeGeocodedClients,
+      inactiveGeocodedClients,
+      correctedLocationClients: clients.filter((client) => client.active && client.locationStatus === 'corrected').length,
+      locationReviewClients: clients.filter((client) => client.active && client.locationStatus === 'review').length,
         rawProducts: capture.products.length,
         catalogProducts: products.length,
         invoices365d: invoices.length,

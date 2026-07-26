@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, SlidersHorizontal, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportExportUrl } from '../components/ReportExperience';
@@ -257,6 +258,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     </section>
 
     <ReportContext universe={`Empresas ${meta.defaultUniverse.companies.join('/')} · universo SPT conciliado`} period={`${report.selectedMonth}-01 → ${report.selectedMonth}-${String(report.cutoffDay).padStart(2, '0')}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.cutoffDay < new Date(Date.UTC(Number(report.selectedMonth.slice(0, 4)), Number(report.selectedMonth.slice(5, 7)), 0)).getUTCDate()} warnings={[...(incompleteHistoricalCoverage ? [`Cobertura histórica disponible desde ${meta.coverageFrom}.`] : []), ...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : [])]} related={[{ view: 'reports', label: 'Abrir Reporte General' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('spt', { ...filters, page: tab === 'summary' ? 'main' : tab }), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     {incompleteHistoricalCoverage

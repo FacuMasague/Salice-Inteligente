@@ -21,6 +21,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
   const [seller, setSeller] = useState('');
   const [risk, setRisk] = useState('');
   const [trend, setTrend] = useState('');
+  const [locationStatus, setLocationStatus] = useState('');
   const [sort, setSort] = useState<'priority' | 'risk' | 'opportunity' | 'sales' | 'growth' | 'decline'>('priority');
   const [tableSort, setTableSort] = useState(emptySort<ClientSortKey>());
   const [reviewedTrends, setReviewedTrends] = useState<Set<string>>(new Set());
@@ -43,6 +44,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
     .filter((client) => matchesMultiFilter(client.seller, seller))
     .filter((client) => matchesMultiFilter(client.collectionRisk >= 55 ? 'high' : client.collectionRisk >= 25 ? 'attention' : 'low', risk))
     .filter((client) => matchesMultiFilter(client.salesDelta >= 30 ? 'growth' : client.salesDelta <= -30 ? 'decline' : 'stable', trend))
+    .filter((client) => matchesMultiFilter(client.locationStatus ?? 'original', locationStatus))
     .filter((client) => trendMode === 'growth' ? client.salesDelta >= 30 : trendMode === 'decline' ? client.salesDelta <= -30 : true)
     .filter((client) => `${client.tradeName} ${client.name} ${client.reference} ${client.locality} ${client.zone} ${client.seller}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => trendMode && reviewed(a.id) !== reviewed(b.id) ? Number(reviewed(a.id)) - Number(reviewed(b.id))
@@ -72,7 +74,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
   const direction = (key: ClientSortKey) => tableSort.key === key ? tableSort.direction : null;
   const ariaSort = (key: ClientSortKey): 'ascending' | 'descending' | 'none' => direction(key) === 'asc' ? 'ascending' : direction(key) === 'desc' ? 'descending' : 'none';
   const changeTableSort = (key: ClientSortKey) => { setTableSort((current) => cycleSort(current, key)); setPage(1); };
-  const savedFilters = { query, commercialStatus, portfolio, seller, risk, trend, sort };
+  const savedFilters = { query, commercialStatus, portfolio, seller, risk, trend, locationStatus, sort };
   const applySaved = (saved: Record<string, string>) => {
     onQuery(saved.query ?? '');
     setCommercialStatus(saved.commercialStatus ?? 'active');
@@ -80,6 +82,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
     setSeller(saved.seller ?? '');
     setRisk(saved.risk ?? '');
     setTrend(saved.trend ?? '');
+    setLocationStatus(saved.locationStatus ?? '');
     setSort((saved.sort as typeof sort) || 'priority');
     setPage(1);
   };
@@ -109,6 +112,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
           <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); setPage(1); }} />
           <MultiSelectFilter label="Riesgo" value={risk} options={[{ value: 'high', label: 'Alto · 55+' }, { value: 'attention', label: 'Atención · 25–54' }, { value: 'low', label: 'Bajo · 0–24' }]} onChange={(value) => { setRisk(value); setPage(1); }} />
           <MultiSelectFilter label="Evolución" value={trend} options={[{ value: 'growth', label: 'Aumentó 30%+' }, { value: 'decline', label: 'Cayó 30%+' }, { value: 'stable', label: 'Estable · menos de 30%' }]} onChange={(value) => { setTrend(value); setPage(1); }} />
+          <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original de GESI' }, { value: 'corrected', label: 'Corregida automáticamente' }, { value: 'review', label: 'Pendiente de revisión' }]} onChange={(value) => { setLocationStatus(value); setPage(1); }} />
           <SingleSelectFilter label="Orden" value={sort} options={[{ value: 'priority', label: 'Prioridad de visita' }, { value: 'risk', label: 'Riesgo de cobranza' }, { value: 'opportunity', label: 'Oportunidad comercial' }, { value: 'sales', label: 'Ventas 90 días' }, { value: 'growth', label: 'Mayor crecimiento · 30%+' }, { value: 'decline', label: 'Mayor caída · 30%+' }]} onChange={(value) => { setSort(value as typeof sort); setTableSort(emptySort<ClientSortKey>()); setPage(1); }} />
         </div>
         <SavedViewsBar viewKey="clients" filters={savedFilters} onApply={applySaved} />
@@ -121,7 +125,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
             <tbody>
               {visible.map((client) => (
                 <tr key={client.id} className={`${client.active ? '' : 'inactive-client-row'} ${trendMode && reviewed(client.id) ? 'trend-reviewed-row' : ''}`} onClick={() => onOpen(client)}>
-                  <td><div className="table-client client-legal-identity"><div className="mini-avatar">{clientInitials(client)}</div><div><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span className="client-trade-name">{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment}</span></div></div></td>
+                  <td><div className="table-client client-legal-identity"><div className="mini-avatar">{clientInitials(client)}</div><div><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span className="client-trade-name">{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment}{client.locationStatus === 'corrected' ? ' · Ubicación corregida' : client.locationStatus === 'review' ? ' · Ubicación a revisar' : ''}</span></div></div></td>
                   <td><span className={`gesi-status-badge ${client.active ? 'active' : 'inactive'}`}>{client.active ? 'Activo' : 'Inactivo'}</span><span className={`portfolio-badge ${client.portfolioStatus}`}>{client.portfolioStatus === 'confirmed' ? 'Sucursal confirmada' : 'Revisar cartera'}</span></td>
                   <td><strong className="normal-weight">{client.zone}</strong><button className="entity-link cell-sub" onClick={(event) => { event.stopPropagation(); onOpenSeller(client.seller); }}>{client.seller}</button></td>
                   <td><strong>{money(client.sales90d, true)}</strong><span title="Compara los últimos 90 días contra los 90 días inmediatamente anteriores" className={`cell-sub inline-delta ${client.salesDelta > 0 ? 'positive' : client.salesDelta < 0 ? 'negative' : ''}`}>{client.salesDelta > 0 ? <ArrowUpRight size={12} /> : client.salesDelta < 0 ? <ArrowDownRight size={12} /> : null}{client.salesDelta === 0 ? 'sin cambio vs. 90d previos' : `${client.salesDelta > 0 ? '+' : '-'}${Math.abs(client.salesDelta)}% vs. 90d previos`}</span></td>

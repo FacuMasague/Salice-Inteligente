@@ -1,8 +1,10 @@
+import { readFile } from 'node:fs/promises';
 import type {
   DashboardData,
   ExecutiveSummaryContext,
   ExecutiveSummaryPayload,
 } from '../shared/models.js';
+import { resolveActiveDataPaths } from './data-bundle.js';
 import {
   buildCommercialSalesReport,
   buildCommercialSellerVariations,
@@ -136,4 +138,20 @@ export function buildExecutiveSummary(
       }),
     },
   };
+}
+
+export async function loadExecutiveSummary(data: DashboardData): Promise<ExecutiveSummaryPayload | null> {
+  const path = resolveActiveDataPaths().executiveSummary;
+  try {
+    const summary = JSON.parse(await readFile(path, 'utf8')) as ExecutiveSummaryPayload;
+    if (summary.snapshotAt !== data.meta.generatedAt) {
+      throw new Error(`El resumen ejecutivo corresponde a ${summary.snapshotAt} y el snapshot activo a ${data.meta.generatedAt}.`);
+    }
+    return summary;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    // Compatibilidad con paquetes creados antes de que el resumen pasara a ser
+    // un artefacto versionado. Los paquetes nuevos siempre llegan precalculados.
+    return buildExecutiveSummary(data);
+  }
 }

@@ -31,6 +31,7 @@ import { isCommercialOpportunityEligible } from '../../shared/commercial-opportu
 import { matchesMultiFilter, multiFilterLabel } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { AiCommercialExplanationCard } from '../components/AiInsights';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { compactDate, longDate, money, shortDate } from '../lib/format';
 
@@ -226,6 +227,8 @@ export function AgendaView({
                 {item.amount != null && <b>{money(item.amount, true)}</b>}
               </article>)}
             </section>
+
+            <AiCommercialExplanationCard artifact={selectedEntry.aiExplanation} />
 
             {!selectedOpportunityEligible ? <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><AlertTriangle size={14} /> Sin oportunidades comerciales</span><h3>{selectedClient.salesBlocked ? 'Cliente con bloqueo de ventas' : 'Sin compras en los últimos 90 días'}</h3></div></div><p className="section-description">{selectedClient.salesBlocked ? 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero no se muestra como oportunidad ni recibe productos sugeridos mientras GESI informe el bloqueo.' : 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero se necesita una compra reciente para evaluar su mix sin inventar afinidad.'}</p></section> : <InboxOpportunities client={selectedClient} onOpenProduct={onOpenProduct} />}
 

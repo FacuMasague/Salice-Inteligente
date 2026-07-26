@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, CalendarRange, PackageOpen, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { BairesBreakdownRow, BairesFilterKey, BairesFilters, BairesMonthlyPoint, BairesReportMeta, BairesReportPayload } from '../../shared/models';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -134,6 +135,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
       <ReportFilterActions view="baires" filters={{ ...filters }} labels={{ year: { label: 'Año' }, month: { label: 'Mes', value: monthName }, ...Object.fromEntries(Object.entries(FILTER_LABELS).map(([key, label]) => [key, { label }])) }} onClear={(key) => update(key as keyof BairesFilters, key === 'year' ? meta.latestYear : key === 'month' ? meta.latestMonth.slice(5, 7) : '')} onReset={reset}><SavedViewsBar viewKey="baires" filters={{ ...filters }} onApply={applySaved} /></ReportFilterActions>
     </BusinessReportFilters>
     <ReportContext universe="Empresa 3 / sucursal 3 · grupos Baires SPT y Baires Masivo" period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison={report.comparisonAvailable ? 'Mes anterior, mismo mes del año anterior y acumulado equivalente' : 'Comparación fuera de cobertura'} partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : []} related={[{ view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('baires', filters), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
     <BusinessReportPeriodNote partial={report.isPartial} title={`${monthLabel(report.selectedMonth, true)} · corte al ${report.periodEnd.split('-').reverse().join('/')}`} detail={report.isPartial ? `Mes en curso: ${report.elapsedDays} días. Mes anterior, año anterior y acumulado usan el mismo día de corte.` : 'Mes completo. Las comparaciones usan períodos calendario equivalentes.'} />
     <BusinessReportKpis items={[

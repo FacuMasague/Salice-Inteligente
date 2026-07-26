@@ -4,7 +4,8 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/p
 import { dirname, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export type DataArtifactKey = 'snapshot' | 'staging' | 'commercial' | 'pendingBalances';
+export type CoreDataArtifactKey = 'snapshot' | 'staging' | 'commercial' | 'pendingBalances';
+export type DataArtifactKey = CoreDataArtifactKey | 'executiveSummary';
 
 export interface DataBundleArtifact {
   path: string;
@@ -19,7 +20,7 @@ export interface DataBundleManifest {
   activatedAt: string | null;
   capturedAt: string;
   snapshotRevision: number;
-  artifacts: Record<DataArtifactKey, DataBundleArtifact>;
+  artifacts: Record<CoreDataArtifactKey, DataBundleArtifact> & Partial<Record<'executiveSummary', DataBundleArtifact>>;
 }
 
 export interface ActiveDataPaths {
@@ -27,6 +28,7 @@ export interface ActiveDataPaths {
   staging: string;
   commercial: string;
   pendingBalances: string;
+  executiveSummary: string;
   manifest: string | null;
   bundleId: string | null;
   platformAudit: string;
@@ -35,11 +37,12 @@ export interface ActiveDataPaths {
 }
 
 const POINTER_FILE = 'data/active-bundle.json';
-const LEGACY_PATHS: Record<DataArtifactKey, string> = {
+const LEGACY_PATHS: Record<CoreDataArtifactKey, string> & Record<'executiveSummary', string> = {
   snapshot: 'data/snapshot.json',
   staging: 'data/staging/snapshot-gesi.json',
   commercial: 'data/spt-gesi.sqlite',
   pendingBalances: 'data/pending-balances.sqlite',
+  executiveSummary: 'data/executive-summary.json',
 };
 
 function absolute(workspace: string, path: string) {
@@ -66,6 +69,7 @@ export function resolveActiveDataPaths(workspace = process.cwd()): ActiveDataPat
       staging: absolute(workspace, LEGACY_PATHS.staging),
       commercial: absolute(workspace, LEGACY_PATHS.commercial),
       pendingBalances: absolute(workspace, LEGACY_PATHS.pendingBalances),
+      executiveSummary: absolute(workspace, LEGACY_PATHS.executiveSummary),
       manifest: null,
       bundleId: null,
       platformAudit: absolute(workspace, 'data/quality/platform-audit.json'),
@@ -78,6 +82,9 @@ export function resolveActiveDataPaths(workspace = process.cwd()): ActiveDataPat
     staging: absolute(workspace, manifest.artifacts.staging.path),
     commercial: absolute(workspace, manifest.artifacts.commercial.path),
     pendingBalances: absolute(workspace, manifest.artifacts.pendingBalances.path),
+    executiveSummary: manifest.artifacts.executiveSummary
+      ? absolute(workspace, manifest.artifacts.executiveSummary.path)
+      : absolute(workspace, `data/bundles/${manifest.bundleId}/executive-summary.json`),
     manifest: resolve(workspace, POINTER_FILE),
     bundleId: manifest.bundleId,
     platformAudit: absolute(workspace, `data/bundles/${manifest.bundleId}/quality/platform-audit.json`),
@@ -94,6 +101,7 @@ export function createBundlePaths(bundleId: string, workspace = process.cwd()) {
     staging: resolve(directory, 'snapshot-staging.json'),
     commercial: resolve(directory, 'spt-gesi.sqlite'),
     pendingBalances: resolve(directory, 'pending-balances.sqlite'),
+    executiveSummary: resolve(directory, 'executive-summary.json'),
     manifest: resolve(directory, 'manifest.json'),
   };
 }
@@ -127,6 +135,7 @@ export async function createDataBundleManifest(bundleId: string, paths: ReturnTy
     staging: paths.staging,
     commercial: paths.commercial,
     pendingBalances: paths.pendingBalances,
+    executiveSummary: paths.executiveSummary,
   } satisfies Record<DataArtifactKey, string>;
   const artifacts = {} as Record<DataArtifactKey, DataBundleArtifact>;
   for (const [key, path] of Object.entries(entries) as [DataArtifactKey, string][]) {

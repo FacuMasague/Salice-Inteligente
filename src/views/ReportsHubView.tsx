@@ -275,7 +275,7 @@ export function ReportsHubView({
         </div>
       </section>
 
-      <ExecutiveSummary onOpen={onOpenDestination} />
+      <ExecutiveSummary summary={data.executiveSummary ?? null} onOpen={onOpenDestination} />
 
       <div className="report-hub-quick-grid">
         <QuickAccess title="Favoritos" empty="Marcá la estrella de un reporte para dejarlo a mano." reports={favoriteReports} onOpen={onOpenReport} />

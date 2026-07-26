@@ -4,7 +4,7 @@ import { MANUAL_REFRESH_STAGES } from './refresh-plan';
 describe('plan de actualización manual', () => {
   it('audita antes de activar y vuelve a auditar al final', () => {
     expect(MANUAL_REFRESH_STAGES.map((stage) => stage.id)).toEqual([
-      'capture', 'capture-audit', 'sales-build', 'sales-audit', 'activation', 'snapshot-audit', 'vector-audit', 'platform-audit',
+      'capture', 'capture-audit', 'sales-build', 'sales-audit', 'activation', 'snapshot-audit', 'vector-audit', 'platform-audit', 'executive-summary',
     ]);
   });
 

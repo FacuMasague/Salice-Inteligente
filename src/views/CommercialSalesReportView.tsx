@@ -8,6 +8,7 @@ import type {
   CommercialSalesReportMeta,
   CommercialSalesReportPayload,
 } from '../../shared/models';
+import { AiNarrativeCard } from '../components/AiInsights';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
@@ -225,6 +226,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
       actions={<button className="button secondary compact" onClick={() => explore()}><ShoppingBasket size={14} /> Continuar en Explorador de ventas</button>}
       exports={<ReportExportActions links={[{ href: salesExportUrl, label: 'Exportar ventas completas', kind: 'xlsx' }]} />}
     />
+    <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.netAmount && <ReportEmptyNotice />}
 
     <div className="commercial-main-kpis">
