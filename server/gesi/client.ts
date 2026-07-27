@@ -19,18 +19,36 @@ export class GesiClient {
   constructor(private readonly config: GesiCredentials) {}
 
   async login() {
-    const response = await fetch(`${this.config.baseUrl.replace(/\/$/, '')}/api/Autenticacion/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', GrupoESI: '' },
-      body: JSON.stringify({ username: this.config.username, password: this.config.password }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) throw new Error(`GESI login respondió HTTP ${response.status}`);
-    const payload = await response.json() as LoginResponse;
-    if (!payload.success || !payload.token) {
-      throw new Error(payload.error?.message || 'GESI no devolvió un token válido');
+    let lastError: unknown;
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let retryableStatus = false;
+      try {
+        const response = await fetch(`${this.config.baseUrl.replace(/\/$/, '')}/api/Autenticacion/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', GrupoESI: '' },
+          body: JSON.stringify({ username: this.config.username, password: this.config.password }),
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (!response.ok) {
+          retryableStatus = response.status === 429 || response.status >= 500;
+          throw new Error(`GESI login respondió HTTP ${response.status}`);
+        }
+        const payload = await response.json() as LoginResponse;
+        if (!payload.success || !payload.token) {
+          throw new Error(payload.error?.message || 'GESI no devolvió un token válido');
+        }
+        this.token = payload.token;
+        return;
+      } catch (error) {
+        lastError = error;
+        const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
+        if ((!timedOut && !retryableStatus) || attempt === maxAttempts) break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 750));
     }
-    this.token = payload.token;
+    const reason = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(`GESI login falló luego de ${maxAttempts} intentos: ${reason}`);
   }
 
   private headers() {
