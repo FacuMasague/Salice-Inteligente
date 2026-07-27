@@ -1972,6 +1972,32 @@ export function beginRefreshRun(trigger = 'manual') {
   return run;
 }
 
+export function recoverInterruptedRefreshRuns(
+  reason = 'Ejecución interrumpida por un reinicio del servidor; se habilitó la recuperación automática.',
+) {
+  const store = db();
+  const rows = store.prepare(
+    "SELECT id, started_at FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC",
+  ).all() as Array<{ id: string; started_at: string }>;
+  if (!rows.length) return 0;
+  const completedAt = new Date().toISOString();
+  const update = store.prepare(`UPDATE refresh_runs SET
+    completed_at = ?, status = 'failed', quality_status = 'failed', duration_ms = ?, error = ?
+    WHERE id = ? AND status = 'running'`);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    rows.forEach((row) => {
+      const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(row.started_at).getTime());
+      update.run(completedAt, Number.isFinite(durationMs) ? durationMs : 0, reason.slice(0, 2_000), row.id);
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return rows.length;
+}
+
 export function updateRefreshRunStage(id: string, stage: string) {
   db().prepare("UPDATE refresh_runs SET stage = ? WHERE id = ? AND status = 'running'").run(stage.slice(0, 120), id);
 }

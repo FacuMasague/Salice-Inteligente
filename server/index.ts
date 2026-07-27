@@ -43,6 +43,7 @@ import { exportReportXlsx, type ReportExportId } from './report-exports.js';
 import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
 import { manualRefreshProcessStatus, startManualRefresh } from './manual-refresh-runner.js';
+import { automaticRefreshStatus, startAutomaticRefreshScheduler } from './refresh-scheduler.js';
 import { countOperationalBackups } from './operations-backup.js';
 import { auditStoredAiArtifacts, getAiSystemStatus } from './ai-enrichment.js';
 import {
@@ -80,6 +81,7 @@ import {
   listReceivableCases,
   listReceivableCaseEvents,
   operationalStatus,
+  recoverInterruptedRefreshRuns,
   rebuildAllReceivableCasesFromEvents,
   reconcileInventoryAlertReviews,
   saveClientNote,
@@ -801,12 +803,20 @@ app.post('/api/ai/artifacts/:artifactId/feedback', (req, res) => {
 app.get('/api/system/data-health', async (_req, res) => {
   const data = await loadSnapshot();
   res.setHeader('Cache-Control', 'no-store');
-  res.json(buildDataHealth(data, getSptReportMeta(), getPendingBalancesReportMeta(), operationalStatus(), new Date(), loadPlatformAuditSummary()));
+  res.json(buildDataHealth(
+    data,
+    getSptReportMeta(),
+    getPendingBalancesReportMeta(),
+    operationalStatus(),
+    new Date(),
+    loadPlatformAuditSummary(),
+    automaticRefreshStatus(),
+  ));
 });
 
 app.get('/api/system/refresh', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json(manualRefreshProcessStatus());
+  res.json({ ...manualRefreshProcessStatus(), schedule: automaticRefreshStatus() });
 });
 
 app.post('/api/system/refresh', (_req, res) => {
@@ -1026,8 +1036,20 @@ for (const workflow of listReceivableCases()) {
   syncReceivablePaymentPromise(workflow.clientId, startupClients.get(workflow.clientId)?.seller ?? workflow.responsible);
 }
 acquireServerLock();
-app.listen(port, '127.0.0.1', () => {
-  console.log(`Salice API v${APP_VERSION} en http://127.0.0.1:${port}`);
+const recoveredRefreshes = recoverInterruptedRefreshRuns();
+if (recoveredRefreshes) {
+  console.warn(`Se cerraron ${recoveredRefreshes} actualizaciones interrumpidas para permitir su recuperación.`);
+}
+const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
+app.listen(port, host, () => {
+  const schedule = startAutomaticRefreshScheduler(process.cwd(), {
+    bootstrap: startupSnapshot.meta.source === 'demo',
+    lastSuccessfulAt: operationalStatus().refresh.lastSuccess?.completedAt ?? null,
+  });
+  console.log(`Salice API v${APP_VERSION} en http://${host}:${port}`);
   console.log(`Snapshot persistente: ${getSnapshotPath()}`);
   console.log(`Datos operativos: ${getOperationalDatabasePath()}`);
+  console.log(schedule.enabled
+    ? `Actualizaciones automáticas: ${schedule.times.join(' y ')} · ${schedule.timeZone}`
+    : 'Actualizaciones automáticas desactivadas.');
 });

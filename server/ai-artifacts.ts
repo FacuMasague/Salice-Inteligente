@@ -108,9 +108,7 @@ export function attachCommercialExplanations(
   return withStore((store) => {
     const artifacts = store.listArtifacts<{ items: AiCommercialExplanation[] }>({
       functionKey: 'commercial_inbox_explanation',
-      entityType: 'commercial_inbox_batch',
-      snapshotAt,
-    }).filter((artifact) => artifact.entityId.startsWith(`${payload.weekStart}:`));
+    });
     const byClient = new Map<number, AiStoredArtifact<AiCommercialExplanation>>();
     artifacts.forEach((artifact) => artifact.output.items.forEach((item) => {
       if (byClient.has(item.clientId)) return;
@@ -135,7 +133,6 @@ export function getSellerSummaries(snapshotAt: string) {
   return withStore((store) => {
     const artifacts = store.listArtifacts<{ items: AiSellerSummary[] }>({
       functionKey: 'seller_summary',
-      entityType: 'seller_batch',
       snapshotAt,
     });
     const bySeller = new Map<string, AiStoredArtifact<AiSellerSummary>>();

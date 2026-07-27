@@ -375,7 +375,6 @@ export function buildExecutiveEvidence(summary: ExecutiveSummaryPayload) {
     variation: item.variation,
   }));
   return {
-    snapshotAt: summary.snapshotAt,
     rule: 'Cada bloque conserva su definición, período y universo. No deben sumarse entre sí ni producir un puntaje global.',
     evidence,
     sellers,
@@ -771,26 +770,25 @@ export function createAiFunctionDefinitions(input: {
       buildJobs: (snapshot) => {
         const data = snapshot as DashboardData;
         const value = inboxEvidence(data, input.snapshotAt);
-        const jobs = [];
-        for (let index = 0; index < value.clients.length; index += 6) {
-          const clients = value.clients.slice(index, index + 6);
-          const refs = clients.flatMap((client) => [
-            ...client.metrics.map((item) => item.id),
-            ...client.signals.map((item) => item.id),
-            ...client.opportunities.map((item) => item.id),
-          ]);
-          jobs.push({
-            entityType: 'commercial_inbox_batch',
-            entityId: `${value.inbox.weekStart}:${Math.floor(index / 6) + 1}`,
-            evidence: {
-              weekStart: value.inbox.weekStart,
-              weekEnd: value.inbox.weekEnd,
-              clients,
-            },
-            evidenceRefs: refs,
+        return value.clients
+          .filter((client) => !input.store.hasCommercialInboxExplanation(client.clientId))
+          .map((client) => {
+            const refs = [
+              ...client.metrics.map((item) => item.id),
+              ...client.signals.map((item) => item.id),
+              ...client.opportunities.map((item) => item.id),
+            ];
+            return {
+              entityType: 'commercial_inbox_client',
+              entityId: String(client.clientId),
+              evidence: {
+                weekStart: value.inbox.weekStart,
+                weekEnd: value.inbox.weekEnd,
+                clients: [client],
+              },
+              evidenceRefs: refs,
+            };
           });
-        }
-        return jobs;
       },
       validateOutput: (output, job) => {
         const expected = rows(record(job.evidence).clients).map((item) => Number(item.clientId)).sort((a, b) => a - b);
@@ -830,17 +828,12 @@ export function createAiFunctionDefinitions(input: {
       maxOutputTokens: 2_500,
       buildJobs: (snapshot) => {
         const sellers = sellerEvidence(snapshot as DashboardData);
-        const jobs = [];
-        for (let index = 0; index < sellers.length; index += 10) {
-          const batch = sellers.slice(index, index + 10);
-          jobs.push({
-            entityType: 'seller_batch',
-            entityId: `sellers:${Math.floor(index / 10) + 1}`,
-            evidence: { sellers: batch },
-            evidenceRefs: batch.flatMap((seller) => seller.refs),
-          });
-        }
-        return jobs;
+        return sellers.map((seller) => ({
+          entityType: 'seller',
+          entityId: seller.seller,
+          evidence: { sellers: [seller] },
+          evidenceRefs: seller.refs,
+        }));
       },
       validateOutput: (output, job) => {
         const expected = rows(record(job.evidence).sellers).map((item) => String(item.seller)).sort();

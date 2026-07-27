@@ -92,6 +92,18 @@ describe('orquestador de enriquecimiento IA', () => {
     });
     expect(repeated.reused).toBe(1);
     expect(provider.calls).toHaveLength(1);
+
+    const changed = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-25T18:19:50.818Z',
+      bundleId: 'bundle-3',
+      trigger: 'refresh',
+      definitions: [definition({ netSales: 1_300 })],
+      provider,
+      store,
+    });
+    expect(changed.completed).toBe(1);
+    expect(provider.calls).toHaveLength(2);
     store.close();
   });
 

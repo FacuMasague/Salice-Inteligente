@@ -43,7 +43,13 @@ if (resumeRequested) {
   stages = MANUAL_REFRESH_STAGES.slice(1);
 }
 
-const run = beginRefreshRun(resumeRequested ? 'manual-resume' : 'manual');
+const configuredTrigger = String(process.env.SALICE_REFRESH_TRIGGER ?? '');
+const runTrigger = resumeRequested
+  ? 'manual-resume'
+  : configuredTrigger === 'scheduled' || configuredTrigger === 'bootstrap'
+    ? configuredTrigger
+    : 'manual';
+const run = beginRefreshRun(runTrigger);
 const bundlePaths = createBundlePaths(run.id, workspace);
 const previousSnapshotPath = resolveActiveDataPaths(workspace).snapshot;
 let currentStage = 'preflight';
@@ -85,7 +91,14 @@ async function execute(script: string) {
 }
 
 try {
-  console.log(`${resumeRequested ? 'Reanudación' : 'Actualización'} manual Salice · ejecución ${run.id}`);
+  const triggerLabel = runTrigger === 'bootstrap'
+    ? 'Actualización inicial'
+    : runTrigger === 'scheduled'
+      ? 'Actualización automática'
+      : runTrigger === 'manual-resume'
+        ? 'Reanudación manual'
+        : 'Actualización manual';
+  console.log(`${triggerLabel} Salice · ejecución ${run.id}`);
   console.log(`Paquete candidato: ${bundlePaths.directory}`);
   for (const stage of stages) {
     currentStage = stage.id;

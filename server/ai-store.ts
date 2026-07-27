@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type {
   AiArtifactStatus,
   AiAttemptStatus,
+  AiCommercialExplanation,
   AiFeedbackRating,
   AiFeedbackRecord,
   AiFunctionKey,
@@ -638,6 +639,36 @@ export class AiStore {
         ), 'passed') != 'blocked'
       LIMIT 1
     `).get(productId));
+  }
+
+  hasCommercialInboxExplanation(clientId: number) {
+    const direct = this.latestArtifact<{ items: AiCommercialExplanation[] }>({
+      functionKey: 'commercial_inbox_explanation',
+      entityType: 'commercial_inbox_client',
+      entityId: String(clientId),
+    });
+    if (direct?.output.items.some((item) => item.clientId === clientId)) return true;
+    const rows = this.database.prepare(`
+      SELECT a.output_json
+      FROM ai_artifacts a
+      WHERE a.function_key = 'commercial_inbox_explanation'
+        AND a.status IN ('valid', 'reused')
+        AND a.output_json IS NOT NULL
+        AND COALESCE((
+          SELECT q.status FROM ai_quality_reviews q
+          WHERE q.artifact_id = a.id
+          ORDER BY q.check_version DESC, q.created_at DESC, q.rowid DESC LIMIT 1
+        ), 'passed') != 'blocked'
+      ORDER BY a.created_at DESC, a.rowid DESC
+    `).all() as Array<{ output_json: string }>;
+    return rows.some((row) => {
+      try {
+        const output = JSON.parse(row.output_json) as { items?: AiCommercialExplanation[] };
+        return output.items?.some((item) => item.clientId === clientId) ?? false;
+      } catch {
+        return false;
+      }
+    });
   }
 
   latestArtifact<T>(input: {
