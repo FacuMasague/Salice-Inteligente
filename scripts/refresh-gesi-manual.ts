@@ -75,9 +75,16 @@ const candidateEnvironment: NodeJS.ProcessEnv = {
   SALICE_PREVIOUS_SNAPSHOT_PATH: previousSnapshotPath,
 };
 
-async function execute(script: string) {
+async function execute(stage: (typeof MANUAL_REFRESH_STAGES)[number]) {
+  const defaultHeapMb = Math.max(384, Number(process.env.SALICE_REFRESH_STAGE_HEAP_MB) || 512);
+  const captureHeapMb = Math.max(defaultHeapMb, Number(process.env.SALICE_REFRESH_CAPTURE_HEAP_MB) || 768);
+  const heapMb = stage.id === 'capture' ? captureHeapMb : defaultHeapMb;
   await new Promise<void>((resolveStage, rejectStage) => {
-    const child = spawn(process.execPath, [tsxCli, resolve(workspace, script)], {
+    const child = spawn(process.execPath, [
+      `--max-old-space-size=${heapMb}`,
+      tsxCli,
+      resolve(workspace, stage.script),
+    ], {
       cwd: workspace,
       env: candidateEnvironment,
       stdio: 'inherit',
@@ -85,7 +92,7 @@ async function execute(script: string) {
     child.once('error', rejectStage);
     child.once('exit', (code, signal) => {
       if (code === 0) resolveStage();
-      else rejectStage(new Error(`${basename(script)} terminó con ${signal ? `señal ${signal}` : `código ${code}`}`));
+      else rejectStage(new Error(`${basename(stage.script)} terminó con ${signal ? `señal ${signal}` : `código ${code}`}`));
     });
   });
 }
@@ -105,7 +112,7 @@ try {
     updateRefreshRunStage(run.id, currentStage);
     const startedAt = Date.now();
     console.log(`\n[${stage.label}] iniciando…`);
-    await execute(stage.script);
+    await execute(stage);
     console.log(`[${stage.label}] aprobada en ${Math.round((Date.now() - startedAt) / 1000)} s`);
   }
 

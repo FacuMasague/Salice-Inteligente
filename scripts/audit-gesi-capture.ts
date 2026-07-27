@@ -1,10 +1,30 @@
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
+import chain from 'stream-chain';
+import { parser } from 'stream-json';
+import { ignore } from 'stream-json/filters/ignore.js';
+import { streamObject } from 'stream-json/streamers/stream-object.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 import { invoiceCreditTermDays } from '../shared/credit-terms.js';
 
 const capturePath = resolve(process.cwd(), 'data/raw/gesi-salice-latest.json');
-const capture = JSON.parse(await readFile(capturePath, 'utf8')) as GesiRawCapture;
+const output = chain([
+  createReadStream(capturePath),
+  parser(),
+  ignore({
+    filter: /^(sptInvoices|sptCreditNotes)$/,
+    streamKeys: false,
+    packKeys: true,
+  }),
+  streamObject(),
+]);
+const partialCapture: Partial<GesiRawCapture> = {};
+for await (const item of output as AsyncIterable<{ key: string; value: unknown }>) {
+  (partialCapture as Record<string, unknown>)[item.key] = item.value;
+}
+partialCapture.sptInvoices = [];
+partialCapture.sptCreditNotes = [];
+const capture = partialCapture as GesiRawCapture;
 
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const text = (value: unknown) => value == null ? '' : String(value).trim();
