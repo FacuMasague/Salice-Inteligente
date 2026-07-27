@@ -7,6 +7,7 @@ import { parser } from 'stream-json';
 import { pick } from 'stream-json/filters/pick.js';
 import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
+import { resolveSptFetchFrom } from '../server/gesi/capture-window.js';
 import { GesiClient } from '../server/gesi/client.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 
@@ -67,7 +68,12 @@ const isoDaysAgo = (days: number) => {
   return value.toISOString();
 };
 const historyFrom = process.env.GESI_HISTORY_FROM ?? isoDaysAgo(365);
-const salesHistoryFrom = process.env.GESI_SPT_HISTORY_FROM ?? historyFrom;
+const salesHistoryFrom = resolveSptFetchFrom({
+  hasExistingCapture,
+  historyFrom,
+  explicitHistoryFrom: process.env.GESI_SPT_HISTORY_FROM,
+  bootstrapHistoryFrom: process.env.GESI_SPT_BOOTSTRAP_HISTORY_FROM,
+});
 const salesDetailFrom = process.env.GESI_SALES_DETAIL_FROM ?? isoDaysAgo(180);
 const sptSalesDetailFrom = process.env.GESI_SPT_DETAIL_FROM ?? salesHistoryFrom;
 const logisticsFrom = process.env.GESI_LOGISTICS_FROM ?? isoDaysAgo(45);

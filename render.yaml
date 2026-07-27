@@ -25,7 +25,7 @@ services:
         value: "3"
       - key: GESI_SUCURSAL_ID
         value: "3"
-      - key: GESI_SPT_HISTORY_FROM
+      - key: GESI_SPT_BOOTSTRAP_HISTORY_FROM
         value: "2025-01-01"
       - key: OPENAI_API_KEY
         sync: false
