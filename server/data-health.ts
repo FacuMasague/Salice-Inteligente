@@ -23,6 +23,13 @@ export function buildDataHealth(
   operations: OperationalStatusInput,
   now = new Date(),
   quality: PlatformAuditSummary | null = null,
+  schedule: DataHealthPayload['schedule'] = {
+    enabled: false,
+    timeZone: 'America/Argentina/Buenos_Aires',
+    times: [],
+    nextRunAt: null,
+    lastTriggeredAt: null,
+  },
 ): DataHealthPayload {
   const warningAfter = Number(process.env.SALICE_FRESHNESS_WARNING_HOURS ?? 24);
   const staleAfter = Number(process.env.SALICE_FRESHNESS_STALE_HOURS ?? 48);
@@ -91,6 +98,7 @@ export function buildDataHealth(
     limitations,
     quality,
     refresh: operations.refresh ?? { current: null, lastAttempt: null, lastSuccess: null, recent: [] },
+    schedule,
   };
 }
 

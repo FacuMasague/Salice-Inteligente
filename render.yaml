@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: salice-inteligente
+    runtime: node
+    plan: pro
+    region: virginia
+    autoDeployTrigger: checksPass
+    buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 300
+    disk:
+      name: salice-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: GESI_BASE_URL
+        value: https://m5mdp.grupoesi.com.ar
+      - key: GESI_USERNAME
+        sync: false
+      - key: GESI_PASSWORD
+        sync: false
+      - key: GESI_EMPRESA_ID
+        value: "3"
+      - key: GESI_SUCURSAL_ID
+        value: "3"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SALICE_AUTO_REFRESH_ENABLED
+        value: "true"
+      - key: SALICE_AUTO_REFRESH_TIMES
+        value: "03:00,15:00"
+      - key: SALICE_AUTO_REFRESH_TIME_ZONE
+        value: America/Argentina/Buenos_Aires
+      - key: SALICE_FRESHNESS_WARNING_HOURS
+        value: "14"
+      - key: SALICE_FRESHNESS_STALE_HOURS
+        value: "30"
+      - key: SALICE_OPERATIONS_BACKUP_RETENTION
+        value: "10"
+      - key: SALICE_AI_MAX_COST_USD_PER_RUN
+        value: "1"
+      - key: SALICE_AI_MONTHLY_BUDGET_USD
+        value: "30"
+      - key: SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT
+        value: "80"

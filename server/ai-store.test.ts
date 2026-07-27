@@ -150,4 +150,41 @@ describe('migración y persistencia IA', () => {
     }]);
     store.close();
   });
+
+  it('reconoce como explicado un cliente guardado en los lotes históricos', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'salice-ai-commercial-history-'));
+    directories.push(directory);
+    const store = new AiStore(resolve(directory, 'operations.sqlite'));
+    const runId = store.startRun({ snapshotAt: '2026-07-24T00:00:00.000Z', bundleId: 'bundle', trigger: 'manual' });
+    const artifactId = store.createArtifact({
+      runId,
+      snapshotAt: '2026-07-24T00:00:00.000Z',
+      bundleId: 'bundle',
+      functionKey: 'commercial_inbox_explanation',
+      entityType: 'commercial_inbox_batch',
+      entityId: '2026-07-21:1',
+      model: 'gpt-5.6-terra',
+      effort: 'low',
+      promptVersion: 4,
+      schemaVersion: 3,
+      inputHash: 'input',
+      requestHash: 'request',
+      inputJson: '{}',
+      outputJson: JSON.stringify({ items: [{
+        clientId: 42,
+        primaryReason: 'Motivo inicial',
+        secondaryReasons: [],
+        explanation: 'Explicación inicial.',
+        evidenceIds: ['client:42:metric:collection-risk'],
+        commercialOpportunity: '',
+        caution: 'Confirmar.',
+      }] }),
+      evidenceRefs: ['client:42:metric:collection-risk'],
+      status: 'valid',
+    });
+    store.recordQualityReview({ artifactId, status: 'passed', checkVersion: 1, issues: [] });
+    expect(store.hasCommercialInboxExplanation(42)).toBe(true);
+    expect(store.hasCommercialInboxExplanation(43)).toBe(false);
+    store.close();
+  });
 });

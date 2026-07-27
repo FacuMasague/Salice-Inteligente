@@ -1,8 +1,21 @@
-# Actualización manual segura, atómica y enriquecida · v0.9.5
+# Actualización automática y manual segura · v0.11
 
-La actualización sigue siendo manual. No existe programación nocturna, reintento horario ni despliegue remoto en esta versión.
+## Operación normal
 
-## Comando completo
+En Render, el servidor inicia un programador interno con dos horarios diarios:
+
+- 03:00 de `America/Argentina/Buenos_Aires`;
+- 15:00 de `America/Argentina/Buenos_Aires`.
+
+Los horarios no dependen de la zona UTC configurada por Render. Si el servicio vuelve después de haber perdido el último turno, dispara una actualización de recuperación. El bloqueo operativo impide que convivan dos ejecuciones.
+
+La actualización vive dentro del servicio web porque snapshots, paquetes activos, `operations.sqlite`, feedback y resultados de IA comparten el mismo disco persistente. Un Cron Job separado de Render no puede montar ese disco.
+
+Configuración → Datos y actualizaciones muestra si la automatización está activa, sus horarios, la zona horaria, la última activación y la próxima ejecución.
+
+## Ejecución manual
+
+El administrador todavía puede iniciar el mismo flujo desde la interfaz o por terminal:
 
 ```bash
 pnpm run refresh:gesi
@@ -13,6 +26,8 @@ Si una ejecución falló después de aprobar la captura, puede reutilizarse úni
 ```bash
 pnpm run refresh:gesi:resume
 ```
+
+## Flujo atómico
 
 El orquestador construye todo dentro de `data/bundles/<ejecución>/`:
 
@@ -32,36 +47,37 @@ El orquestador construye todo dentro de `data/bundles/<ejecución>/`:
 14. bloqueo aislado de salidas problemáticas, sin revertir el paquete determinístico;
 15. cierre exitoso y recarga del dashboard con resumen e IA ya disponibles.
 
-Después de una activación aprobada, el sistema agrega a `operations.sqlite` una observación append-only de precios por producto. Una ejecución rechazada no incorpora el candidato a esa serie. Al iniciar, `pnpm run backfill:prices` también puede reconstruir observaciones faltantes únicamente desde snapshots GESI que todavía estén preservados localmente; no consulta Power BI ni inventa puntos intermedios.
+Después de una activación aprobada, el sistema agrega a `operations.sqlite` una observación append-only de precios por producto. Una ejecución rechazada no incorpora el candidato a esa serie. `pnpm run backfill:prices` puede reconstruir observaciones faltantes únicamente desde snapshots GESI todavía preservados; no inventa puntos intermedios.
 
-Los candidatos nunca son leídos por el servidor antes de aprobarse. Si una etapa falla, se elimina solamente esa generación y el manifiesto activo continúa apuntando exactamente al paquete anterior. No existe una ventana en la que el servidor combine una base comercial nueva con un snapshot viejo.
+Los candidatos nunca son leídos por el servidor antes de aprobarse. Si una etapa falla, se elimina solamente esa generación y el manifiesto activo continúa apuntando al paquete anterior. No existe una ventana en la que el servidor combine una base comercial nueva con un snapshot viejo.
 
-El enriquecimiento IA comienza únicamente después de activar el paquete determinístico. El refresco permanece visible como activo durante esta etapa para que el dashboard no se recargue antes de que termine el intento. Si OpenAI no está configurado, falla o devuelve una salida inválida, la ejecución IA queda omitida, parcial o fallida en `operations.sqlite`, pero el paquete aprobado no se revierte y el comando informa la salvedad por separado.
+## IA incremental
 
-La ejecución productiva incluye las funciones habilitadas entre v0.9.1 y v0.9.4:
+El enriquecimiento comienza después de activar el paquete determinístico. Una falla, omisión por presupuesto o salida inválida de OpenAI queda registrada, pero no revierte los datos aprobados.
 
-- línea base y clasificación de productos realmente nuevos;
-- ocho narrativas almacenadas de reportes;
-- lectura ejecutiva de “¿Cómo estamos?”;
-- explicaciones de la bandeja comercial;
-- resúmenes agregados de carteras de vendedores.
+Cada trabajo se identifica por función, entidad, versión y hash de evidencia:
 
-Los paquetes enviados son agregados y compactos. Nunca incluyen snapshots, bases SQLite, listas completas de clientes o cuentas, textos de notas, credenciales ni archivos fuente. El límite predeterminado es USD 1 por ejecución completa y puede reducirse con `SALICE_AI_MAX_COST_USD_PER_RUN`. Si el presupuesto restante no alcanza para una salida válida, ese trabajo queda registrado como omitido y la actualización determinística conserva su aprobación.
+- los ocho reportes y “¿Cómo estamos?” se regeneran sólo cuando cambian sus indicadores;
+- cada vendedor se evalúa por separado, por lo que un cambio ajeno no invalida su resumen;
+- cada cliente de la Bandeja comercial se explica una sola vez y la explicación se conserva en capturas futuras;
+- los resultados históricos por lote de versiones anteriores también cuentan como explicaciones existentes;
+- productos conserva su línea base y procesa sólo productos realmente nuevos;
+- una diferencia de hora de captura sin diferencia de evidencia no invalida un resultado.
 
-El gasto mensual se compara con `SALICE_AI_MONTHLY_BUDGET_USD` y genera una alerta al porcentaje definido por `SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT`. La alerta no aumenta límites ni modifica prompts automáticamente.
-
-Una segunda ejecución sobre el mismo snapshot y la misma evidencia reutiliza los artefactos mediante sus hashes y no llama nuevamente a OpenAI. Para una reanudación administrativa explícita también están disponibles:
+Cuando el hash ya existe, el nuevo snapshot recibe una referencia reutilizada y no se llama al proveedor. Si la evidencia cambia, se crea únicamente el trabajo afectado. Los comandos administrativos de IA siguen disponibles:
 
 ```bash
 pnpm run enrich:ai
 pnpm run enrich:ai:resume
 ```
 
+Los paquetes enviados son agregados y compactos. No incluyen snapshots completos, bases SQLite, credenciales ni archivos fuente. El límite predeterminado es USD 1 por ejecución y puede ajustarse con `SALICE_AI_MAX_COST_USD_PER_RUN`. El presupuesto mensual y su umbral de alerta se controlan con `SALICE_AI_MONTHLY_BUDGET_USD` y `SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT`.
+
+## Persistencia y recuperación
+
 El servidor resuelve snapshot y bases desde el mismo manifiesto. Cuando el puntero cambia, abre las rutas de la nueva generación en la siguiente consulta sin reinicio. Al iniciar vuelve a verificar tamaños y checksums. Se conservan la generación activa y hasta dos anteriores.
 
-Una segunda ejecución no puede comenzar mientras exista otra activa. Al iniciar el sistema, una ejecución que lleva más de 30 minutos sin finalizar se cierra como interrumpida antes de liberar el flujo. El historial SPT conserva su backfill mensual incremental y reanudable.
-
-## Resultado esperado
+Al iniciar, cualquier ejecución que haya quedado abierta por la detención del proceso anterior se cierra como interrumpida. El programador puede entonces recuperar el turno pendiente de inmediato. El historial SPT mantiene su backfill mensual incremental y reanudable.
 
 Una ejecución aprobada debe dejar:
 
@@ -69,12 +85,11 @@ Una ejecución aprobada debe dejar:
 - ningún movimiento posterior al corte del snapshot;
 - conteos físicos iguales a la metadata de cada SQLite;
 - auditorías SPT, vectorial y de plataforma dentro del paquete;
-- un resumen ejecutivo persistido con el mismo corte del snapshot;
-- evidencia comparativa sólo si el paquete cambia la versión del motor vectorial;
+- un resumen ejecutivo persistido con el mismo corte;
 - un manifiesto con checksums válidos;
-- un registro exitoso con duración, cobertura y advertencias.
-- una ejecución IA completa, parcial u omitida claramente registrada, sin alterar la validez del paquete determinístico.
+- un registro exitoso con duración, cobertura y advertencias;
+- una ejecución IA completa, parcial, reutilizada u omitida claramente registrada.
 
-Los comandos individuales siguen disponibles para diagnóstico, pero la única operación aprobada para publicar una foto completa es `pnpm run refresh:gesi`. `pnpm run adopt:data-bundle` migra una sola vez una instalación anterior ya validada al esquema de manifiesto sin consultar GESI.
+Los comandos individuales siguen disponibles para diagnóstico, pero la única operación aprobada para publicar una foto completa es `pnpm run refresh:gesi`. `pnpm run adopt:data-bundle` migra una instalación anterior ya validada al esquema de manifiesto sin consultar GESI.
 
-Las credenciales permanecen únicamente en `.env`. Ninguna salida, auditoría o respaldo debe copiar usuario o contraseña.
+Las credenciales permanecen en variables de entorno. Ninguna salida, auditoría o respaldo debe copiar usuario, contraseña o clave de OpenAI.

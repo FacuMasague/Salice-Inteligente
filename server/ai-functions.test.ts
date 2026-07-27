@@ -8,11 +8,12 @@ import type { DashboardData, Product, VectorKey } from '../shared/models';
 import { VECTOR_KEYS } from '../shared/product-vectors';
 import { createDemoSnapshot } from './data/demo-snapshot';
 import { resolveActiveDataPaths } from './data-bundle';
-import { createAiFunctionDefinitions, buildReportEvidence } from './ai-functions';
+import { createAiFunctionDefinitions, buildReportEvidence, executiveBriefHash } from './ai-functions';
 import { FakeAiProvider } from './ai-provider';
 import { runAiEnrichment } from './ai-enrichment';
 import { AiStore } from './ai-store';
 import { loadSnapshot } from './store';
+import { buildExecutiveSummary } from './executive-summary';
 
 const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
@@ -144,23 +145,41 @@ describe('funciones productivas de IA v0.9.x', () => {
     store.close();
   });
 
-  it('entrega el detalle de cada señal comercial y bloquea referencias cruzadas entre clientes', async () => {
+  it('no interpreta una hora de captura distinta como un cambio del resumen ejecutivo', () => {
+    const summary = buildExecutiveSummary(createDemoSnapshot())!;
+    expect(executiveBriefHash(summary)).toBe(executiveBriefHash({
+      ...summary,
+      snapshotAt: '2026-07-27T18:00:00.000Z',
+    }));
+  }, 15_000);
+
+  it('crea un trabajo por cliente nuevo, conserva el detalle y no vuelve a explicarlo', async () => {
     const store = await testStore();
     const snapshot = createDemoSnapshot();
     const definition = createAiFunctionDefinitions({ store, snapshotAt: snapshot.meta.generatedAt })
       .find((item) => item.key === 'commercial_inbox_explanation')!;
     const jobs = await definition.buildJobs(snapshot);
     expect(jobs.length).toBeGreaterThan(0);
-    const job = jobs.find((item) => (item.evidence as { clients: unknown[] }).clients.length > 1)!;
-    const clients = (job.evidence as {
+    expect(jobs.every((item) => (
+      item.entityType === 'commercial_inbox_client'
+      && (item.evidence as { clients: unknown[] }).clients.length === 1
+    ))).toBe(true);
+    const sourceJobs = jobs.slice(0, 2);
+    const clients = sourceJobs.flatMap((job) => (job.evidence as {
       clients: Array<{
         clientId: number;
         signals: Array<{ id: string; detail: string }>;
         metrics: Array<{ id: string }>;
       }>;
-    }).clients;
+    }).clients);
     expect(clients.some((client) => client.signals.some((signal) => signal.detail.length > 0))).toBe(true);
 
+    const combinedJob = {
+      entityType: 'commercial_inbox_client',
+      entityId: String(clients[0].clientId),
+      evidence: { clients },
+      evidenceRefs: sourceJobs.flatMap((job) => job.evidenceRefs),
+    };
     const output = {
       items: clients.map((client, index) => ({
         clientId: client.clientId,
@@ -172,9 +191,37 @@ describe('funciones productivas de IA v0.9.x', () => {
         caution: 'Confirmar el contexto antes de avanzar.',
       })),
     };
-    const validation = definition.validateOutput!(output, job, snapshot);
+    const validation = definition.validateOutput!(output, combinedJob, snapshot);
     expect(validation.valid).toBe(false);
     if (!validation.valid) expect(validation.error).toContain('evidencia de otro cliente');
+
+    const firstJob = jobs[0];
+    const firstClient = (firstJob.evidence as { clients: Array<{ clientId: number; metrics: Array<{ id: string }> }> }).clients[0];
+    const provider = new FakeAiProvider({
+      items: [{
+        clientId: firstClient.clientId,
+        primaryReason: 'Motivo concreto',
+        secondaryReasons: [],
+        explanation: 'Lectura comercial inicial.',
+        evidenceIds: [firstClient.metrics[0].id],
+        commercialOpportunity: '',
+        caution: 'Confirmar el contexto.',
+      }],
+    });
+    await runAiEnrichment({
+      snapshot,
+      snapshotAt: snapshot.meta.generatedAt,
+      bundleId: 'commercial-first-explanation',
+      trigger: 'manual',
+      definitions: [{ ...definition, buildJobs: () => [firstJob] }],
+      provider,
+      store,
+    });
+    const nextJobs = await definition.buildJobs({
+      ...snapshot,
+      meta: { ...snapshot.meta, generatedAt: '2026-07-27T15:00:00.000Z' },
+    });
+    expect(nextJobs.some((job) => job.entityId === String(firstClient.clientId))).toBe(false);
     store.close();
   });
 });
@@ -293,6 +340,28 @@ describeWithReports('paquetes reales compactos de los ocho reportes', () => {
       'seller_summary',
     ]));
     expect(store.listArtifacts({ functionKey: 'report_narrative', snapshotAt: snapshot.meta.generatedAt })).toHaveLength(8);
+
+    const callsAfterFirstUpdate = provider.calls.length;
+    const sameDataAtSecondDailyUpdate: DashboardData = {
+      ...snapshot,
+      meta: { ...snapshot.meta, generatedAt: `${snapshot.meta.generatedAt.slice(0, 10)}T18:00:00.000Z` },
+    };
+    const secondDefinitions = createAiFunctionDefinitions({
+      store,
+      snapshotAt: sameDataAtSecondDailyUpdate.meta.generatedAt,
+    });
+    const repeatedRun = await runAiEnrichment({
+      snapshot: sameDataAtSecondDailyUpdate,
+      snapshotAt: sameDataAtSecondDailyUpdate.meta.generatedAt,
+      bundleId: 'fake-second-daily-update',
+      trigger: 'refresh',
+      definitions: secondDefinitions,
+      provider,
+      store,
+    });
+    expect(repeatedRun.completed).toBe(0);
+    expect(repeatedRun.reused).toBeGreaterThan(0);
+    expect(provider.calls).toHaveLength(callsAfterFirstUpdate);
     store.close();
   }, 30_000);
 });

@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.10.9
+# Salice Inteligente · v0.11.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz. Esta versión cierra la preparación funcional y visual previa al trabajo de publicación web previsto para v0.11.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v0.11 incorpora el despliegue persistente en Render y dos actualizaciones automáticas diarias, a las 03:00 y a las 15:00 de Argentina.
 
 ## Abrir el programa
 
@@ -11,7 +11,9 @@ pnpm install
 pnpm run dev
 ```
 
-La aplicación queda disponible en la dirección informada por la terminal. La v0.10 no incorpora hosting ni actualizaciones automáticas.
+La aplicación queda disponible en la dirección informada por la terminal. Por seguridad operativa, la automatización está desactivada de forma predeterminada fuera de Render.
+
+Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRESH_ENABLED=true`. En Render ya queda activada por el Blueprint. La guía de publicación, variables y verificación está en `docs/deployment-render-v0.11.md`.
 
 ## Recorrido principal
 
@@ -68,6 +70,10 @@ La clasificación explicable, sus atributos, evidencia, confianza, correcciones 
 La IA es complementaria:
 
 - Interpreta indicadores ya calculados.
+- Reutiliza cada resultado mientras no cambie su evidencia, aunque exista una captura nueva.
+- En reportes y resúmenes vuelve a intervenir únicamente si cambian los datos de esa función.
+- En la Bandeja comercial explica sólo clientes nuevos; una explicación vigente se conserva entre actualizaciones.
+- En productos procesa únicamente altas que todavía no tengan enriquecimiento.
 - En la Bandeja comercial explica el motivo principal, el contexto del caso, la oportunidad disponible y qué conviene confirmar.
 - Distingue datos confirmados, interpretación y sugerencias de revisión.
 - No modifica cifras, universos, reportes ni decisiones.
@@ -76,7 +82,7 @@ La IA es complementaria:
 - Acepta feedback útil, poco útil, incorrecto o incompleto y correcciones breves versionadas.
 - No ajusta prompts automáticamente y no realiza aprendizaje autónomo ni fine-tuning automático.
 
-Configuración muestra contenido disponible, último intento, calidad, feedback, consumo por función y actualización, reintentos y presupuesto. El límite recomendado continúa siendo USD 1 por actualización.
+Configuración muestra contenido disponible, último intento, calidad, feedback, consumo por función y actualización, resultados reutilizados, reintentos y presupuesto. El límite recomendado continúa siendo USD 1 por actualización; una actualización sin evidencia nueva no vuelve a consumir IA.
 
 ## Configuración
 
@@ -89,11 +95,13 @@ Configuración se divide en:
 5. Diagnóstico avanzado.
 6. Acerca del programa.
 
-Las preferencias de densidad, ayuda contextual y horarios previstos se guardan en el navegador. Registrar horarios previstos no automatiza las actualizaciones.
+Las preferencias de densidad y ayuda contextual se guardan en el navegador. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
 ## Datos y recuperación
 
 La aplicación conserva la última actualización aprobada si un intento posterior falla. Notas, gestiones, promesas, vistas, objetivos, correcciones y feedback se almacenan por separado de los datos comerciales.
+
+En producción, snapshots, paquetes de datos, operaciones, feedback y artefactos de IA viven en el disco persistente de Render. El servidor ejecuta la actualización internamente porque ese almacenamiento no puede compartirse con un Cron Job independiente. Si el servicio vuelve después de haberse perdido un horario, intenta recuperar esa ejecución; nunca permite dos actualizaciones simultáneas.
 
 La cartera documental sólo incluye facturas y notas de débito asignadas en el propio comprobante a Andres Dominguez, Edgardo Larrea, Ignacio Carea, Ana Ottaviano, Julieta Errecart o Gonzalo Russian. Continúan vigentes el mínimo de $1.000 y la exclusión de entidades internas o genéricas.
 
@@ -108,16 +116,12 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v0.10
+## Alcance deliberadamente fuera de v0.11
 
-- Publicación y hosting web.
-- Autenticación y seguridad de despliegue.
-- Actualizaciones automáticas.
 - Empaquetado instalable.
-- Optimización del proceso pesado de actualización programada.
 - Rediseño móvil completo.
-
-Estos temas corresponden a la fase v0.11.
+- Escalado horizontal: la base SQLite y el programador requieren una sola instancia con disco.
+- Ajuste autónomo de prompts, aprendizaje automático con feedback o fine-tuning automático.
 
 ## Notas de versión
 
@@ -132,3 +136,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v0.10.7.md`
 - `docs/release-v0.10.8.md`
 - `docs/release-v0.10.9.md`
+- `docs/release-v0.11.0.md`

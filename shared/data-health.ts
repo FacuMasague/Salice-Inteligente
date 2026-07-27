@@ -41,6 +41,13 @@ export interface DataHealthPayload {
     lastSuccess: RefreshRunSummary | null;
     recent: RefreshRunSummary[];
   };
+  schedule: {
+    enabled: boolean;
+    timeZone: string;
+    times: string[];
+    nextRunAt: string | null;
+    lastTriggeredAt: string | null;
+  };
 }
 
 export interface PlatformAuditSummary {

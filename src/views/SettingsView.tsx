@@ -6,7 +6,7 @@ import type { DataHealthPayload } from '../../shared/data-health';
 import type { MetricDefinition, ReportUniverseDefinition } from '../../shared/metrics';
 import { TUTORIALS, type TutorialSection } from '../components/TutorialOverlay';
 import { longDate, number } from '../lib/format';
-import { nextPlannedRefresh, readPreferences, savePreferences, type AppPreferences } from '../lib/preferences';
+import { readPreferences, savePreferences, type AppPreferences } from '../lib/preferences';
 
 const tutorialCards: { id: TutorialSection; icon: typeof Map }[] = [
   { id: 'operations', icon: Map },
@@ -63,6 +63,13 @@ function refreshDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value));
 }
 
+function refreshTriggerLabel(value: string) {
+  if (value === 'scheduled') return 'Automática';
+  if (value === 'bootstrap') return 'Inicial';
+  if (value === 'manual-resume') return 'Reanudación';
+  return 'Manual';
+}
+
 export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutorial }: { data: DashboardData; dataHealth: DataHealthPayload | null; tutorialCompleted: Record<TutorialSection, boolean>; onStartTutorial: (section: TutorialSection) => void }) {
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [catalog, setCatalog] = useState<MetricCatalogPayload | null>(null);
@@ -85,7 +92,6 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
     setPreferences(next);
     savePreferences(next);
   };
-  const nextRefresh = nextPlannedRefresh(preferences.plannedRefreshTimes);
   return (
     <div className="page-view settings-view">
       <nav className="settings-tabs" aria-label="Secciones de configuración">
@@ -130,15 +136,14 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
         {dataHealth ? <>
           <div className="data-source-grid">{dataHealth.sources.map((source) => <article key={source.id}><div><span className={`source-health-dot ${source.level}`} /><strong>{source.label}</strong><em>{sourceLabels[source.level]}</em></div><p>{source.detail}</p><small>{source.coverageFrom ? `Cobertura ${source.coverageFrom} → ${source.coverageThrough}` : `Corte ${source.coverageThrough}`}</small></article>)}</div>
           <div className="data-health-footer"><span><strong>{dataHealth.freshness.label}</strong> · advertencia desde {dataHealth.freshness.warningAfterHours} h; desactualizado desde {dataHealth.freshness.staleAfterHours} h.</span>{dataHealth.quality && <span><ShieldCheck size={14} /> Auditoría {dataHealth.quality.passed}/{dataHealth.quality.total} · {dataHealth.quality.warnings} salvedades</span>}{dataHealth.refresh.lastAttempt?.status === 'failed' && <span className="refresh-failure"><AlertTriangle size={14} /> El último intento no se completó; se conservan los datos disponibles.</span>}{dataHealth.refresh.current && <span>Actualización en curso · {dataHealth.refresh.current.stage}</span>}</div>
-          <details className="refresh-history"><summary><span>Historial de actualizaciones</span><em>{dataHealth.refresh.recent.length ? `${dataHealth.refresh.recent.length} ejecuciones` : 'Sin ejecuciones registradas'}</em></summary>{dataHealth.refresh.recent.length > 0 && <div>{dataHealth.refresh.recent.map((run) => <article key={run.id}><span className={`refresh-run-status ${run.status}`}>{refreshStatusLabels[run.status]}</span><p><strong>{refreshDate(run.startedAt)}</strong><small>{run.trigger === 'manual-resume' ? 'Reanudación' : 'Actualización'} · etapa {run.stage}</small></p><p><strong>{run.durationMs == null ? 'Duración pendiente' : `${Math.max(1, Math.round(run.durationMs / 1000))} s`}</strong><small>{run.qualityStatus ?? 'Calidad pendiente'} · {run.warnings} salvedades</small></p>{run.error && <p className="refresh-run-error">La ejecución no pudo completarse.</p>}</article>)}</div>}</details>
+          <details className="refresh-history"><summary><span>Historial de actualizaciones</span><em>{dataHealth.refresh.recent.length ? `${dataHealth.refresh.recent.length} ejecuciones` : 'Sin ejecuciones registradas'}</em></summary>{dataHealth.refresh.recent.length > 0 && <div>{dataHealth.refresh.recent.map((run) => <article key={run.id}><span className={`refresh-run-status ${run.status}`}>{refreshStatusLabels[run.status]}</span><p><strong>{refreshDate(run.startedAt)}</strong><small>{refreshTriggerLabel(run.trigger)} · etapa {run.stage}</small></p><p><strong>{run.durationMs == null ? 'Duración pendiente' : `${Math.max(1, Math.round(run.durationMs / 1000))} s`}</strong><small>{run.qualityStatus ?? 'Calidad pendiente'} · {run.warnings} salvedades</small></p>{run.error && <p className="refresh-run-error">La ejecución no pudo completarse.</p>}</article>)}</div>}</details>
         </> : <p className="settings-card-copy">No se pudo leer el estado consolidado. Los datos actuales continúan disponibles.</p>}
       </section>}
 
       <div className="settings-grid">
         {activeTab === 'data' && <section className="data-card settings-card settings-wide-card settings-refresh-plan">
-          <div className="data-card-header"><div><span className="section-kicker"><Clock3 size={14} /> Actualizaciones previstas</span><h2>Último dato y próxima actualización</h2><p>Estos horarios son una referencia operativa; no ejecutan actualizaciones automáticas.</p></div></div>
-          <div className="coverage-list"><p><span>Última actualización publicada</span><strong>{longDate(data.meta.generatedAt)}</strong></p><p><span>Próxima prevista</span><strong>{nextRefresh ? new Intl.DateTimeFormat('es-AR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(nextRefresh) : 'Todavía no configurada'}</strong></p></div>
-          <div className="planned-refresh-editor"><div>{preferences.plannedRefreshTimes.map((time) => <span key={time}>{time}<button aria-label={`Quitar horario ${time}`} onClick={() => updatePreferences({ ...preferences, plannedRefreshTimes: preferences.plannedRefreshTimes.filter((value) => value !== time) })}>×</button></span>)}</div><label><span>Agregar horario</span><input type="time" onChange={(event) => { const value = event.target.value; if (value) updatePreferences({ ...preferences, plannedRefreshTimes: [...new Set([...preferences.plannedRefreshTimes, value])].sort() }); event.currentTarget.value = ''; }} /></label></div>
+          <div className="data-card-header"><div><span className="section-kicker"><Clock3 size={14} /> Actualizaciones automáticas</span><h2>Último dato y próxima actualización</h2><p>El servidor ejecuta el proceso completo dos veces por día con hora de Argentina.</p></div><span className={`data-health-badge ${dataHealth?.schedule.enabled ? 'fresh' : 'warning'}`}>{dataHealth?.schedule.enabled ? 'Activadas' : 'Desactivadas'}</span></div>
+          <div className="coverage-list"><p><span>Última actualización publicada</span><strong>{longDate(data.meta.generatedAt)}</strong></p><p><span>Horarios diarios</span><strong>{dataHealth?.schedule.times.length ? dataHealth.schedule.times.join(' y ') : 'Sin horarios activos'}</strong></p><p><span>Zona horaria</span><strong>{dataHealth?.schedule.timeZone ?? 'America/Argentina/Buenos_Aires'}</strong></p><p><span>Próxima ejecución</span><strong>{dataHealth?.schedule.nextRunAt ? refreshDate(dataHealth.schedule.nextRunAt) : 'Todavía no programada'}</strong></p></div>
         </section>}
 
         {activeTab === 'ai' && <section className="data-card settings-card settings-wide-card">
