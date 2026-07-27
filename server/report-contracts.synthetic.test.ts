@@ -74,8 +74,9 @@ describe('contratos de reportes sobre un fixture sintético estable', () => {
   it('calcula saldos, vencido y filtros sin datos operativos reales', () => {
     const full = reports.pending.buildPendingBalancesReport({});
     const overdue = reports.pending.buildPendingBalancesReport({ seller: 'Edgardo Larrea', status: 'overdue' });
-    expect(full).toMatchObject({ pendingBalance: 230, overdueBalance: 100, clientsWithBalance: 2 });
-    expect(overdue).toMatchObject({ pendingBalance: 150, overdueBalance: 100, clientsWithBalance: 1 });
+    expect(full).toMatchObject({ pendingBalance: 23_000, overdueBalance: 10_000, clientsWithBalance: 2, openDocuments: 3 });
+    expect(full?.clients.map((row) => row.name)).not.toContain('Consumidor Final');
+    expect(overdue).toMatchObject({ pendingBalance: 15_000, overdueBalance: 10_000, clientsWithBalance: 1, openDocuments: 2 });
     expect(overdue?.overdueShare).toBeCloseTo(66.67, 2);
   });
 });

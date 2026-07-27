@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, LayoutDashboard, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShoppingBasket, Store, Target, Users, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShoppingBasket, Store, Target, Users, WalletCards, X } from 'lucide-react';
 import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
 import type { DataHealthPayload } from '../shared/data-health';
@@ -12,6 +12,7 @@ import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
 import { number } from './lib/format';
 import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportViewId } from './lib/report-center';
 import { replaceViewInLocation, reportViewFromLocation } from './lib/report-links';
+import { PREFERENCES_CHANGED_EVENT, readPreferences, type AppPreferences } from './lib/preferences';
 import type { ClientVisibility } from './views/MapDashboard';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
@@ -61,13 +62,13 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   'report-center': { title: 'Reportes', subtitle: 'Accesos organizados por finalidad y cobertura' },
   reports: { title: 'Reporte General', subtitle: 'Objetivos, resultados y estado comercial de Salice' },
   spt: { title: 'Volumen SPT', subtitle: 'Kilos, evolución, vendedores y comparación entre períodos' },
-  'commercial-sales': { title: 'Ventas · Comercial', subtitle: 'Venta neta, evolución, marcas y composición del negocio' },
-  mars: { title: 'Reporte Mars', subtitle: 'Volumen, clientes y períodos comerciales del proveedor Mars' },
-  nutripet: { title: 'Reporte NutriPet', subtitle: 'Volumen, cobertura y evolución mensual del proveedor NutriPet' },
-  baires: { title: 'Reporte Baires', subtitle: 'Volumen, clientes y composición de Baires SPT y Baires Masivo' },
+  'commercial-sales': { title: 'Ventas y composición', subtitle: 'Venta neta, evolución, marcas y composición del negocio' },
+  mars: { title: 'Mars · desempeño comercial', subtitle: 'Volumen, clientes y períodos comerciales del proveedor Mars' },
+  nutripet: { title: 'NutriPet · desempeño comercial', subtitle: 'Volumen, cobertura y evolución mensual del proveedor NutriPet' },
+  baires: { title: 'Baires · desempeño comercial', subtitle: 'Volumen, clientes y composición de Baires SPT y Baires Masivo' },
   'non-buyers': { title: 'Cuentas no compradoras', subtitle: 'Recuperación de cuentas y marcas sin compra reciente' },
-  'pending-balances': { title: 'Saldos Pendientes', subtitle: 'Cartera abierta, vencimientos y presión sobre ventas recientes' },
-  settings: { title: 'Configuración', subtitle: 'Tutorial, reglas operativas y calidad de datos' },
+  'pending-balances': { title: 'Saldos pendientes', subtitle: 'Cartera abierta, vencimientos y presión sobre ventas recientes' },
+  settings: { title: 'Configuración', subtitle: 'Preferencias, IA, datos, ayuda y diagnóstico' },
 };
 
 const nav: { id: View; label: string; icon: typeof Map }[] = [
@@ -78,6 +79,30 @@ const nav: { id: View; label: string; icon: typeof Map }[] = [
   { id: 'products', label: 'Productos', icon: Boxes },
   { id: 'brands', label: 'Marcas', icon: Store },
 ];
+
+const contextualHelp: Record<View, { purpose: string; tips: string[] }> = {
+  map: { purpose: 'Ubicá clientes y detectá prioridades comerciales sobre el territorio.', tips: ['Usá “Ubicaciones corregidas” para auditar ajustes.', 'Abrí una ficha antes de planificar una ruta.'] },
+  routes: { purpose: 'Armá recorridos con clientes cuya ubicación es suficientemente confiable.', tips: ['Los puntos aproximados quedan excluidos por seguridad.', 'La distancia y el tiempo son estimaciones para planificación.'] },
+  clients: { purpose: 'Buscá y filtrá toda la cartera desde una lista única.', tips: ['Abrí la ficha para ver compras, cobranzas y notas.', 'Combiná filtros y guardá las vistas que repetís.'] },
+  sellers: { purpose: 'Compará carteras y abrí el detalle de cada responsable.', tips: ['Las señales priorizan revisión; no reemplazan criterio comercial.', 'El corte coincide con la actualización visible.'] },
+  products: { purpose: 'Revisá catálogo, disponibilidad y oportunidades por producto.', tips: ['Las herramientas de clasificación están dentro del modo avanzado.', 'Una señal incompleta se muestra como tal y no se completa artificialmente.'] },
+  brands: { purpose: 'Analizá venta, compra y disponibilidad agrupadas por marca.', tips: ['Abrí cualquier producto para revisar su ficha completa.', 'Los importes usan el mismo corte que el resto del programa.'] },
+  finance: { purpose: 'Priorizá vencimientos, saldos y comportamiento de pago.', tips: ['Saldo abierto y monto original son conceptos distintos.', 'Las alertas no ocultan documentos de bajo importe.'] },
+  agenda: { purpose: 'Concentrá oportunidades, compromisos y tareas de oficina.', tips: ['La explicación con IA es complementaria.', 'Las gestiones humanas quedan separadas de los datos comerciales.'] },
+  'sales-explorer': { purpose: 'Pasá de un indicador al comprobante que lo explica.', tips: ['Podés combinar varias opciones dentro de un mismo filtro.', 'La información técnica permanece plegada.'] },
+  receivables: { purpose: 'Administrá casos de cobranza sin alterar los documentos fuente.', tips: ['Registrá seguimiento y promesas con contexto.', 'Abrí la factura para verificar vencimientos e importes.'] },
+  goals: { purpose: 'Prepará objetivos en borradores versionados.', tips: ['Sólo una activación explícita cambia el plan vigente.', 'Cada modificación conserva trazabilidad.'] },
+  'report-center': { purpose: 'Elegí el reporte según la decisión que necesitás tomar.', tips: ['Favoritos y recientes aceleran accesos repetidos.', 'Cada reporte documenta su período y alcance.'] },
+  reports: { purpose: 'Leé primero el resultado general y después profundizá.', tips: ['“Cómo se calcula” contiene metodología y universo.', 'La asistencia con IA no modifica las cifras.'] },
+  spt: { purpose: 'Compará volumen SPT entre períodos equivalentes.', tips: ['Revisá el período elegido antes de interpretar la variación.', 'La exportación conserva filtros y corte.'] },
+  'commercial-sales': { purpose: 'Analizá venta neta y composición comercial.', tips: ['Usá el explorador para llegar al comprobante.', 'Compará siempre períodos completos equivalentes.'] },
+  mars: { purpose: 'Revisá volumen, clientes y evolución comercial de Mars.', tips: ['El reporte mantiene un universo documentado.', 'La IA se oculta si no supera los controles de calidad.'] },
+  nutripet: { purpose: 'Revisá cobertura y evolución mensual de NutriPet.', tips: ['Abrí marcas o productos para profundizar.', 'Las cifras determinísticas siguen disponibles sin IA.'] },
+  baires: { purpose: 'Compará Baires SPT y Baires Masivo con el mismo corte.', tips: ['Verificá la composición antes de atribuir una variación.', 'Las exportaciones usan los filtros visibles.'] },
+  'non-buyers': { purpose: 'Detectá cuentas recuperables y marcas sin compra reciente.', tips: ['La ausencia se calcula sobre el período elegido.', 'Abrí el cliente antes de iniciar una gestión.'] },
+  'pending-balances': { purpose: 'Dimensioná cartera abierta y presión sobre ventas recientes.', tips: ['Vencido y pendiente no significan lo mismo.', 'Podés continuar la gestión en Cuentas por cobrar.'] },
+  settings: { purpose: 'Ajustá la experiencia y consultá datos, IA, ayuda y diagnóstico.', tips: ['La información técnica está separada del uso cotidiano.', 'Los cambios de apariencia se guardan en este navegador.'] },
+};
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -106,6 +131,8 @@ export default function App() {
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [preferences, setPreferences] = useState<AppPreferences>(() => readPreferences());
   const [productFocusId, setProductFocusId] = useState<string | null>(null);
   const [productFamilyFocus, setProductFamilyFocus] = useState('');
   const [productProfileOpen, setProductProfileOpen] = useState(false);
@@ -165,7 +192,7 @@ export default function App() {
   const refreshFromGesi = async () => {
     if (reloadingData || dataHealth?.refresh.current) return;
     setReloadingData(true);
-    setRefreshFeedback({ tone: 'working', message: 'Iniciando actualización desde GESI…' });
+    setRefreshFeedback({ tone: 'working', message: 'Iniciando actualización de datos…' });
     let requestedAt = Date.now();
     try {
       const response = await fetch('/api/system/refresh', { method: 'POST' });
@@ -185,7 +212,7 @@ export default function App() {
           : null;
         setDataHealth(health);
         if (health.refresh.current) {
-          setRefreshFeedback({ tone: 'working', message: `Actualizando GESI · ${health.refresh.current.stage}` });
+          setRefreshFeedback({ tone: 'working', message: `Actualizando datos · ${health.refresh.current.stage}` });
           refreshPollTimer.current = window.setTimeout(() => { poll().catch(finishWithError); }, 3000);
           return;
         }
@@ -226,6 +253,12 @@ export default function App() {
   useEffect(refreshNotifications, []);
 
   useEffect(() => {
+    const update = (event: Event) => setPreferences((event as CustomEvent<AppPreferences>).detail ?? readPreferences());
+    window.addEventListener(PREFERENCES_CHANGED_EVENT, update);
+    return () => window.removeEventListener(PREFERENCES_CHANGED_EVENT, update);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('salice-product-comparison-v055', JSON.stringify(productComparisonIds));
   }, [productComparisonIds]);
 
@@ -241,7 +274,7 @@ export default function App() {
         setSearchOpen(true);
         requestAnimationFrame(() => searchInput.current?.focus());
       }
-      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
+      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setHelpOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
@@ -365,9 +398,9 @@ export default function App() {
   const snapshotTime = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(snapshotDate);
   const snapshotLabel = `${snapshotDay} · ${snapshotTime}`;
   return (
-    <div className="app-shell">
+    <div className={`app-shell density-${preferences.density}`}>
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/salice-logo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
+        <div className="brand"><div className="brand-mark"><img src="/salice-isotipo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
         <div className="sidebar-scroll">
           <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection('operations')}><span>Centro operativo</span>{sidebarSections.operations ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
@@ -401,6 +434,7 @@ export default function App() {
               </div>}
             </div>
             <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
+            {preferences.contextualHelp && <div className="context-help-wrap"><button className="context-help-button" aria-label={`Ayuda sobre ${currentTitle.title}`} aria-expanded={helpOpen} onClick={() => { setHelpOpen((value) => !value); setSearchOpen(false); setNotificationsOpen(false); }}><HelpCircle size={18} /></button>{helpOpen && <aside className="context-help-panel"><header><span>Ayuda de esta pantalla</span><button aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={15} /></button></header><h3>{currentTitle.title}</h3><p>{contextualHelp[view].purpose}</p><ul>{contextualHelp[view].tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button className="button secondary" onClick={() => { selectView('settings'); setHelpOpen(false); }}>Abrir guías y preferencias</button></aside>}</div>}
             <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{number(notifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
           </div>
         </header>

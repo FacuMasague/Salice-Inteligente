@@ -75,12 +75,12 @@ export const COMMERCIAL_EXPLANATION_SCHEMA = {
         additionalProperties: false,
         properties: {
           clientId: { type: 'integer' },
-          primaryReason: text(220),
-          secondaryReasons: { type: 'array', items: text(220), maxItems: 4 },
-          explanation: text(520),
+          primaryReason: text(280),
+          secondaryReasons: { type: 'array', items: text(260), maxItems: 3 },
+          explanation: text(700),
           evidenceIds,
-          commercialOpportunity: text(360, 0),
-          caution: text(300),
+          commercialOpportunity: text(440, 0),
+          caution: text(380),
         },
         required: [
           'clientId',

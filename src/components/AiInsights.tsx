@@ -66,14 +66,14 @@ function AiProvenance({
   return <aside className="ai-provenance">
     <div className="ai-provenance-heading">
       <AiMark compact />
-      <div><strong>Lectura asistida y auditable</strong><span>Preparada a partir de datos ya calculados por Salice.</span></div>
+      <div><strong>Datos confirmados</strong><span>Indicadores calculados por Salice que respaldan esta interpretación.</span></div>
     </div>
     <dl>
       <div><dt>Respaldo</dt><dd>{evidenceCount} dato{evidenceCount === 1 ? '' : 's'} citado{evidenceCount === 1 ? '' : 's'}</dd></div>
       <div><dt>Vigencia</dt><dd>Datos del {dateLabel(artifact.snapshotAt)}</dd></div>
       <div><dt>Alcance</dt><dd>Interpreta; no modifica cifras ni decisiones</dd></div>
     </dl>
-    <p><BadgeInfo size={14} /> Conviene contrastar la lectura con los indicadores y advertencias del reporte.</p>
+    <p><BadgeInfo size={14} /> La interpretación y las sugerencias se distinguen de los datos confirmados.</p>
   </aside>;
 }
 
@@ -238,7 +238,7 @@ function AiSummary({
   const content = <>
     <AiMark />
     <div className="ai-insight-intro">
-      <span className="ai-eyebrow">Salice · {eyebrow}</span>
+      <span className="ai-eyebrow">Asistencia con IA · Beta <em>{eyebrow}</em></span>
       <h2>{formatAiDisplayText(title)}</h2>
       <p>{formatAiDisplayText(description)}</p>
       <div className="ai-trust-line">
@@ -300,12 +300,12 @@ export function AiNarrativeCard({
 }: {
   artifact?: AiStoredArtifact<AiReportNarrative> | null;
 }) {
-  if (!artifact) return null;
+  if (!artifact) return <aside className="ai-unavailable-notice"><AiMark compact /><div><strong>Asistencia con IA no publicada</strong><span>Esta lectura no está disponible o no superó los controles de calidad. El reporte y sus cifras continúan completos.</span></div><ShieldCheck size={16} /></aside>;
   const value = artifact.output;
   const evidenceCount = countEvidence([value.findings, value.drivers, value.reviewItems]);
   return <AiInsightShell
     artifact={artifact}
-    eyebrow="lectura asistida"
+    eyebrow="Interpretación"
     title={value.title}
     description={value.currentState}
     evidenceCount={evidenceCount}
@@ -332,7 +332,7 @@ export function AiExecutiveBriefCard({
   const evidenceCount = countEvidence([value.keyIssues, value.favorableIndicators, value.reviewItems]);
   return <AiInsightShell
     artifact={artifact}
-    eyebrow="panorama asistido"
+    eyebrow="Interpretación general"
     title="Una lectura rápida del negocio"
     description={value.currentState}
     evidenceCount={evidenceCount}
@@ -360,7 +360,7 @@ export function AiCommercialExplanationCard({
     <summary>
       <AiMark />
       <div className="commercial-ai-title">
-        <span className="ai-eyebrow">Salice · contexto asistido</span>
+        <span className="ai-eyebrow">Asistencia con IA · Beta <em>Lectura del caso</em></span>
         <h3>{formatAiDisplayText(value.primaryReason)}</h3>
         <p>{formatAiDisplayText(value.explanation)}</p>
       </div>
@@ -371,20 +371,20 @@ export function AiCommercialExplanationCard({
       </span>
     </summary>
     <div className="commercial-ai-body">
-      <AiProvenance artifact={artifact} evidenceCount={value.evidenceIds.length} />
+      <article className="commercial-ai-reading">
+        <span><Compass size={15} /> Por qué merece atención</span>
+        <p>{formatAiDisplayText(value.explanation)}</p>
+      </article>
       {!!value.secondaryReasons.length && <div className="commercial-ai-signals">
-        <span>Señales consideradas</span>
+        <span>También influye</span>
         <div>{value.secondaryReasons.map((item) => <span key={item}>{formatAiDisplayText(item).replace(/\.$/, '')}</span>)}</div>
       </div>}
       {value.commercialOpportunity && <article className="commercial-ai-opportunity">
         <CheckCircle2 size={16} />
-        <div><strong>Oportunidad ya elegible</strong><p>{formatAiDisplayText(value.commercialOpportunity)}</p></div>
+        <div><strong>Oportunidad para revisar</strong><p>{formatAiDisplayText(value.commercialOpportunity)}</p></div>
       </article>}
-      <aside className="commercial-ai-caution"><AlertTriangle size={15} /><span>{formatAiDisplayText(value.caution)}</span></aside>
-      <div className="commercial-ai-footer">
-        <EvidenceIds ids={value.evidenceIds} />
-        <ArtifactMeta artifact={artifact} />
-      </div>
+      {value.caution && <aside className="commercial-ai-caution"><AlertTriangle size={15} /><span><strong>Antes de avanzar</strong>{formatAiDisplayText(value.caution)}</span></aside>}
+      <AiFeedback artifact={artifact} />
     </div>
   </details>;
 }
@@ -399,7 +399,7 @@ export function AiSellerSummaryCard({
   const evidenceCount = countEvidence([value.portfolioSignals, value.reviewItems]);
   return <AiInsightShell
     artifact={artifact}
-    eyebrow="cartera asistida"
+    eyebrow="Interpretación de cartera"
     title="Lectura de la cartera"
     description={value.summary}
     evidenceCount={evidenceCount}

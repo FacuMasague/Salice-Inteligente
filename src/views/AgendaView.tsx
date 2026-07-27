@@ -49,6 +49,12 @@ const noteTypeLabels: Record<CommercialActivityType, string> = {
   offer: 'Oferta conversada',
 };
 const noteTypes: CommercialActivityType[] = ['note', 'visit', 'call', 'offer'];
+const attentionTypeLabels = {
+  collection: 'Cobranza y compromisos',
+  commercial: 'Actividad comercial',
+  blocked: 'Bloqueo de ventas',
+  office: 'Notas de oficina',
+} as const;
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 
 function localDateTime() {
@@ -62,6 +68,33 @@ function sourceIcon(source: CommercialInboxSource) {
   if (source === 'reminder') return <CalendarDays size={14} />;
   if (source === 'note') return <MessageSquareText size={14} />;
   return <Sparkles size={14} />;
+}
+
+function attentionTypes(entry: CommercialInboxEntry) {
+  const values = new Set<keyof typeof attentionTypeLabels>();
+  if (entry.signals.some((item) => [
+    'collection_risk',
+    'promise_overdue',
+    'promise_due',
+    'follow_up_overdue',
+    'follow_up_due',
+    'legacy_reminder',
+  ].includes(item.kind))) values.add('collection');
+  if (entry.signals.some((item) => [
+    'sales_decline',
+    'commercial_opportunity',
+    'suggested_review',
+  ].includes(item.kind))) values.add('commercial');
+  if (entry.signals.some((item) => item.kind === 'sales_blocked')) values.add('blocked');
+  if (entry.notes.length) values.add('office');
+  return [...values];
+}
+
+function reviewPriorityLabel(value: number) {
+  if (value >= 80) return 'Muy alta';
+  if (value >= 60) return 'Alta';
+  if (value >= 40) return 'Media';
+  return 'Baja';
 }
 
 interface AgendaViewProps {
@@ -91,6 +124,7 @@ export function AgendaView({
   const [date, setDate] = useState(today);
   const [seller, setSeller] = useState('');
   const [source, setSource] = useState('');
+  const [attentionType, setAttentionType] = useState('');
   const [query, setQuery] = useState('');
   const [data, setData] = useState<CommercialInboxPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,21 +161,23 @@ export function AgendaView({
   const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const visibleEntries = useMemo(() => (data?.entries ?? []).filter((entry) => {
     if (source && !entry.sources.some((value) => matchesMultiFilter(value, source))) return false;
+    if (attentionType && !attentionTypes(entry).some((value) => matchesMultiFilter(value, attentionType))) return false;
     if (normalizedQuery && !`${entry.clientName} ${entry.seller} ${entry.locality} ${entry.signals.map((item) => `${item.label} ${item.detail}`).join(' ')}`
       .toLocaleLowerCase('es').includes(normalizedQuery)) return false;
     return true;
-  }), [data, normalizedQuery, source]);
+  }), [attentionType, data, normalizedQuery, source]);
   const selectedEntry = visibleEntries.find((entry) => entry.clientId === selectedId) ?? visibleEntries[0] ?? null;
   const selectedClient = selectedEntry ? clients.find((client) => client.id === selectedEntry.clientId) ?? null : null;
   const selectedOpportunityEligible = selectedClient ? isCommercialOpportunityEligible(selectedClient) : false;
   const weekLabel = data
     ? `${shortDate(data.weekStart)} al ${shortDate(data.weekEnd)}`
     : 'semana seleccionada';
-  const savedFilters = { date, seller, source, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
+  const savedFilters = { date, seller, source, attentionType, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
   const applySaved = (saved: Record<string, string>) => {
     setDate(saved.date || today());
     setSeller(saved.seller || '');
     setSource(saved.source || '');
+    setAttentionType(saved.attentionType || '');
     setQuery(saved.query || '');
     setSelectedId(Number(saved.selectedClientId) || null);
   };
@@ -179,6 +215,13 @@ export function AgendaView({
           onChange={setSource}
           allLabel="Todos"
         />
+        <MultiSelectFilter
+          label="Tipo de atención"
+          value={attentionType}
+          options={Object.entries(attentionTypeLabels).map(([value, label]) => ({ value, label }))}
+          onChange={setAttentionType}
+          allLabel="Todos"
+        />
         <label className="inline-search"><FileText size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, localidad o motivo…" /></label>
         <span>{multiFilterLabel(seller, 'Todos los vendedores')}</span>
       </section>
@@ -202,7 +245,7 @@ export function AgendaView({
                   <small>{entry.seller} · {entry.locality}</small>
                   <div className="commercial-inbox-source-list">{entry.sources.map((value) => <span key={value} className={value}>{sourceIcon(value)} {sourceLabels[value]}</span>)}</div>
                 </div>
-                <div className="agenda-entry-score"><strong>{entry.visitPriority}</strong><span>Riesgo {entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · Oportunidad ${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
+                <div className="agenda-entry-score"><strong>{reviewPriorityLabel(entry.visitPriority)}</strong><span>Prioridad {entry.visitPriority}/100 · Riesgo {entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · Oportunidad ${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
               </button>;
             })}
           </div>

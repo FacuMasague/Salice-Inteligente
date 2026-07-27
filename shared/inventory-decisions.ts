@@ -234,7 +234,7 @@ export function classifyInventoryProduct(
   if (product.masterStatus === 'inactive' || review?.exceptionType === 'discontinued') {
     const reason = review?.exceptionType === 'discontinued'
       ? 'La oficina marcó el producto como discontinuado.'
-      : 'El maestro del producto está inactivo en GESI.';
+      : 'El maestro del producto está inactivo en el sistema comercial.';
     return result('out_of_assortment', `${reason} La bandeja conserva sus datos históricos y no supone una baja adicional.`);
   }
   if (product.masterStatus === 'unknown' || product.inventory.quality === 'insufficient' || product.inventory.status === 'unavailable' || product.inventory.status === 'negative') {
@@ -244,16 +244,16 @@ export function classifyInventoryProduct(
     return result('insufficient_data', reasons);
   }
   if (product.inventory.status === 'zero' && product.units90d > 0) {
-    return result('no_stock_with_demand', `GESI informa stock U1 igual a cero y se observaron ${product.units90d.toLocaleString('es-AR')} unidades vendidas en los últimos ${thresholds.demandWindowDays} días.`);
+    return result('no_stock_with_demand', `El sistema comercial informa stock igual a cero y se observaron ${product.units90d.toLocaleString('es-AR')} unidades vendidas en los últimos ${thresholds.demandWindowDays} días.`);
   }
   if (product.inventory.status === 'positive' && product.units90d <= 0) {
     if (!product.lastSaleAt) {
-      return result('new_or_insufficient_history', `GESI informa ${product.stock.toLocaleString('es-AR')} unidades disponibles, pero no hay una venta positiva fechada en el historial capturado. No se puede distinguir automáticamente un alta reciente de una falta de historia.`);
+      return result('new_or_insufficient_history', `Hay ${product.stock.toLocaleString('es-AR')} unidades disponibles, pero no existe una venta positiva fechada en el historial. No se puede distinguir automáticamente un alta reciente de una falta de historia.`);
     }
-    return result('stock_without_movement', `GESI informa ${product.stock.toLocaleString('es-AR')} unidades disponibles y no se observaron unidades vendidas en los últimos ${thresholds.demandWindowDays} días. La última venta visible es del ${product.lastSaleAt}.`);
+    return result('stock_without_movement', `Hay ${product.stock.toLocaleString('es-AR')} unidades disponibles y no se observaron unidades vendidas en los últimos ${thresholds.demandWindowDays} días. La última venta visible es del ${product.lastSaleAt}.`);
   }
   if (product.inventory.status === 'zero') {
-    return result('new_or_insufficient_history', `GESI informa stock U1 igual a cero y no hay demanda en los últimos ${thresholds.demandWindowDays} días. Sin fecha de alta ni más historia no corresponde asumir quiebre ni discontinuación.`);
+    return result('new_or_insufficient_history', `El stock informado es cero y no hay demanda en los últimos ${thresholds.demandWindowDays} días. Sin fecha de alta ni más historia no corresponde asumir quiebre ni discontinuación.`);
   }
   const coverage = product.stockCoverageMonths;
   if (coverage == null) {

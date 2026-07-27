@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, CircleDollarSign, Search } from 'lucide-react';
 import type { Client, Invoice } from '../../shared/models';
 import { decodeMultiFilter, encodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
+import { MIN_RECEIVABLE_DOCUMENT_AMOUNT, isActionableReceivableAmount } from '../../shared/receivables-policy';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
@@ -30,7 +31,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
   const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const paymentMethods = useMemo(() => [...new Set(activeClients.flatMap((client) => client.invoices.map((invoice) => invoice.paymentMethod || client.paymentMethod)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const invoices: InvoiceWithClient[] = activeClients.flatMap((client) => client.invoices
-    .filter((invoice) => invoice.outstanding > 0)
+    .filter((invoice) => isActionableReceivableAmount(invoice.outstanding))
     .map((invoice) => {
       const daysToDue = daysBetween(snapshotDate, invoice.dueAt);
       return { ...invoice, client, daysToDue, overdueDays: Math.max(0, -daysToDue) };
@@ -130,7 +131,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
       </section>
 
       <section className="data-card">
-        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
+        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)}.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table finance-table">
             <thead><tr><th aria-sort={ariaSort('status')}><SortButton label="Estado" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('invoice')}><SortButton label="Comprobante" direction={direction('invoice')} onClick={() => changeTableSort('invoice')} /></th><th aria-sort={ariaSort('issuedAt')}><SortButton label="Compra / emisión" direction={direction('issuedAt')} onClick={() => changeTableSort('issuedAt')} /></th><th aria-sort={ariaSort('dueAt')}><SortButton label="Vencimiento" direction={direction('dueAt')} onClick={() => changeTableSort('dueAt')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo factura" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('outstanding')}><SortButton label="Saldo pendiente" direction={direction('outstanding')} onClick={() => changeTableSort('outstanding')} /></th><th aria-sort={ariaSort('age')}><SortButton label="Antigüedad" direction={direction('age')} onClick={() => changeTableSort('age')} /></th><th aria-sort={ariaSort('behavior')}><SortButton label="Cuenta corriente / conducta" direction={direction('behavior')} onClick={() => changeTableSort('behavior')} /></th><th aria-sort={ariaSort('risk')}><SortButton label="Riesgo" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th /></tr></thead>

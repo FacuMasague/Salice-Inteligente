@@ -1,6 +1,7 @@
 import { Bookmark, Check, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { SavedView, SavedViewPurpose } from '../../shared/models';
+import { ActionDialog } from './ActionDialog';
 
 interface SavedViewsBarProps {
   viewKey: SavedView['viewKey'];
@@ -15,6 +16,7 @@ export function SavedViewsBar({ viewKey, filters, onApply, purpose = 'general', 
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [pendingRemove, setPendingRemove] = useState<SavedView | null>(null);
 
   const resolvedPurpose: SavedViewPurpose = purpose === 'general' && viewKey === 'non-buyers' ? 'client_recovery' : purpose;
   const isList = resolvedPurpose !== 'general';
@@ -49,9 +51,9 @@ export function SavedViewsBar({ viewKey, filters, onApply, purpose = 'general', 
   };
 
   const remove = async (view: SavedView) => {
-    if (!window.confirm(`¿Eliminar la ${noun} “${view.name}”?`)) return;
     const response = await fetch(`/api/saved-views/${view.id}`, { method: 'DELETE' });
     if (!response.ok) { setError('No se pudo eliminar la vista.'); return; }
+    setPendingRemove(null);
     reload();
   };
 
@@ -62,12 +64,13 @@ export function SavedViewsBar({ viewKey, filters, onApply, purpose = 'general', 
         <button className="saved-view-name" onClick={() => onApply(view.filters)}>{view.favorite && <Star size={12} fill="currentColor" />}{view.name}</button>
         <button title="Marcar como frecuente" aria-label={`Marcar ${view.name} como frecuente`} onClick={() => patch(view, { favorite: !view.favorite })}><Star size={13} fill={view.favorite ? 'currentColor' : 'none'} /></button>
         <button title="Actualizar con los filtros actuales" aria-label={`Actualizar ${view.name}`} onClick={() => patch(view, { filters })}><RefreshCw size={13} /></button>
-        <button title="Eliminar vista" aria-label={`Eliminar ${view.name}`} onClick={() => remove(view)}><Trash2 size={13} /></button>
+        <button title="Eliminar vista" aria-label={`Eliminar ${view.name}`} onClick={() => setPendingRemove(view)}><Trash2 size={13} /></button>
       </div>)}
       {!views.length && !creating && <span className="saved-view-empty">Todavía no guardaste combinaciones de filtros.</span>}
     </div>
     {creating ? <div className="saved-view-create"><input autoFocus value={name} maxLength={80} placeholder={`Nombre de la ${noun}`} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') save(); if (event.key === 'Escape') setCreating(false); }} /><button className="button primary compact" onClick={save}><Check size={14} /> Guardar</button><button className="button ghost compact" onClick={() => setCreating(false)}>Cancelar</button></div> : <button className="button ghost compact" onClick={() => setCreating(true)}><Bookmark size={14} /> Guardar {noun} actual</button>}
     {isList && <small className="saved-view-purpose-note">Guarda filtros reproducibles; no crea gestiones, mensajes ni estados.</small>}
     {error && <small className="saved-view-error">{error}</small>}
+    <ActionDialog open={pendingRemove != null} title={`Eliminar ${noun} guardada`} description={pendingRemove ? `“${pendingRemove.name}” dejará de estar disponible. Los datos y filtros actuales no se modificarán.` : ''} confirmLabel="Eliminar" onCancel={() => setPendingRemove(null)} onConfirm={() => { if (pendingRemove) void remove(pendingRemove); }} />
   </div>;
 }

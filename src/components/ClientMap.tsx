@@ -71,7 +71,7 @@ function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: Geocoded
     if (group.clients.length === 1) {
       const client = group.clients[0];
       return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} eventHandlers={{ click: () => onSelect(client) }}>
-        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo GESI'}</span>{client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación corregida · referencia aproximada de la localidad</span>}<span>Ventas 90d: {money(client.sales90d, true)} · riesgo de cobranza {client.collectionRisk}/100</span></div></Tooltip>
+        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo'}</span>{client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación corregida · referencia aproximada de la localidad</span>}<span>Ventas 90d: {money(client.sales90d, true)} · riesgo de cobranza {client.collectionRisk}/100</span></div></Tooltip>
       </Marker>;
     }
     return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>

@@ -12,6 +12,7 @@ import { compareProductsV2 } from '../../shared/product-vectors';
 import { VECTOR_GROUPS, VECTOR_LABELS, type Client, type Product, type ProductClientOpportunity, type ProductVectorCorrection, type ProductVectorCorrectionEvent, type RecommendationConfidence, type VectorKey } from '../../shared/models';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number, shortDate } from '../lib/format';
+import { ActionDialog } from './ActionDialog';
 
 const vectorKeys = Object.keys(VECTOR_LABELS) as VectorKey[];
 
@@ -33,7 +34,7 @@ interface ProductPanelProps {
   onDataChanged?: () => void | Promise<void>;
 }
 
-const useful = (value: string) => value && !value.toLocaleLowerCase('es').startsWith('sin ') ? value : 'No informado por GESI';
+const useful = (value: string) => value && !value.toLocaleLowerCase('es').startsWith('sin ') ? value : 'No informado por el sistema de origen';
 
 function confidenceLabel(value: number) {
   if (value >= 85) return 'Perfil sólido';
@@ -97,6 +98,8 @@ export function ProductPanel({
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [correctionError, setCorrectionError] = useState('');
+  const [correctionToRemove, setCorrectionToRemove] = useState<ProductVectorCorrection | null>(null);
+  const [revertReason, setRevertReason] = useState('');
 
   useEffect(() => {
     setShowAllBuyers(false);
@@ -165,7 +168,7 @@ export function ProductPanel({
     finally { setCorrectionBusy(false); }
   };
   const removeCorrection = async (correction: ProductVectorCorrection) => {
-    const reason = window.prompt(`Motivo para revertir la corrección de ${VECTOR_LABELS[correction.key]}:`)?.trim() ?? '';
+    const reason = revertReason.trim();
     if (reason.length < 5) { if (reason) setCorrectionError('Indicá un motivo de al menos 5 caracteres.'); return; }
     setCorrectionBusy(true); setCorrectionError('');
     try {
@@ -176,6 +179,8 @@ export function ProductPanel({
       const event = (await response.json()).event as ProductVectorCorrectionEvent;
       setCorrections((current) => current.filter((item) => item.key !== correction.key));
       setCorrectionHistory((current) => [event, ...current]);
+      setCorrectionToRemove(null);
+      setRevertReason('');
       await onDataChanged?.();
     } catch (error) { setCorrectionError(error instanceof Error ? error.message : 'No se pudo revertir.'); }
     finally { setCorrectionBusy(false); }
@@ -210,7 +215,7 @@ export function ProductPanel({
           <div className="product-office-summary"><Sparkles size={17} /><div><strong>Lectura rápida</strong><span>{plainSummary}</span><small>Resumen determinístico construido sólo con señales verificables del producto.</small></div>{onCompareProduct && <button className="button secondary product-add-comparison" onClick={() => onCompareProduct(product)}><GitCompareArrows size={15} />{comparisonSelectedIds.includes(product.id) || comparisonSelectedIds.length >= 4 ? `Abrir comparación${comparisonSelectedIds.length >= 4 ? ' (máximo 4)' : ''}` : 'Agregar a comparación'}</button>}</div>
           {!!product.description && product.description !== product.name && <p className="product-description">{product.description}</p>}
           <div className="product-metrics product-metrics-v3">
-            <div><span>Precio de referencia GESI</span><strong>{product.price > 0 ? money(product.price) : 'Sin dato'}</strong><small>{product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg · ${pricePositionLabel(product)}` : pricePositionLabel(product)}</small></div>
+            <div><span>Precio de referencia</span><strong>{product.price > 0 ? money(product.price) : 'Sin dato'}</strong><small>{product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg · ${pricePositionLabel(product)}` : pricePositionLabel(product)}</small></div>
             <div><span>Stock disponible</span><strong>{number(product.stock)} {product.unit.toLocaleLowerCase('es')}</strong><small>{product.stockCoverageMonths == null ? 'Cobertura no calculable' : `${product.stockCoverageMonths.toLocaleString('es-AR')} meses estimados`}</small></div>
             <div><span>Rotación mensual</span><strong>{number(product.monthlyUnits)} u.</strong><small>{number(product.units90d)} u. en 90 días</small></div>
             <div><span>Clientes compradores</span><strong>{number(product.clients90d)}</strong><small>únicos en los últimos 90 días</small></div>
@@ -238,7 +243,7 @@ export function ProductPanel({
           </article>
 
           <article className="data-card product-classification-card">
-            <div className="data-card-header"><div><span className="section-kicker"><Boxes size={14} /> Clasificación comercial</span><h2>Cómo está organizado en GESI</h2></div></div>
+            <div className="data-card-header"><div><span className="section-kicker"><Boxes size={14} /> Clasificación comercial</span><h2>Cómo está organizado en el sistema comercial</h2></div></div>
             <div className="product-classification-grid">
               <div><span>Marca</span><button className="entity-link" onClick={() => onOpenBrand?.(product.brand)}><strong>{useful(product.brand)}</strong></button></div><div><span>Línea</span><strong>{useful(product.line)}</strong></div>
               <div><span>Rubro / familia</span><button className="entity-link" onClick={() => onOpenFamily?.(product.family)}><strong>{useful(product.family)}</strong></button></div><div><span>Subrubro</span><strong>{useful(product.subcategory)}</strong></div>
@@ -253,7 +258,7 @@ export function ProductPanel({
             <div className="data-card-header"><div><span className="section-kicker"><Info size={14} /> Alcance de la información</span><h2>Qué se puede afirmar</h2></div></div>
             <ul>
               <li><CheckCircle2 size={14} /><span>Stock observado, precio de referencia y ventas detalladas disponibles.</span></li>
-              <li><Info size={14} /><span>GESI no informa una baja inequívoca: inactivo no se presenta automáticamente como discontinuado.</span></li>
+              <li><Info size={14} /><span>El sistema de origen no informa una baja inequívoca: inactivo no se presenta automáticamente como discontinuado.</span></li>
               <li><Info size={14} /><span>No se muestran margen, costo, proveedor ni reposición porque todavía no poseen una fuente validada.</span></li>
               <li><Info size={14} /><span>Las facturas sin detalle no pueden atribuirse a este producto ni a sus compradores.</span></li>
             </ul>
@@ -275,11 +280,11 @@ export function ProductPanel({
         </article>
 
         <details className="data-card product-technical-disclosure">
-          <summary><span><Sparkles size={17} /><strong>Ver análisis técnico</strong><small>{vectorKeys.length} vectores, evidencias, confianza y comparación auditable</small></span><ChevronRight size={18} /></summary>
+          <summary><span><Sparkles size={17} /><strong>Ver clasificación avanzada</strong><small>{vectorKeys.length} atributos, evidencias, confianza y comparación auditable</small></span><ChevronRight size={18} /></summary>
           <div className="product-technical-body">
             <article className="vector-card product-vector-v2">
               <div className="data-card-header"><div><span className="section-kicker"><Sparkles size={14} /> Perfil de afinidad</span><h2>{vectorKeys.length} dimensiones explicables</h2></div><div className="vector-confidence"><strong>{product.vectorMeta.confidence}%</strong><span>{confidenceLabel(product.vectorMeta.confidence)}</span></div></div>
-              <p className="section-description">Cada porcentaje requiere una señal verificable del nombre o de los maestros de GESI. Un cero significa ausencia de evidencia, no imposibilidad del atributo.</p>
+              <p className="section-description">Cada porcentaje requiere una señal verificable del nombre o de la clasificación del sistema comercial. Un cero significa ausencia de evidencia, no imposibilidad del atributo.</p>
               <div className="vector-list-v2">
                 {VECTOR_GROUPS.map((group) => {
                   const groupFeatures = group.keys.filter((key) => featureValues.has(key));
@@ -294,7 +299,7 @@ export function ProductPanel({
               <div className="data-card-header"><div><span className="section-kicker">Corrección controlada</span><h2>Ajustes humanos auditables</h2><p>La regla automática permanece intacta. Este valor local se aplica después de cargar los datos y sobrevive a las actualizaciones.</p></div></div>
               <div className="vector-correction-form"><label><span>Dimensión</span><select value={correctionKey} onChange={(event) => { const key = event.target.value as VectorKey; setCorrectionKey(key); setCorrectionValue(corrections.find((item) => item.key === key)?.value ?? product.vector[key]); }}>{vectorKeys.map((key) => <option key={key} value={key}>{VECTOR_LABELS[key]}</option>)}</select></label><label><span>Valor 0–100</span><input type="number" min="0" max="100" step="1" value={correctionValue} onChange={(event) => setCorrectionValue(Math.max(0, Math.min(100, Number(event.target.value))))} /></label><label className="vector-correction-reason"><span>Motivo obligatorio</span><textarea maxLength={1000} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Qué se verificó y con qué evidencia…" /></label><button className="button primary" disabled={correctionBusy} onClick={saveCorrection}>Guardar corrección</button></div>
               {correctionError && <p className="form-error">{correctionError}</p>}
-              <div className="vector-correction-list">{corrections.map((correction) => <div key={correction.key}><span><strong>{VECTOR_LABELS[correction.key]} · {correction.value}%</strong><small>{correction.reason} · {correction.updatedBy}</small></span><button className="icon-button" disabled={correctionBusy} aria-label={`Revertir corrección de ${VECTOR_LABELS[correction.key]}`} onClick={() => removeCorrection(correction)}><Trash2 size={15} /></button></div>)}{!corrections.length && <p>Sin correcciones humanas activas.</p>}</div>
+              <div className="vector-correction-list">{corrections.map((correction) => <div key={correction.key}><span><strong>{VECTOR_LABELS[correction.key]} · {correction.value}%</strong><small>{correction.reason} · {correction.updatedBy}</small></span><button className="icon-button" disabled={correctionBusy} aria-label={`Revertir corrección de ${VECTOR_LABELS[correction.key]}`} onClick={() => { setCorrectionToRemove(correction); setRevertReason(''); }}><Trash2 size={15} /></button></div>)}{!corrections.length && <p>Sin correcciones humanas activas.</p>}</div>
               {correctionHistory.length > 0 && <details><summary>Ver historial ({correctionHistory.length})</summary><ul>{correctionHistory.slice(0, 20).map((event) => <li key={event.id}><strong>{event.eventType === 'set' ? 'Ajuste' : 'Reversión'} · {VECTOR_LABELS[event.key]} · {event.value}%</strong><span>{event.reason} · {new Date(event.updatedAt).toLocaleString('es-AR')}</span></li>)}</ul></details>}
             </article>
 
@@ -305,6 +310,7 @@ export function ProductPanel({
       </div>
       {showAllBuyers && <div className="product-buyers-modal-layer"><button className="product-buyers-modal-backdrop" aria-label="Cerrar clientes compradores" onClick={() => setShowAllBuyers(false)} /><section className="data-card product-buyers-modal" role="dialog" aria-modal="true" aria-label={`Clientes compradores de ${product.name}`}><header><div><span className="section-kicker"><Users size={14} /> Clientes compradores · 90 días</span><h2>{product.name}</h2><p>Lista completa ordenada por venta atribuida.</p></div><button className="icon-button" aria-label="Cerrar lista de compradores" onClick={() => setShowAllBuyers(false)}><X size={18} /></button></header><div className="product-buyers-modal-tools"><label className="inline-search"><Search size={15} /><input value={buyerQuery} onChange={(event) => setBuyerQuery(event.target.value)} placeholder="Buscar cliente o vendedor…" /></label><span className="count-badge">{number(visibleBuyers.length)} de {number(commercial.buyers.length)}</span></div><div className="product-buyer-list product-buyer-list-full">{visibleBuyers.map((buyer) => <button key={buyer.client.id} onClick={() => { setShowAllBuyers(false); onOpenClient?.(buyer.client); }}><div><strong>{clientPrimaryName(buyer.client)}</strong><small>{clientSecondaryName(buyer.client) ? `${clientSecondaryName(buyer.client)} · ` : ''}{buyer.client.seller || 'Sin vendedor'} · última compra {shortDate(buyer.lastPurchaseAt)}</small></div><span><strong>{money(buyer.sales, true)}</strong><small>{number(buyer.units)} u. · {buyer.purchaseDays} días de compra</small></span><ChevronRight size={15} /></button>)}</div>{!visibleBuyers.length && <div className="product-inline-empty"><Info size={18} /><span>No hay compradores que coincidan con la búsqueda.</span></div>}<footer>Fuente: ventas con detalle disponible. Las facturas sin detalle no se atribuyen a un producto.</footer></section></div>}
       {showAllClientOpportunities && <div className="product-buyers-modal-layer"><button className="product-buyers-modal-backdrop" aria-label="Cerrar clientes sugeridos" onClick={() => setShowAllClientOpportunities(false)} /><section className="data-card product-buyers-modal product-client-opportunities-modal" role="dialog" aria-modal="true" aria-label={`Clientes para ofrecer ${product.name}`}><header><div><span className="section-kicker"><UserPlus size={14} /> Clientes para ofrecer</span><h2>{product.name}</h2><p>Ordenados por afinidad con el mix y adopción entre cuentas comparables.</p></div><button className="icon-button" aria-label="Cerrar clientes sugeridos" onClick={() => setShowAllClientOpportunities(false)}><X size={18} /></button></header><div className="product-buyers-modal-tools"><label className="inline-search"><Search size={15} /><input value={clientOpportunityQuery} onChange={(event) => setClientOpportunityQuery(event.target.value)} placeholder="Buscar cliente, vendedor o localidad…" /></label><span className="count-badge">{number(visibleClientOpportunities.length)} de {number(clientOpportunities.length)}</span></div><div className="product-opportunity-client-list product-opportunity-client-list-full">{visibleClientOpportunities.map((item) => <button key={item.client.id} onClick={() => { setShowAllClientOpportunities(false); openOpportunityClient(item.client.id); }}><div><strong>{item.client.name}</strong>{item.client.tradeName && item.client.tradeName !== item.client.name && <small>{item.client.tradeName}</small>}<p>{item.reason} {item.affinityExplanation}</p></div><span><em className={`opportunity-confidence ${item.confidence}`}>{opportunityConfidenceLabels[item.confidence]}</em><strong>{item.score} pts.</strong><small>{item.client.seller || 'Sin vendedor'} · {item.client.locality || 'Sin localidad'} · oportunidad {item.client.commercialOpportunity}/100</small></span><ChevronRight size={15} /></button>)}</div>{!visibleClientOpportunities.length && <div className="product-inline-empty"><Info size={18} /><span>No hay clientes que coincidan con la búsqueda.</span></div>}<footer>Fuente: datos comerciales disponibles. No crea tareas ni registra que una oferta haya ocurrido; la confianza describe la evidencia disponible, no una probabilidad de venta.</footer></section></div>}
+      <ActionDialog open={correctionToRemove != null} title="Revertir corrección humana" description={correctionToRemove ? `Se quitará el ajuste de “${VECTOR_LABELS[correctionToRemove.key]}”. La reversión quedará registrada en el historial.` : ''} confirmLabel="Revertir corrección" busy={correctionBusy} disabled={revertReason.trim().length < 5} onCancel={() => { setCorrectionToRemove(null); setRevertReason(''); }} onConfirm={() => { if (correctionToRemove) void removeCorrection(correctionToRemove); }}><label><span>Motivo obligatorio</span><textarea autoFocus maxLength={1000} value={revertReason} onChange={(event) => setRevertReason(event.target.value)} placeholder="Qué se verificó y por qué se revierte…" /></label></ActionDialog>
     </section>
   );
 }

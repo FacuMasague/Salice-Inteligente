@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.10.0';
+export const APP_VERSION = '0.10.7';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -1103,6 +1103,8 @@ export interface PendingBalanceReportMeta {
     excludedSellerGroup: string;
     visibleSellers: string[];
     balanceRule: string;
+    minimumDocumentOutstanding: number;
+    excludedClients: string[];
   };
 }
 

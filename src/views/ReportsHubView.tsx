@@ -74,7 +74,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'commercial-sales',
     group: 'sales',
-    name: 'Ventas · Comercial',
+    name: 'Ventas y composición',
     description: '¿Cuánto se vendió y cómo se compone el negocio por marca y producto?',
     endpoint: '/api/reports/commercial-sales/meta',
     icon: ShoppingBasket,
@@ -92,7 +92,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'pending-balances',
     group: 'portfolio',
-    name: 'Saldos Pendientes',
+    name: 'Saldos pendientes',
     description: '¿Qué saldo está abierto o vencido y cómo se distribuye por vendedor y cliente?',
     endpoint: '/api/reports/pending-balances/meta',
     icon: WalletCards,
@@ -110,7 +110,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'mars',
     group: 'brands',
-    name: 'Reporte Mars',
+    name: 'Mars · desempeño comercial',
     description: '¿Cómo evolucionan volumen, cobertura y marcas dentro de los períodos Mars?',
     endpoint: '/api/reports/mars/meta',
     icon: PawPrint,
@@ -119,7 +119,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'nutripet',
     group: 'brands',
-    name: 'Reporte NutriPet',
+    name: 'NutriPet · desempeño comercial',
     description: '¿Cómo evolucionan volumen, cobertura, marcas y productos NutriPet?',
     endpoint: '/api/reports/nutripet/meta',
     icon: ShoppingBag,
@@ -128,7 +128,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'baires',
     group: 'brands',
-    name: 'Reporte Baires',
+    name: 'Baires · desempeño comercial',
     description: '¿Cómo se comportan Baires Especializado y Masivo por volumen y cobertura?',
     endpoint: '/api/reports/baires/meta',
     icon: Package,
@@ -185,7 +185,7 @@ function QuickAccess({
           <span><strong>{report.name}</strong>{openedAt && <small>Abierto el {formatDate(openedAt, true)}</small>}</span>
           <ArrowRight size={15} />
         </button>;
-      })}</div> : <p className="report-hub-empty">{empty}</p>}
+      })}</div> : <div className="report-hub-empty"><Star size={17} /><span>{empty}</span><button onClick={() => onOpen('reports')}>Abrir Reporte General <ArrowRight size={13} /></button></div>}
     </section>
   );
 }

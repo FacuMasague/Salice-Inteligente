@@ -143,6 +143,40 @@ describe('funciones productivas de IA v0.9.x', () => {
     expect(executiveValidation.valid).toBe(false);
     store.close();
   });
+
+  it('entrega el detalle de cada señal comercial y bloquea referencias cruzadas entre clientes', async () => {
+    const store = await testStore();
+    const snapshot = createDemoSnapshot();
+    const definition = createAiFunctionDefinitions({ store, snapshotAt: snapshot.meta.generatedAt })
+      .find((item) => item.key === 'commercial_inbox_explanation')!;
+    const jobs = await definition.buildJobs(snapshot);
+    expect(jobs.length).toBeGreaterThan(0);
+    const job = jobs.find((item) => (item.evidence as { clients: unknown[] }).clients.length > 1)!;
+    const clients = (job.evidence as {
+      clients: Array<{
+        clientId: number;
+        signals: Array<{ id: string; detail: string }>;
+        metrics: Array<{ id: string }>;
+      }>;
+    }).clients;
+    expect(clients.some((client) => client.signals.some((signal) => signal.detail.length > 0))).toBe(true);
+
+    const output = {
+      items: clients.map((client, index) => ({
+        clientId: client.clientId,
+        primaryReason: 'Motivo concreto',
+        secondaryReasons: [],
+        explanation: 'Lectura comercial del caso.',
+        evidenceIds: [index === 0 ? clients[1].metrics[0].id : client.metrics[0].id],
+        commercialOpportunity: '',
+        caution: 'Confirmar el contexto antes de avanzar.',
+      })),
+    };
+    const validation = definition.validateOutput!(output, job, snapshot);
+    expect(validation.valid).toBe(false);
+    if (!validation.valid) expect(validation.error).toContain('evidencia de otro cliente');
+    store.close();
+  });
 });
 
 const paths = resolveActiveDataPaths();
