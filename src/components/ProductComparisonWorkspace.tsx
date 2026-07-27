@@ -127,7 +127,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'sales', title: 'Ventas y compradores', description: 'Misma ventana móvil de 90 días del snapshot activo.', rows: [
+      id: 'sales', title: 'Ventas y compradores', description: 'Misma ventana móvil de 90 días hasta la última actualización.', rows: [
         { id: 'sales90', label: 'Venta atribuida · 90 días', values: selected.map((product) => value(money(product.sales90d, true), String(product.sales90d), product.sales90d)), comparable: true, advantage: 'max' },
         { id: 'buyers', label: 'Clientes compradores', values: selected.map((product) => value(number(product.clients90d), String(product.clients90d), product.clients90d)), comparable: true, advantage: 'max' },
         { id: 'last-sale', label: 'Última venta observada', values: selected.map((product) => value(product.lastSaleAt ? shortDate(product.lastSaleAt) : 'Sin detalle', product.lastSaleAt || '∅')) },

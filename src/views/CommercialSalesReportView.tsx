@@ -249,6 +249,6 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
 
     <section className="data-card commercial-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBasket size={14} /> Detalle comercial</span><h2>Total de kilos y precio promedio por marca</h2><p>La flecha despliega productos; cada nombre abre su ficha y “Ver ventas” continúa con el mismo período.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable report={report} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} onExploreProduct={explore} /></section>
 
-    <section className="commercial-source-note"><Database size={16} /><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos disponibles · cobertura {meta.coverageFrom} a {meta.maxDate} · empresa 3, sucursales 3/6 y razones sociales Salice/MDQ Alarcón. Se excluyen movimientos internos definidos en el reporte de referencia.</span></div></section>
+    <details className="business-report-source-note"><summary><Database size={15} /> Información técnica del reporte</summary><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos disponibles · cobertura {meta.coverageFrom} a {meta.maxDate} · empresa 3, sucursales 3/6 y razones sociales Salice/MDQ Alarcón. Se excluyen movimientos internos definidos para este reporte.</span></div></details>
   </div>;
 }

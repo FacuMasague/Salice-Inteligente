@@ -35,7 +35,15 @@ describeWithDatabase('Cuentas no compradoras construido desde GESI', () => {
     expect(report?.accounts.filter((row) => row.isNonBuyer30)).toHaveLength(report?.accountsSummary.nonBuyers30 ?? 0);
     expect(report?.brands.filter((row) => row.isNonBuyer30)).toHaveLength(report?.brandsSummary.nonBuyers30 ?? 0);
     expect(report?.accountSellers.reduce((sum, row) => sum + row.nonBuyers30, 0)).toBe(report?.accountsSummary.nonBuyers30);
-    expect(report?.brandSellers.every((row) => row.nonBuyers30 <= (report?.brandsSummary.nonBuyers30 ?? 0))).toBe(true);
+    // Una misma marca puede quedar no compradora para más de un vendedor aunque
+    // tenga compra reciente en el total de la compañía. Por eso cada fila se
+    // reconcilia con su propio universo y no con el total global de marcas.
+    expect(report?.brandSellers.every((row) => (
+      row.nonBuyers30 >= 0
+      && (row.universe90 > 0
+        ? Math.abs((row.rate ?? 0) - (row.nonBuyers30 / row.universe90 * 100)) < 1e-9
+        : row.rate == null)
+    ))).toBe(true);
     expect(report?.brandSellers.map((row) => row.nonBuyers30)).toEqual(
       [...(report?.brandSellers ?? [])].map((row) => row.nonBuyers30).sort((left, right) => right - left),
     );

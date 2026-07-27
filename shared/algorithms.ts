@@ -58,7 +58,9 @@ export function groupDeliveryInvoices(invoices: DeliveryInvoice[], clients: Clie
       clientName: client?.tradeName || client?.name || `Cliente ${clientId}`,
       address: preferredAddress || 'Sin domicilio informado',
       locality: preferredLocality,
-      coordinates: client?.coordinates ?? null,
+      // A locality centroid is useful for display, but never safe enough for
+      // navigation or sequencing a real delivery.
+      coordinates: client?.locationPrecision === 'locality' ? null : client?.coordinates ?? null,
       invoices: [...groupedInvoices].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt) || a.number.localeCompare(b.number)),
       amount: Math.round(groupedInvoices.reduce((sum, invoice) => sum + invoice.amount, 0) * 100) / 100,
     };

@@ -6,7 +6,7 @@ import { ClientMap } from '../components/ClientMap';
 import { ClientPanel } from '../components/ClientPanel';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { money, number } from '../lib/format';
+import { money, number, zoneLabel } from '../lib/format';
 
 interface MapDashboardProps {
   clients: Client[];
@@ -44,6 +44,10 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
     return matchesMultiFilter(regional ? 'regional' : 'outside', scope);
   });
   const zones = useMemo(() => [...new Set(scopedClients.map((client) => client.zone))], [scopedClients]);
+  const zoneOptions = useMemo(() => zones.map((value) => {
+    const localities = [...new Set(scopedClients.filter((client) => client.zone === value).map((client) => client.locality).filter(Boolean))];
+    return { value, label: zoneLabel(value, localities.length === 1 ? localities[0] : '') };
+  }), [scopedClients, zones]);
   const filtered = scopedClients.filter((client) => matchesMultiFilter(client.zone, zone)
     && matchesMultiFilter(client.health, health)
     && matchesMultiFilter(client.portfolioStatus, portfolioStatus)
@@ -70,7 +74,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   return (
     <div className="map-dashboard">
       <div className="kpi-strip" data-tour="map-kpis">
-        <article className="kpi-card"><div className="kpi-icon green"><Users size={20} /></div><div><span>Activos en GESI</span><strong>{number(activeClients.length)}</strong><small>{number(activeClients.filter((client) => client.portfolioStatus === 'confirmed').length)} confirmados en sucursal · {number(activeClients.filter((client) => client.portfolioStatus === 'review').length)} a revisar</small></div></article>
+        <article className="kpi-card"><div className="kpi-icon green"><Users size={20} /></div><div><span>Clientes activos</span><strong>{number(activeClients.length)}</strong><small>{number(activeClients.filter((client) => client.portfolioStatus === 'confirmed').length)} confirmados en sucursal · {number(activeClients.filter((client) => client.portfolioStatus === 'review').length)} a revisar</small></div></article>
         <article className="kpi-card"><div className="kpi-icon ochre"><TrendingUp size={20} /></div><div><span>Facturación · 90 días</span><strong>{money(portfolio, true)}</strong><small className={portfolioDelta >= 0 ? 'positive' : 'negative'}>{portfolioDelta >= 0 ? '↑' : '↓'} {Math.abs(portfolioDelta)}% vs. trimestre anterior</small></div></article>
         <article className="kpi-card"><div className="kpi-icon blue"><WalletCards size={20} /></div><div><span>Saldo neto en cuenta corriente</span><strong>{money(debt, true)}</strong><small>{number(activeClients.filter((client) => client.balance > 0).length)} clientes activos con saldo deudor</small></div></article>
         <article className="kpi-card"><div className="kpi-icon red"><AlertCircle size={20} /></div><div><span>Riesgo de cobranza alto</span><strong>{critical}</strong><small>puntaje 55 o superior · revisar antes de vender</small></div></article>
@@ -84,15 +88,15 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
             <div className="map-heading"><div className="live-dot" /><span><strong>{number(filtered.length)}</strong> {filtered.length === 1 ? 'cliente visible' : 'clientes visibles'}</span></div>
             <div className="filter-group" data-tour="map-filters">
               <MultiSelectFilter label="Alcance" value={scope} options={[{ value: 'regional', label: 'Mar del Plata y zona' }, { value: 'outside', label: 'Resto de Argentina' }]} onChange={(value) => { setScope(value); setZone(''); onSelect(null); }} />
-              <MultiSelectFilter label="Estado GESI" value={clientVisibility} options={[{ value: 'active', label: 'Activos' }, { value: 'inactive', label: 'Inactivos' }]} onChange={(value) => { onClientVisibilityChange(value); setZone(''); onSelect(null); }} />
+              <MultiSelectFilter label="Estado comercial" value={clientVisibility} options={[{ value: 'active', label: 'Activos' }, { value: 'inactive', label: 'Inactivos' }]} onChange={(value) => { onClientVisibilityChange(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Cartera Salice" value={portfolioStatus} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolioStatus(value); onSelect(null); }} />
-              <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original de GESI' }, { value: 'corrected', label: 'Corregida automáticamente' }]} onChange={(value) => { setLocationStatus(value); onSelect(null); }} />
-              <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />
+              <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original del sistema' }, { value: 'corrected', label: 'Corregida automáticamente' }]} onChange={(value) => { setLocationStatus(value); onSelect(null); }} />
+              <MultiSelectFilter label="Zona" value={zone} options={zoneOptions} onChange={setZone} />
               <MultiSelectFilter label="Riesgo" value={health} options={[{ value: 'healthy', label: 'Riesgo bajo' }, { value: 'attention', label: 'Atención' }, { value: 'critical', label: 'Riesgo alto' }]} onChange={setHealth} />
             </div>
           </div>
           <ClientMap clients={filtered} selectedId={selected?.id ?? null} onSelect={onSelect} />
-          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Inactivo GESI</span>}<span>Los grupos se separan al acercar el mapa</span></div>
+          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Cliente inactivo</span>}<span>Los grupos se separan al acercar el mapa</span></div>
         </section>
         {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
       </div>

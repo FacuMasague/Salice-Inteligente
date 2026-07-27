@@ -60,6 +60,17 @@ describe('motor algorítmico', () => {
     expect(plan.stops.map((stop) => stop.clientId)).toEqual(selected);
   });
 
+  it('no usa el centro aproximado de una localidad como parada de reparto', () => {
+    const target = snapshot.clients[0];
+    const clients = snapshot.clients.map((client) => client.id === target.id
+      ? { ...client, locationPrecision: 'locality' as const, locationStatus: 'corrected' as const }
+      : client);
+    const groups = groupDeliveryInvoices(snapshot.logistics.invoices, clients);
+    expect(groups.find((stop) => stop.clientId === target.id)?.coordinates).toBeNull();
+    const invoices = snapshot.logistics.invoices.filter((invoice) => invoice.clientId === target.id);
+    expect(optimizeDeliveryRoute([target.id], invoices, clients).stops).toEqual([]);
+  });
+
   it('usa gasto y compatibilidad de especie para evitar recomendaciones incoherentes', () => {
     const base = snapshot.clients[0];
     const dogOnly = { ...base, purchases: base.purchases.filter((purchase) => ['P001', 'P002', 'P003', 'P011'].includes(purchase.productId)) };

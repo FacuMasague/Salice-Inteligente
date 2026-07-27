@@ -167,17 +167,20 @@ function createPendingBalancesDatabase(path: string) {
   const values: Record<string, string> = {
     source_system: 'GESI API · fixture sintético sin datos reales',
     captured_at: '2026-07-20T13:05:02.525Z',
-    as_of_date: '2026-07-20', sales_from: '2026-06-21', client_count: '2', document_count: '3',
+    as_of_date: '2026-07-20', sales_from: '2026-06-21', client_count: '3', document_count: '5',
     sellers: JSON.stringify(['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Ignacio Carea', 'Julieta Errecart']),
   };
   for (const [key, value] of Object.entries(values)) meta.run(key, value);
   const client = database.prepare('INSERT INTO clients VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  client.run(1, 'Cliente sintético vencido', '', 'Edgardo Larrea', 'CTA CTE 30 DIAS', 1, 150, 100, '2026-07-01', 19, 2, 1, 60, 30, 200);
-  client.run(2, 'Cliente sintético vigente', '', 'Ana Ottaviano', 'CONTADO', 1, 80, 0, '2026-08-01', 0, 1, 0, 30, 30, 120);
+  client.run(1, 'Cliente sintético vencido', '', 'Edgardo Larrea', 'CTA CTE 30 DIAS', 1, 15_500, 10_500, '2026-07-01', 19, 3, 2, 90, 30, 20_000);
+  client.run(2, 'Cliente sintético vigente', '', 'Ana Ottaviano', 'CONTADO', 1, 8_000, 0, '2026-08-01', 0, 1, 0, 30, 30, 12_000);
+  client.run(3, 'Consumidor Final', '', 'Edgardo Larrea', 'CONTADO', 1, 50_000, 50_000, '2026-07-01', 19, 1, 1, 30, 30, 50_000);
   const document = database.prepare('INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  document.run('synthetic:1', 1, 'FAC A 0001-00000001', '2026-06-01', '2026-07-01', 100, 30, 'CTA CTE 30 DIAS', 'overdue');
-  document.run('synthetic:2', 1, 'FAC A 0001-00000002', '2026-07-15', '2026-08-14', 50, 30, 'CTA CTE 30 DIAS', 'open');
-  document.run('synthetic:3', 2, 'FAC A 0001-00000003', '2026-07-02', '2026-08-01', 80, 30, 'CONTADO', 'open');
+  document.run('synthetic:1', 1, 'FAC A 0001-00000001', '2026-06-01', '2026-07-01', 10_000, 30, 'CTA CTE 30 DIAS', 'overdue');
+  document.run('synthetic:2', 1, 'FAC A 0001-00000002', '2026-07-15', '2026-08-14', 5_000, 30, 'CTA CTE 30 DIAS', 'open');
+  document.run('synthetic:tiny', 1, 'FAC A 0001-00000004', '2026-06-01', '2026-07-01', 500, 30, 'CTA CTE 30 DIAS', 'overdue');
+  document.run('synthetic:3', 2, 'FAC A 0001-00000003', '2026-07-02', '2026-08-01', 8_000, 30, 'CONTADO', 'open');
+  document.run('synthetic:excluded', 3, 'FAC A 0001-00000005', '2026-06-01', '2026-07-01', 50_000, 30, 'CONTADO', 'overdue');
   database.close();
 }
 

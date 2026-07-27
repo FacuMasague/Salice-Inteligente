@@ -49,6 +49,12 @@ const noteTypeLabels: Record<CommercialActivityType, string> = {
   offer: 'Oferta conversada',
 };
 const noteTypes: CommercialActivityType[] = ['note', 'visit', 'call', 'offer'];
+const attentionTypeLabels = {
+  collection: 'Cobranza y compromisos',
+  commercial: 'Actividad comercial',
+  blocked: 'Bloqueo de ventas',
+  office: 'Notas de oficina',
+} as const;
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 
 function localDateTime() {
@@ -62,6 +68,33 @@ function sourceIcon(source: CommercialInboxSource) {
   if (source === 'reminder') return <CalendarDays size={14} />;
   if (source === 'note') return <MessageSquareText size={14} />;
   return <Sparkles size={14} />;
+}
+
+function attentionTypes(entry: CommercialInboxEntry) {
+  const values = new Set<keyof typeof attentionTypeLabels>();
+  if (entry.signals.some((item) => [
+    'collection_risk',
+    'promise_overdue',
+    'promise_due',
+    'follow_up_overdue',
+    'follow_up_due',
+    'legacy_reminder',
+  ].includes(item.kind))) values.add('collection');
+  if (entry.signals.some((item) => [
+    'sales_decline',
+    'commercial_opportunity',
+    'suggested_review',
+  ].includes(item.kind))) values.add('commercial');
+  if (entry.signals.some((item) => item.kind === 'sales_blocked')) values.add('blocked');
+  if (entry.notes.length) values.add('office');
+  return [...values];
+}
+
+function reviewPriorityLabel(value: number) {
+  if (value >= 80) return 'Muy alta';
+  if (value >= 60) return 'Alta';
+  if (value >= 40) return 'Media';
+  return 'Baja';
 }
 
 interface AgendaViewProps {
@@ -91,6 +124,7 @@ export function AgendaView({
   const [date, setDate] = useState(today);
   const [seller, setSeller] = useState('');
   const [source, setSource] = useState('');
+  const [attentionType, setAttentionType] = useState('');
   const [query, setQuery] = useState('');
   const [data, setData] = useState<CommercialInboxPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,21 +161,23 @@ export function AgendaView({
   const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const visibleEntries = useMemo(() => (data?.entries ?? []).filter((entry) => {
     if (source && !entry.sources.some((value) => matchesMultiFilter(value, source))) return false;
+    if (attentionType && !attentionTypes(entry).some((value) => matchesMultiFilter(value, attentionType))) return false;
     if (normalizedQuery && !`${entry.clientName} ${entry.seller} ${entry.locality} ${entry.signals.map((item) => `${item.label} ${item.detail}`).join(' ')}`
       .toLocaleLowerCase('es').includes(normalizedQuery)) return false;
     return true;
-  }), [data, normalizedQuery, source]);
+  }), [attentionType, data, normalizedQuery, source]);
   const selectedEntry = visibleEntries.find((entry) => entry.clientId === selectedId) ?? visibleEntries[0] ?? null;
   const selectedClient = selectedEntry ? clients.find((client) => client.id === selectedEntry.clientId) ?? null : null;
   const selectedOpportunityEligible = selectedClient ? isCommercialOpportunityEligible(selectedClient) : false;
   const weekLabel = data
     ? `${shortDate(data.weekStart)} al ${shortDate(data.weekEnd)}`
     : 'semana seleccionada';
-  const savedFilters = { date, seller, source, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
+  const savedFilters = { date, seller, source, attentionType, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
   const applySaved = (saved: Record<string, string>) => {
     setDate(saved.date || today());
     setSeller(saved.seller || '');
     setSource(saved.source || '');
+    setAttentionType(saved.attentionType || '');
     setQuery(saved.query || '');
     setSelectedId(Number(saved.selectedClientId) || null);
   };
@@ -179,13 +215,20 @@ export function AgendaView({
           onChange={setSource}
           allLabel="Todos"
         />
+        <MultiSelectFilter
+          label="Tipo de atención"
+          value={attentionType}
+          options={Object.entries(attentionTypeLabels).map(([value, label]) => ({ value, label }))}
+          onChange={setAttentionType}
+          allLabel="Todos"
+        />
         <label className="inline-search"><FileText size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, localidad o motivo…" /></label>
         <span>{multiFilterLabel(seller, 'Todos los vendedores')}</span>
       </section>
 
       <div className="agenda-layout">
         <section className="data-card agenda-list-card">
-          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Lectura semanal</span><h2>Clientes para revisar</h2><p>Orden descendente por prioridad P. C, O y P permanecen separados.</p></div><span className="count-badge">{visibleEntries.length}</span></div>
+          <div className="data-card-header"><div><span className="section-kicker"><CalendarDays size={14} /> Lectura semanal</span><h2>Clientes para revisar</h2><p>Orden descendente por prioridad de revisión. Riesgo de cobranza, oportunidad y prioridad permanecen separados.</p></div><span className="count-badge">{visibleEntries.length}</span></div>
           <div className="agenda-entry-list">
             {loading && <div className="agenda-empty"><RefreshCw size={22} /><strong>Cargando bandeja…</strong></div>}
             {error && <div className="agenda-empty error"><AlertTriangle size={22} /><strong>{error}</strong><button className="button secondary" onClick={reload}>Reintentar</button></div>}
@@ -202,7 +245,7 @@ export function AgendaView({
                   <small>{entry.seller} · {entry.locality}</small>
                   <div className="commercial-inbox-source-list">{entry.sources.map((value) => <span key={value} className={value}>{sourceIcon(value)} {sourceLabels[value]}</span>)}</div>
                 </div>
-                <div className="agenda-entry-score"><strong>P{entry.visitPriority}</strong><span>C{entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · O${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
+                <div className="agenda-entry-score"><strong>{reviewPriorityLabel(entry.visitPriority)}</strong><span>Prioridad {entry.visitPriority}/100 · Riesgo {entry.collectionRisk}{!entry.salesBlocked && entry.sales90d > 0 ? ` · Oportunidad ${entry.commercialOpportunity}` : ''}</span><em>{entry.signals.length} motivo{entry.signals.length === 1 ? '' : 's'}</em></div>
               </button>;
             })}
           </div>
@@ -216,7 +259,7 @@ export function AgendaView({
               <button className="icon-button" aria-label="Abrir ficha completa" onClick={() => onOpen(selectedClient)}><ChevronRight size={18} /></button>
             </header>
 
-            <div className="agenda-client-metrics"><article><span>Riesgo</span><strong>C{selectedEntry.collectionRisk}</strong><small>{money(selectedEntry.overdueOutstanding, true)} vencido</small></article>{selectedOpportunityEligible && <article><span>Oportunidad</span><strong>O{selectedEntry.commercialOpportunity}</strong><small>{selectedEntry.salesDelta >= 0 ? '+' : ''}{selectedEntry.salesDelta}% ventas</small></article>}<article><span>Prioridad combinada</span><strong>P{selectedEntry.visitPriority}</strong><small>no es una planificación</small></article></div>
+            <div className="agenda-client-metrics"><article><span>Riesgo de cobranza</span><strong>{selectedEntry.collectionRisk}/100</strong><small>{money(selectedEntry.overdueOutstanding, true)} vencido</small></article>{selectedOpportunityEligible && <article><span>Oportunidad comercial</span><strong>{selectedEntry.commercialOpportunity}/100</strong><small>{selectedEntry.salesDelta >= 0 ? '+' : ''}{selectedEntry.salesDelta}% ventas</small></article>}<article><span>Prioridad de revisión</span><strong>{selectedEntry.visitPriority}/100</strong><small>no es una planificación</small></article></div>
 
             <section className="commercial-inbox-reasons">
               <div className="section-title-row"><div><span className="section-kicker"><ClipboardList size={14} /> Motivos visibles</span><h3>Por qué aparece en la bandeja</h3></div><span className="count-badge">{selectedEntry.signals.length}</span></div>
@@ -240,7 +283,7 @@ export function AgendaView({
 
             <footer className="agenda-detail-actions">
               {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir cuentas por cobrar</button>}
-              <button className="button secondary" disabled={!selectedClient.coordinates} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> Ver en rutas</button>
+              <button className="button secondary" disabled={!selectedClient.coordinates || selectedClient.locationPrecision === 'locality'} title={selectedClient.locationPrecision === 'locality' ? 'La ubicación debe verificarse antes de usarla en una ruta' : undefined} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> {selectedClient.locationPrecision === 'locality' ? 'Ubicación por verificar' : 'Ver en rutas'}</button>
               <button className="button primary large" onClick={() => setNoteOpen(true)}><MessageSquareText size={16} /> Agregar nota</button>
             </footer>
           </>}

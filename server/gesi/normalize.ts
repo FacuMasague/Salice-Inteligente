@@ -16,6 +16,10 @@ import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit
 import { applyClientLocationQuality } from '../../shared/client-location.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
+import {
+  isActionableReceivableAmount,
+  isExcludedReceivableClient,
+} from '../../shared/receivables-policy.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
 
 const number = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -437,7 +441,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const typeID = number(row.tipoDeClienteID);
       const channel = channelLabels.get(channelID) || (channelID ? `Canal ${channelID}` : 'Sin canal');
       const openInvoices: Invoice[] = (pendingByClient.get(id) ?? [])
-        .filter((document) => number(document.saldoPendiente) > .01 && date(document.fechaDePrimerVencimiento))
+        .filter((document) => isActionableReceivableAmount(document.saldoPendiente) && date(document.fechaDePrimerVencimiento))
         .map((document) => {
           const dueAt = date(document.fechaDePrimerVencimiento);
           return {
@@ -552,7 +556,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         invoices: [...openInvoices.sort((a, b) => a.dueAt.localeCompare(b.dueAt)), ...paidInvoices],
         note: text(row.notas),
       };
-    });
+    }).filter((client) => !isExcludedReceivableClient(client.name, client.tradeName));
   const locationQuality = applyClientLocationQuality(rawClients);
   const clients = locationQuality.clients
     .sort((a, b) => b.visitPriority - a.visitPriority || a.tradeName.localeCompare(b.tradeName));

@@ -74,7 +74,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'commercial-sales',
     group: 'sales',
-    name: 'Ventas · Comercial',
+    name: 'Ventas y composición',
     description: '¿Cuánto se vendió y cómo se compone el negocio por marca y producto?',
     endpoint: '/api/reports/commercial-sales/meta',
     icon: ShoppingBasket,
@@ -83,7 +83,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'spt',
     group: 'sales',
-    name: 'SPT Vol vs mes anterior',
+    name: 'Volumen SPT',
     description: '¿Cómo evoluciona el volumen en kilos frente a períodos equivalentes?',
     endpoint: '/api/reports/spt/meta',
     icon: BarChart3,
@@ -92,7 +92,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'pending-balances',
     group: 'portfolio',
-    name: 'Saldos Pendientes',
+    name: 'Saldos pendientes',
     description: '¿Qué saldo está abierto o vencido y cómo se distribuye por vendedor y cliente?',
     endpoint: '/api/reports/pending-balances/meta',
     icon: WalletCards,
@@ -110,7 +110,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'mars',
     group: 'brands',
-    name: 'Reporte Mars',
+    name: 'Mars · desempeño comercial',
     description: '¿Cómo evolucionan volumen, cobertura y marcas dentro de los períodos Mars?',
     endpoint: '/api/reports/mars/meta',
     icon: PawPrint,
@@ -119,7 +119,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'nutripet',
     group: 'brands',
-    name: 'Reporte NutriPet',
+    name: 'NutriPet · desempeño comercial',
     description: '¿Cómo evolucionan volumen, cobertura, marcas y productos NutriPet?',
     endpoint: '/api/reports/nutripet/meta',
     icon: ShoppingBag,
@@ -128,7 +128,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'baires',
     group: 'brands',
-    name: 'Reporte Baires',
+    name: 'Baires · desempeño comercial',
     description: '¿Cómo se comportan Baires Especializado y Masivo por volumen y cobertura?',
     endpoint: '/api/reports/baires/meta',
     icon: Package,
@@ -158,11 +158,6 @@ function periodLabel(meta?: ReportMeta) {
   return `${formatDate(from)} — ${formatDate(through)}`;
 }
 
-function sourceLabel(meta?: ReportMeta) {
-  if (!meta) return 'Consultando fuente…';
-  return meta.sourceSystem || 'Fuente no informada';
-}
-
 function QuickAccess({
   title,
   empty,
@@ -190,7 +185,7 @@ function QuickAccess({
           <span><strong>{report.name}</strong>{openedAt && <small>Abierto el {formatDate(openedAt, true)}</small>}</span>
           <ArrowRight size={15} />
         </button>;
-      })}</div> : <p className="report-hub-empty">{empty}</p>}
+      })}</div> : <div className="report-hub-empty"><Star size={17} /><span>{empty}</span><button onClick={() => onOpen('reports')}>Abrir Reporte General <ArrowRight size={13} /></button></div>}
     </section>
   );
 }
@@ -257,11 +252,11 @@ export function ReportsHubView({
         <div>
           <span className="section-kicker"><LayoutDashboard size={15} /> Centro de reportes</span>
           <h2>Elegí el reporte según la pregunta que necesitás responder</h2>
-          <p>Los ocho reemplazos de Power BI conservan sus universos y cálculos. Este centro sólo organiza el acceso y hace visibles su cobertura, fuente y límites.</p>
+          <p>Encontrá rápidamente resultados generales, ventas, cartera y desempeño por negocio. Cada reporte conserva sus filtros y explica cómo se calcula cuando necesitás consultarlo.</p>
         </div>
         <div className="report-hub-hero-tools">
           <div className="report-hub-status">
-            <span><Database size={15} /> Paquete activo</span>
+            <span><Database size={15} /> Datos actualizados</span>
             <strong>{formatDate(data.meta.generatedAt, true)}</strong>
             <small>{loading ? 'Consultando metadatos de los reportes…' : availableCount === REPORTS.length ? '8 reportes disponibles para revisión' : `${availableCount} de 8 reportes disponibles`}</small>
           </div>
@@ -310,7 +305,6 @@ export function ReportsHubView({
                 <dl className="report-hub-meta">
                   <div><dt><CalendarDays size={13} /> Período disponible</dt><dd>{periodLabel(meta)}</dd></div>
                   <div><dt><Clock3 size={13} /> Actualización</dt><dd>{formatDate(meta?.capturedAt || data.meta.generatedAt, true)}</dd></div>
-                  <div><dt><Database size={13} /> Fuente</dt><dd title={sourceLabel(meta)}>{sourceLabel(meta)}</dd></div>
                 </dl>
                 <button className="report-hub-open" onClick={() => onOpenReport(report.id)}>Abrir reporte <ArrowRight size={15} /></button>
               </article>;

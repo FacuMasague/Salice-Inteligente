@@ -54,19 +54,25 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   const [inventoryReviews, setInventoryReviews] = useState<Record<string, InventoryAlertReview>>({});
   const [inventoryReviewsLoaded, setInventoryReviewsLoaded] = useState(false);
   const [inventoryReviewLoadError, setInventoryReviewLoadError] = useState('');
+  const [advancedMode, setAdvancedMode] = useState(() => localStorage.getItem('salice-products-advanced-v010') === 'enabled');
   const pageSize = 100;
 
   useEffect(() => {
     fetch('/api/inventory-alert-reviews')
       .then((response) => response.ok ? response.json() : Promise.reject(new Error()))
       .then((payload: { reviews: InventoryAlertReview[] }) => setInventoryReviews(Object.fromEntries(payload.reviews.map((review) => [review.productId, review]))))
-      .catch(() => setInventoryReviewLoadError('No se pudieron recuperar las revisiones locales de inventario. Las señales GESI siguen visibles.'))
+      .catch(() => setInventoryReviewLoadError('No se pudieron recuperar las revisiones de inventario. Las señales comerciales siguen visibles.'))
       .finally(() => setInventoryReviewsLoaded(true));
   }, []);
 
   useEffect(() => {
     if (tutorialVectorMode) setMode('vectors');
   }, [tutorialVectorMode]);
+
+  useEffect(() => {
+    localStorage.setItem('salice-products-advanced-v010', advancedMode ? 'enabled' : 'disabled');
+    if (!advancedMode && mode === 'vectors') setMode('catalog');
+  }, [advancedMode, mode]);
 
   useEffect(() => {
     if (comparisonRequest > 0) setMode('compare');
@@ -168,7 +174,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     : mode === 'prices'
       ? 'Precios y evolución'
       : mode === 'vectors'
-        ? 'Herramientas técnicas'
+        ? 'Clasificación avanzada'
         : 'Más análisis';
 
   const modeNavigation = <nav className="product-mode-nav" aria-label="Secciones de Productos">
@@ -182,8 +188,8 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
         <span>Análisis del catálogo</span>
         <button className={mode === 'demand' ? 'active' : ''} onClick={() => selectMode('demand')}><strong>Demanda y rotación</strong><small>Movimiento, compradores y estabilidad</small></button>
         <button className={mode === 'prices' ? 'active' : ''} onClick={() => selectMode('prices')}><strong>Precios y evolución</strong><small>Referencia, efectivo e historia</small></button>
-        <span>Uso técnico</span>
-        <button className={mode === 'vectors' ? 'active' : ''} onClick={() => selectMode('vectors')}><strong>Herramientas técnicas</strong><small>Vectores, evidencia y auditoría</small></button>
+        <button className={`product-advanced-toggle ${advancedMode ? 'active' : ''}`} role="switch" aria-checked={advancedMode} onClick={() => setAdvancedMode((value) => !value)}><strong>Modo avanzado · {advancedMode ? 'activado' : 'desactivado'}</strong><small>Clasificación, evidencia y correcciones auditables</small></button>
+        {advancedMode && <><span>Uso avanzado</span><button className={mode === 'vectors' ? 'active' : ''} onClick={() => selectMode('vectors')}><strong>Clasificación avanzada</strong><small>Dimensiones, evidencia y auditoría</small></button></>}
       </div>
     </details>
   </nav>;
@@ -204,12 +210,12 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       <div className="page-view vector-explorer-page products-workspace" data-tour="vector-explorer">
         {modeNavigation}
         <header className="data-card vector-explorer-hero">
-          <div><span className="section-kicker"><BarChart3 size={15} /> Motor vectorial v2.2</span><h2>Explorador de {number(vectorKeys.length)} vectores</h2><p>Edad, porte, especie, posicionamiento, uso, necesidades y sabores se mantienen separados y auditables.</p></div>
+          <div><span className="section-kicker"><BarChart3 size={15} /> Modo avanzado</span><h2>Clasificación explicable de productos</h2><p>{number(vectorKeys.length)} atributos de edad, porte, especie, posicionamiento, uso, necesidades y sabores con respaldo auditable.</p></div>
         </header>
         <SavedViewsBar viewKey="products" filters={savedFilters} onApply={applySaved} />
         <div className="vector-explorer-layout">
           <section className="data-card vector-dimension-index">
-            <div className="data-card-header"><div><span className="section-kicker"><ListFilter size={14} /> Dimensiones usadas</span><h2>Grupos del perfil</h2></div><span className="count-badge">{number(vectorKeys.length)} vectores</span></div>
+            <div className="data-card-header"><div><span className="section-kicker"><ListFilter size={14} /> Atributos usados</span><h2>Grupos del perfil</h2></div><span className="count-badge">{number(vectorKeys.length)} atributos</span></div>
             <div className="vector-group-index">{VECTOR_GROUPS.map((group) => <section key={group.id}><header><strong>{group.label}</strong><small>{group.description}</small></header><div className="vector-dimension-grid">{group.keys.map((key) => {
               const matches = products.filter((product) => product.vector[key] > 0).length;
               return <button key={key} className={selectedVector === key ? 'active' : ''} onClick={() => { setSelectedVector(key); setVectorPage(1); }}><span><strong>{VECTOR_LABELS[key]}</strong><small>{VECTOR_DESCRIPTIONS[key]}</small></span><em>{matches}</em></button>;
@@ -248,7 +254,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
           {visible.map((product) => <article key={product.id} role="button" tabIndex={0} className={`product-list-row ${product.id === selected.id ? 'active' : ''}`} onClick={() => setSelectedId(product.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(product.id); }}>
             <div className="product-thumb">{product.family === 'Higiene' ? 'HI' : product.family === 'Accesorios' ? 'AC' : product.vector.gatos > product.vector.perros ? 'GA' : 'PE'}</div>
             <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
-            <div className="product-list-numbers"><strong title="Precio de referencia GESI">{product.price > 0 ? money(product.price) : 'Sin precio'}</strong><span className={product.inventory?.status === 'negative' || product.stock < 30 ? 'negative' : ''}>{product.inventory?.status === 'unavailable' ? 'Stock sin señal' : product.inventory?.status === 'negative' ? `GESI ${product.inventory.rawAvailableUnit1}` : `Stock disp. ${number(product.stock)}`}</span><small>{money(product.sales90d, true)} · 90d</small></div>
+            <div className="product-list-numbers"><strong title="Precio de referencia">{product.price > 0 ? money(product.price) : 'Precio no informado'}</strong><span className={product.inventory?.status === 'negative' || product.stock < 30 ? 'negative' : ''}>{product.inventory?.status === 'unavailable' ? 'Stock no informado' : product.inventory?.status === 'negative' ? 'Stock de origen inválido' : `Stock disponible ${number(product.stock)}`}</span><small>{money(product.sales90d, true)} · 90d</small></div>
             <ChevronRight size={17} />
           </article>)}
         </div>

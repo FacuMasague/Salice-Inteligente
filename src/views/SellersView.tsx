@@ -141,7 +141,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
     <section className="seller-overview-kpis">
       <article><span className="seller-kpi-icon green"><Users size={20} /></span><div><small>Carteras visibles</small><strong>{number(profiles.length)}</strong><em>{number(totalClients)} clientes activos, incluso sin vendedor</em></div></article>
       <article><span className="seller-kpi-icon green"><TrendingUp size={20} /></span><div><small>Ventas · 90 días</small><strong>{money(totalSales, true)}</strong><em>suma de clientes activos visibles</em></div></article>
-      <article><span className="seller-kpi-icon blue"><AlertTriangle size={20} /></span><div><small>Riesgo alto</small><strong>{number(highRisk)}</strong><em>clientes con C{PORTFOLIO_SIGNAL_THRESHOLD} o superior</em></div></article>
+      <article><span className="seller-kpi-icon blue"><AlertTriangle size={20} /></span><div><small>Riesgo alto</small><strong>{number(highRisk)}</strong><em>clientes con {PORTFOLIO_SIGNAL_THRESHOLD}/100 o superior</em></div></article>
     </section>
 
     <SavedViewsBar viewKey="sellers" filters={savedFilters} onApply={applySaved} />
@@ -178,22 +178,22 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
         <div className="seller-detail-kpis">
           <article><small>Clientes activos</small><strong>{number(selected.activeClients)}</strong><span>{decimal(selected.mappedClients / Math.max(1, selected.activeClients) * 100)}% geolocalizados</span></article>
           <article><small>Ventas · 90d</small><strong>{money(selected.sales90d, true)}</strong><span>{money(selected.sales90d / Math.max(1, selected.activeClients), true)} por cliente</span></article>
-          <article><small>Riesgo promedio</small><strong>C{Math.round(selected.averageRisk)}</strong><span>{selected.criticalClients} con riesgo de cobranza</span></article>
-          <article><small>Oportunidad promedio elegible</small><strong>O{Math.round(selected.averageOpportunity)}</strong><span>{selected.opportunityClients} con oportunidad alta</span></article>
-          <article><small>Prioridad promedio</small><strong>P{Math.round(selected.averagePriority)}</strong><span>{selected.prioritySignalClients} con prioridad alta</span></article>
+          <article><small>Riesgo promedio</small><strong>{Math.round(selected.averageRisk)}/100</strong><span>{selected.criticalClients} con riesgo de cobranza</span></article>
+          <article><small>Oportunidad promedio elegible</small><strong>{Math.round(selected.averageOpportunity)}/100</strong><span>{selected.opportunityClients} con oportunidad alta</span></article>
+          <article><small>Prioridad promedio</small><strong>{Math.round(selected.averagePriority)}/100</strong><span>{selected.prioritySignalClients} con prioridad alta</span></article>
         </div>
       </section>
 
       <AiSellerSummaryCard artifact={selectedAiSummary} />
 
       <div className="seller-chart-grid">
-        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Ventas</span><h2>Evolución mensual</h2><p>Seis meses del snapshot, suma de la cartera activa.</p></div></div><SalesChart profile={selected} snapshotDate={snapshotDate} /></section>
-        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Cobranza</span><h2>Composición de riesgo</h2><p>C es independiente de O y P.</p></div></div><RiskComposition profile={selected} /><div className="seller-payment-summary"><article><Clock3 size={17} /><div><span>Pago promedio desde emisión</span><strong>{selected.averagePaymentDays == null ? 'Sin muestra' : `${decimal(selected.averagePaymentDays)} días`}</strong></div></article><article><CircleDollarSign size={17} /><div><span>Contra vencimiento</span><strong>{selected.averagePaymentDelayDays == null ? 'Sin muestra' : paymentDelay(Math.round(selected.averagePaymentDelayDays))}</strong></div></article><article><Target size={17} /><div><span>Pagos en término</span><strong>{selected.onTimeRate == null ? 'Sin muestra' : `${decimal(selected.onTimeRate)}%`}</strong><small>{number(selected.paymentSamples)} facturas conciliadas</small></div></article></div></section>
+        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Ventas</span><h2>Evolución mensual</h2><p>Seis meses disponibles, sumando la cartera activa.</p></div></div><SalesChart profile={selected} snapshotDate={snapshotDate} /></section>
+        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Cobranza</span><h2>Composición de riesgo</h2><p>El riesgo de cobranza se calcula por separado de la oportunidad y la prioridad.</p></div></div><RiskComposition profile={selected} /><div className="seller-payment-summary"><article><Clock3 size={17} /><div><span>Pago promedio desde emisión</span><strong>{selected.averagePaymentDays == null ? 'Sin muestra' : `${decimal(selected.averagePaymentDays)} días`}</strong></div></article><article><CircleDollarSign size={17} /><div><span>Contra vencimiento</span><strong>{selected.averagePaymentDelayDays == null ? 'Sin muestra' : paymentDelay(Math.round(selected.averagePaymentDelayDays))}</strong></div></article><article><Target size={17} /><div><span>Pagos en término</span><strong>{selected.onTimeRate == null ? 'Sin muestra' : `${decimal(selected.onTimeRate)}%`}</strong><small>{number(selected.paymentSamples)} facturas conciliadas</small></div></article></div></section>
       </div>
 
       <div className="seller-operational-grid">
         <section className="data-card seller-priority-card">
-          <div className="data-card-header"><div><span className="section-kicker"><Target size={14} /> Lectura de clientes</span><h2>Cartera para revisar</h2><p>Los filtros no crean tareas. El orden se mantiene siempre por P descendente.</p></div><span className="count-badge">{number(visibleClients.length)}</span></div>
+          <div className="data-card-header"><div><span className="section-kicker"><Target size={14} /> Lectura de clientes</span><h2>Cartera para revisar</h2><p>Los filtros no crean tareas. El orden se mantiene por prioridad descendente.</p></div><span className="count-badge">{number(visibleClients.length)}</span></div>
           <div className="seller-client-controls">
             <label><Search size={14} /><input value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} placeholder="Buscar cliente o localidad" /></label>
             <div>{lensLabels.map((item) => <button key={item.value} className={lens === item.value ? 'active' : ''} onClick={() => setLens(item.value)}>{item.label}<span>{lensCount(item.value)}</span></button>)}</div>
@@ -202,7 +202,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
             {visibleClients.map((row) => {
               const client = row.client;
               return <button key={client.id} onClick={() => onOpenClient(client)}>
-                <span className={`score-badge ${client.health}`}>P{client.visitPriority}</span>
+                <span className={`score-badge ${client.health}`}>{client.visitPriority}</span>
                 <div><strong>{clientPrimaryName(client)}</strong><small>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality}</small><em>{money(client.sales90d, true)} en 90 días</em></div>
                 <ChevronRight size={15} />
               </button>;
@@ -216,7 +216,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
           <div className="seller-locality-table">
             <div className="seller-locality-head"><span>Localidad y señales</span><span>Clientes</span><span>Ventas 90d</span></div>
             {selected.localities.map((row) => <article key={row.name}>
-              <div><strong>{row.name}</strong><span>P prom. {Math.round(row.averagePriority)} · riesgo {row.highRisk} · oportunidad {row.highOpportunity} · prioridad {row.highPriority}</span></div>
+              <div><strong>{row.name}</strong><span>Prioridad promedio {Math.round(row.averagePriority)}/100 · riesgo alto {row.highRisk} · oportunidad alta {row.highOpportunity} · prioridad alta {row.highPriority}</span></div>
               <b>{number(row.clients)}</b>
               <b>{money(row.sales90d, true)}</b>
             </article>)}

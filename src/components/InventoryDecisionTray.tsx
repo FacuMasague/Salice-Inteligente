@@ -181,7 +181,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
       onReviewSaved(payload.review);
       setEditing(null);
     } catch {
-      setSaveError('No se pudo guardar la revisión. No se modificó la señal de GESI.');
+      setSaveError('No se pudo guardar la revisión. La señal de inventario no fue modificada.');
     } finally { setSaving(false); }
   };
 

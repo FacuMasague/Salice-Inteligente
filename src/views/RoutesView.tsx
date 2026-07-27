@@ -183,6 +183,7 @@ export function RoutesView({
               const client = clientById.get(stop.clientId);
               const selected = selectedIds.has(stop.clientId);
               const expanded = expandedClients.has(stop.clientId);
+              const approximateLocation = client?.locationPrecision === 'locality';
               const missingRouteData = !stop.coordinates;
               return <article className={`delivery-stop-row ${selected ? 'selected' : ''} ${missingRouteData ? 'unroutable' : ''}`} key={stop.clientId}>
                 <button className="route-check-button" disabled={missingRouteData} onClick={() => toggle(stop.clientId)} aria-label={`${selected ? 'Quitar' : 'Agregar'} parada`}>
@@ -191,7 +192,7 @@ export function RoutesView({
                 <div className="delivery-stop-main">
                   <button className="delivery-client-link" disabled={!client} onClick={() => client && onOpenClient(client)}><strong>{client ? clientPrimaryName(client) : stop.clientName}</strong></button>
                   <span><MapPin size={12} /> {stop.address} · {stop.locality}</span>
-                  {missingRouteData && <small className="delivery-data-warning"><AlertTriangle size={12} /> Dirección sin coordenadas: visible, pero no se puede estimar la ruta.</small>}
+                  {missingRouteData && <small className="delivery-data-warning"><AlertTriangle size={12} /> {approximateLocation ? 'Ubicación aproximada de la localidad: requiere verificación antes de usarla en una ruta.' : 'Dirección sin coordenadas: visible, pero no se puede estimar la ruta.'}</small>}
                   <div className="delivery-stop-statuses">{[...new Set(stop.invoices.map((invoice) => invoice.assignmentStatus))].map((value) => <em className={value} key={value}>{DELIVERY_ASSIGNMENT_LABELS[value]}</em>)}</div>
                 </div>
                 <div className="delivery-stop-summary"><strong>{stop.invoices.length} {stop.invoices.length === 1 ? 'factura' : 'facturas'}</strong><span>{money(stop.amount, true)}</span><button className="icon-button" onClick={() => setExpandedClients((current) => { const next = new Set(current); next.has(stop.clientId) ? next.delete(stop.clientId) : next.add(stop.clientId); return next; })} aria-label="Ver facturas">{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
@@ -223,7 +224,7 @@ export function RoutesView({
               <div className="depot-stop"><span><Truck size={16} /></span><div><strong>{plan.depot.name}</strong><small>{plan.depot.address} · salida 09:00</small></div></div>
               {plan.stops.map((stop) => {
                 const client = clientById.get(stop.clientId);
-                const destination = client?.coordinates?.join(',');
+                const destination = client?.locationPrecision === 'locality' ? null : client?.coordinates?.join(',');
                 return <article key={stop.clientId} className="timeline-stop"><div className="stop-number">{stop.order}</div><div className="stop-card"><div><span className="section-kicker">{minutesAsTime(stop.etaMinutes)} · {stop.distanceKm} km desde la parada anterior</span><h3>{stop.clientName}</h3><p>{stop.address} · {stop.locality} · {stop.invoiceCount} factura(s) · {money(stop.amount, true)}</p></div>{destination && <a className="icon-button" aria-label={`Abrir navegación a ${stop.clientName}`} href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer"><Navigation size={17} /></a>}</div></article>;
               })}
               <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso al depósito</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>

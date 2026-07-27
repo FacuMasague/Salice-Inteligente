@@ -6,6 +6,7 @@ import { getActiveBundleManifest, resolveActiveDataPaths, verifyDataBundleManife
 import { applyAiProductVectors } from './ai-artifacts.js';
 import { importSnapshotNotes, mergeOperationalData } from './operational-store.js';
 import { applyClientLocationQuality } from '../shared/client-location.js';
+import { applyReceivablesPolicyToClients } from '../shared/receivables-policy.js';
 
 const legacySnapshotPath = resolve(process.cwd(), 'data/snapshot.json');
 const backupDirectory = resolve(process.cwd(), 'data/backups');
@@ -70,7 +71,8 @@ export async function loadSnapshot(): Promise<DashboardData> {
   // La capa de IA sólo puede afectar productos con un artefacto validado. Las
   // correcciones humanas se aplican después y, por lo tanto, siempre prevalecen.
   const merged = mergeOperationalData(applyAiProductVectors(cachedSnapshot));
-  const locations = applyClientLocationQuality(merged.clients);
+  const policyClients = applyReceivablesPolicyToClients(merged.clients, merged.meta.generatedAt.slice(0, 10));
+  const locations = applyClientLocationQuality(policyClients);
   return {
     ...merged,
     clients: locations.clients,
@@ -79,6 +81,9 @@ export async function loadSnapshot(): Promise<DashboardData> {
       version: APP_VERSION,
       coverage: merged.meta.coverage ? {
         ...merged.meta.coverage,
+        includedClients: locations.clients.length,
+        activeClients: locations.clients.filter((client) => client.active).length,
+        inactiveClients: locations.clients.filter((client) => !client.active).length,
         geocodedClients: locations.clients.filter((client) => client.coordinates).length,
         activeGeocodedClients: locations.clients.filter((client) => client.active && client.coordinates).length,
         inactiveGeocodedClients: locations.clients.filter((client) => !client.active && client.coordinates).length,

@@ -90,16 +90,18 @@ export function ReportContext({
   exports?: ReactNode;
 }) {
   const items: ReportContextItem[] = [
-    { label: 'Universo', value: universe },
     { label: 'Período', value: period },
     { label: 'Fecha de corte', value: cutoff },
-    { label: 'Comparación', value: comparison },
     { label: 'Estado', value: partial ? 'Período parcial' : 'Período completo' },
   ];
   return <section className="data-card report-context">
     <div className="report-context-grid">
       {items.map((item) => <div key={item.label}><small>{item.label}</small><strong>{item.value}</strong></div>)}
     </div>
+    <details className="report-methodology">
+      <summary><Info size={15} /><span>Cómo se calcula y qué incluye</span></summary>
+      <div><p><small>Alcance</small><strong>{universe}</strong></p><p><small>Comparación</small><strong>{comparison}</strong></p></div>
+    </details>
     {!!warnings.length && <div className="report-context-warnings"><AlertTriangle size={16} /><div>{warnings.map((warning) => <span key={warning}>{warning}</span>)}</div></div>}
     {(related.length > 0 || actions || exports) && <div className="report-context-actions">
       {(related.length > 0 || actions) && <div className="report-context-related">

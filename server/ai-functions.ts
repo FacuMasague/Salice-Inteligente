@@ -290,7 +290,7 @@ export function buildReportEvidence(reportId: AiReportId, payload: unknown): Rep
       ...breakdowns(reportId, 'account-seller', source.accountSellers, 'seller', 'nonBuyers30', 'cuentas', undefined, 5),
       ...breakdowns(reportId, 'brand-seller', source.brandSellers, 'seller', 'nonBuyers30', 'marcas', undefined, 5),
     ];
-    warnings.push(warning(reportId, 'agreements', 'GESI no expone el maestro de acuerdos comerciales utilizado históricamente por Power BI.'));
+    warnings.push(warning(reportId, 'agreements', 'Los datos actuales no incluyen el maestro de acuerdos comerciales; ese filtro no está disponible.'));
   } else {
     period = `${source.salesWindowFrom ?? ''} — ${source.sourceMaxDate ?? ''}`;
     metrics = [
@@ -508,14 +508,15 @@ function inboxEvidence(data: DashboardData, snapshotAt: string) {
         kind: signal.kind,
         source: signal.source,
         label: signal.label,
+        detail: signal.detail,
         severity: signal.severity,
         date: signal.date,
         amount: signal.amount,
       }));
       const metricEvidence = [
-        { id: `client:${entry.clientId}:metric:C`, label: 'Riesgo de cobranza C', value: entry.collectionRisk },
-        { id: `client:${entry.clientId}:metric:O`, label: 'Oportunidad O', value: eligible ? entry.commercialOpportunity : null },
-        { id: `client:${entry.clientId}:metric:P`, label: 'Prioridad P', value: entry.visitPriority },
+        { id: `client:${entry.clientId}:metric:collection-risk`, label: 'Riesgo de cobranza', value: entry.collectionRisk },
+        { id: `client:${entry.clientId}:metric:commercial-opportunity`, label: 'Oportunidad comercial', value: eligible ? entry.commercialOpportunity : null },
+        { id: `client:${entry.clientId}:metric:review-priority`, label: 'Prioridad de revisión', value: entry.visitPriority },
         { id: `client:${entry.clientId}:metric:sales`, label: 'Ventas 90 días', value: entry.sales90d },
         { id: `client:${entry.clientId}:metric:delta`, label: 'Variación de ventas', value: entry.salesDelta },
         { id: `client:${entry.clientId}:metric:debt`, label: 'Saldo vencido', value: entry.overdueOutstanding },
@@ -575,7 +576,7 @@ function sellerEvidence(data: DashboardData) {
           id: refs[2],
           label: 'Cobranza',
           value: {
-            averageC: average(clients.map((client) => client.collectionRisk)),
+            averageCollectionRisk: average(clients.map((client) => client.collectionRisk)),
             highRiskClients: clients.filter((client) => client.collectionRisk >= 55).length,
             overdueAmount: clients.reduce((sum, client) => sum + client.overdueOutstanding, 0),
           },
@@ -584,7 +585,7 @@ function sellerEvidence(data: DashboardData) {
           id: refs[3],
           label: 'Oportunidad elegible',
           value: {
-            averageO: average(eligible.map((client) => client.commercialOpportunity)),
+            averageCommercialOpportunity: average(eligible.map((client) => client.commercialOpportunity)),
             highOpportunityClients: eligible.filter((client) => client.commercialOpportunity >= 55).length,
             eligibleClients: eligible.length,
           },
@@ -593,7 +594,7 @@ function sellerEvidence(data: DashboardData) {
           id: refs[4],
           label: 'Prioridad de revisión',
           value: {
-            averageP: average(clients.map((client) => client.visitPriority)),
+            averageReviewPriority: average(clients.map((client) => client.visitPriority)),
             highPriorityClients: clients.filter((client) => client.visitPriority >= 55).length,
           },
         },
@@ -608,7 +609,7 @@ function sellerEvidence(data: DashboardData) {
         },
       ],
       rules: [
-        'C, O y P son señales separadas.',
+        'Riesgo de cobranza, oportunidad comercial y prioridad de revisión son señales separadas.',
         'La lectura no evalúa productividad, no crea objetivos y no interpreta notas como desempeño.',
       ],
     };
@@ -628,16 +629,24 @@ Separá objetivos de resultados reales. No afirmes entregas: una foja cerrada es
 No crees tareas. Cada afirmación verificable debe citar evidenceIds exactos. Conservá todas las limitaciones relevantes.
 Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros.`;
 
-const COMMERCIAL_PROMPT = `Explicá por qué cada cliente ya seleccionado por el algoritmo aparece en la bandeja.
-No agregues ni elimines clientes. Mantené C, O y P separados; O no es probabilidad y P no es planificación.
-Sólo podés mencionar oportunidades incluidas en la evidencia y únicamente si eligibleForOpportunity es true.
+const COMMERCIAL_PROMPT = `Explicá con lenguaje comercial claro por qué cada cliente ya seleccionado aparece en la bandeja y qué merece atención.
+No agregues ni elimines clientes. Devolvé exactamente un item por clientId recibido.
+Jerarquizá la lectura así:
+- primaryReason: la causa concreta más importante que explica su presencia hoy. Nombrá el hecho, fecha, monto o variación relevante; evitá títulos genéricos como "revisión sugerida" si existe una señal más específica.
+- secondaryReasons: hasta tres hechos adicionales distintos, concretos y breves. No repitas el motivo principal ni enumeres puntajes sin interpretarlos.
+- explanation: dos o tres frases que conecten las señales y expliquen el caso. Primero el motivo de atención; después el contexto comercial. No describas cómo funciona la IA ni qué campos recibió.
+- commercialOpportunity: sólo una oportunidad incluida en la evidencia y únicamente si eligibleForOpportunity es true. Explicá por qué podría ser pertinente; no la presentes como oferta realizada.
+- caution: una precaución específica del caso o un dato que conviene confirmar. Evitá frases de descargo genéricas.
+Distinguí si el ingreso se debe a una señal calculada, una promesa, un recordatorio o una nota de oficina.
+Nombrá las señales completas cuando sean relevantes: riesgo de cobranza, oportunidad comercial y prioridad de revisión. No uses las abreviaturas C, O o P. La oportunidad no es probabilidad y la prioridad no es una visita planificada.
 No afirmes que un producto fue ofrecido, no generes mensajes, guiones, tareas ni gestiones.
-Las notas se reciben sólo como conteos y categorías: no infieras contenido. Devolvé exactamente un item por clientId recibido.
-Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros.`;
+Las notas de oficina se reciben sólo como conteos y categorías: no infieras su contenido.
+Cada item debe citar únicamente evidenceIds pertenecientes a ese mismo cliente.
+Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros. Expresá los montos en pesos con "$" y separadores de miles.`;
 
 const SELLER_PROMPT = `Resumí cada cartera activa usando únicamente sus agregados.
 No evalúes productividad, no compares vendedores como ranking, no crees objetivos ni tareas y no interpretes notas como desempeño.
-Mantené C, O y P separados. O se calcula sólo sobre clientes elegibles.
+Nombrá siempre las señales completas: riesgo de cobranza, oportunidad comercial y prioridad de revisión. No uses las abreviaturas C, O o P. La oportunidad se calcula sólo sobre clientes elegibles.
 Devolvé exactamente un item por vendedor recibido y citá evidenceIds en cada señal o aspecto a revisar.
 Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros.`;
 
@@ -753,9 +762,9 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-terra',
       effort: 'low',
       prompt: COMMERCIAL_PROMPT,
-      promptVersion: 2,
-      schemaVersion: 1,
-      schemaName: 'salice_commercial_explanations_v1',
+      promptVersion: 4,
+      schemaVersion: 2,
+      schemaName: 'salice_commercial_explanations_v2',
       schema: COMMERCIAL_EXPLANATION_SCHEMA as unknown as Record<string, unknown>,
       maxOutputTokens: 2_500,
       buildJobs: (snapshot) => {
@@ -793,6 +802,14 @@ export function createAiFunctionDefinitions(input: {
         for (const item of items as unknown as AiCommercialExplanation[]) {
           const source = evidenceClients.find((client) => Number(client.clientId) === item.clientId);
           if (!source) return { valid: false, error: `Cliente ${item.clientId} fuera del lote.` };
+          const clientRefs = new Set([
+            ...rows(source.metrics).map((entry) => String(entry.id)),
+            ...rows(source.signals).map((entry) => String(entry.id)),
+            ...rows(source.opportunities).map((entry) => String(entry.id)),
+          ]);
+          if (!item.evidenceIds.length || item.evidenceIds.some((id) => !clientRefs.has(id))) {
+            return { valid: false, error: `La explicación del cliente ${item.clientId} cita evidencia de otro cliente o no cita respaldo.` };
+          }
           if (!source.eligibleForOpportunity && item.commercialOpportunity.trim()) {
             return { valid: false, error: `Se generó una oportunidad para el cliente no elegible ${item.clientId}.` };
           }
@@ -805,7 +822,7 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-terra',
       effort: 'low',
       prompt: SELLER_PROMPT,
-      promptVersion: 2,
+      promptVersion: 3,
       schemaVersion: 1,
       schemaName: 'salice_seller_summaries_v1',
       schema: SELLER_SUMMARY_SCHEMA as unknown as Record<string, unknown>,

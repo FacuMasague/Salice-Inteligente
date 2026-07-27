@@ -2,6 +2,12 @@ import { renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { GesiRawCapture, GesiRow } from './gesi/types.js';
+import {
+  EXCLUDED_RECEIVABLE_CLIENT_NAMES,
+  MIN_RECEIVABLE_DOCUMENT_AMOUNT,
+  isActionableReceivableAmount,
+  isExcludedReceivableClient,
+} from '../shared/receivables-policy.js';
 
 export const PENDING_BALANCE_SELLERS = [
   'Ana Ottaviano',
@@ -61,6 +67,7 @@ export function buildPendingBalancesDatabase(
   }>();
 
   for (const row of capture.clients) {
+    if (isExcludedReceivableClient(row.razonSocial, row.nombreDeFantasia, row.fantasia)) continue;
     const definitions = Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : [];
     const definition = definitions.find((item) => numeric(item.empresaID) === 3 && numeric(item.sucursalID) === 3)
       ?? definitions.find((item) => numeric(item.sucursalID) === 3);
@@ -90,7 +97,7 @@ export function buildPendingBalancesDatabase(
     // El modelo publicado trata "Saldo Pendiente" como cartera de documentos
     // débito abierta. Recibos y notas de crédito pueden seguir sin aplicar en
     // GESI, pero no forman parte de esta suma (sí afectan el saldo neto CC).
-    if (document.anulado === true || !['F', 'D'].includes(text(document.subtipo)) || numeric(document.saldoPendiente) <= .01) continue;
+    if (document.anulado === true || !['F', 'D'].includes(text(document.subtipo)) || !isActionableReceivableAmount(document.saldoPendiente)) continue;
     const clientID = numeric(document.clienteID);
     const current = pendingByClient.get(clientID) ?? [];
     current.push(document);
@@ -208,6 +215,8 @@ export function buildPendingBalancesDatabase(
       client_count: String(clientCount),
       document_count: String(documentCount),
       sellers: JSON.stringify(PENDING_BALANCE_SELLERS),
+      minimum_document_outstanding: String(MIN_RECEIVABLE_DOCUMENT_AMOUNT),
+      excluded_clients: JSON.stringify(EXCLUDED_RECEIVABLE_CLIENT_NAMES),
     };
     for (const [key, value] of Object.entries(meta)) insertMeta.run(key, value);
     database.exec('COMMIT');

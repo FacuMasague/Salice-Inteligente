@@ -85,8 +85,8 @@ export function BusinessReportKpis({ items }: { items: BusinessReportKpi[] }) {
 }
 
 export function BusinessReportSourceNote({ source, children }: { source: ReactNode; children: ReactNode }) {
-  return <section className="business-report-source-note">
-    <Database size={16} />
+  return <details className="business-report-source-note">
+    <summary><Database size={16} /><span>Información técnica del reporte</span></summary>
     <div><strong>{source}</strong><span>{children}</span></div>
-  </section>;
+  </details>;
 }

@@ -272,7 +272,7 @@ export function getNonBuyerReportMeta(): NonBuyerReportMeta {
     unavailableDocumentCount: 0,
     options: { productGroup: [], category: [], brand: [], seller: [] },
     agreementsAvailable: false,
-    agreementsNote: 'La API de GESI no expone el maestro AcuerdosComerciales utilizado por la vista SQL del Power BI.',
+    agreementsNote: 'Los datos actuales no incluyen el maestro de acuerdos comerciales; ese filtro no está disponible.',
     universe: {
       companies: COMPANIES,
       branches: BRANCHES,

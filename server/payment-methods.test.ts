@@ -68,6 +68,20 @@ describe('forma de pago documental', () => {
     expect(client.payment_method).toBe('CTA CTE 30 DIAS');
   });
 
+  it('no normaliza como cartera los residuales menores a $1.000', () => {
+    const raw = capture();
+    raw.pendingDocuments[0].saldoPendiente = 999.99;
+    const client = normalizeCapture(raw).clients[0];
+    expect(client.invoices.filter((invoice) => invoice.outstanding > 0)).toHaveLength(0);
+    expect(client.overdueOutstanding).toBe(0);
+  });
+
+  it('excluye del universo a las entidades que no son clientes comerciales', () => {
+    const raw = capture();
+    raw.clients[0].razonSocial = 'GBA M6 S.A.';
+    expect(normalizeCapture(raw).clients).toHaveLength(0);
+  });
+
   it('distingue facturas sin foja, en foja abierta y en foja cerrada sin llamarlas entregadas', () => {
     const raw = capture();
     raw.captureMeta.logisticsFrom = '2026-06-01';

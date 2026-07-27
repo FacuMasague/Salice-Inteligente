@@ -78,3 +78,11 @@ export const minutesAsTime = (minutes: number) => {
   const total = start + minutes;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
+
+export const zoneLabel = (zone: string, locality = '') => {
+  const normalized = zone.trim();
+  if (!normalized || /^(?:zona\s*)?\d+$/i.test(normalized)) {
+    return locality ? `Área de ${locality}` : 'Zona sin nombre';
+  }
+  return normalized;
+};

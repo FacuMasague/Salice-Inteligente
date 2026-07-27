@@ -199,7 +199,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand, onOpenGoa
 
       <section className="data-card general-pulse-card">
         <div className="data-card-header"><div><span className="section-kicker"><PackageCheck size={14} /> Contexto operativo</span><h2>Pulso de la cartera</h2><p>Señales complementarias, no incluidas en el objetivo.</p></div></div>
-        <div className="general-pulse-list"><article><span>Ventas últimos 90 días</span><strong>{money(pulseSales, true)}</strong></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{clientPrimaryName(priority)}</strong><small>{clientSecondaryName(priority) ? `${clientSecondaryName(priority)} · ` : ''}P{priority.visitPriority} · {priority.seller}</small></button>}</div>
+        <div className="general-pulse-list"><article><span>Ventas últimos 90 días</span><strong>{money(pulseSales, true)}</strong></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{clientPrimaryName(priority)}</strong><small>{clientSecondaryName(priority) ? `${clientSecondaryName(priority)} · ` : ''}prioridad {priority.visitPriority}/100 · {priority.seller}</small></button>}</div>
       </section>
     </div>
 
@@ -215,8 +215,9 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand, onOpenGoa
 
     {mode === 'core' && report.categories.length > 0 && <PerformanceTable title="Resultado por rubro" subtitle="Alimento húmedo, balanceados y C&T bajo las mismas reglas del reporte." rows={report.categories} unit={report.unit} />}
 
-    <section className="general-source-note">
-      <Database size={18} /><div><strong>Fuentes separadas y auditables</strong><span><b>Resultado real:</b> {meta.sourceSystem}, empresa y sucursal 3, con cobertura al {new Intl.DateTimeFormat('es-AR').format(new Date(`${meta.maxDate}T12:00:00`))}. <b>Objetivos:</b> {meta.targetSource.label}, capturados el {new Intl.DateTimeFormat('es-AR').format(new Date(`${meta.targetSource.capturedAt}T12:00:00`))}. No se consulta Power BI para ejecutar esta pantalla.</span>{meta.unavailableDocumentCount > 0 && <small><Info size={13} /> {meta.unavailableDocumentCount} comprobantes fuente no estuvieron disponibles en GESI; la conciliación de kilos generales difiere 20 kg del archivo de referencia. Estratégicas y Autoservicio coinciden.</small>}</div>
-    </section>
+    <details className="business-report-source-note">
+      <summary><Database size={15} /> Información técnica del reporte</summary>
+      <div><strong>Fuentes separadas y auditables</strong><span><b>Resultado real:</b> {meta.sourceSystem}, empresa y sucursal 3, con cobertura al {new Intl.DateTimeFormat('es-AR').format(new Date(`${meta.maxDate}T12:00:00`))}. <b>Objetivos:</b> {meta.targetSource.label}, capturados el {new Intl.DateTimeFormat('es-AR').format(new Date(`${meta.targetSource.capturedAt}T12:00:00`))}.</span>{meta.unavailableDocumentCount > 0 && <small><Info size={13} /> {meta.unavailableDocumentCount} comprobantes fuente no estuvieron disponibles; la conciliación de kilos generales difiere 20 kg del archivo de referencia. Estratégicas y Autoservicio coinciden.</small>}</div>
+    </details>
   </div>;
 }
