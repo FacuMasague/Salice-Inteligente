@@ -8,7 +8,6 @@ services:
     buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm start
     healthCheckPath: /api/health
-    maxShutdownDelaySeconds: 300
     disk:
       name: salice-data
       mountPath: /opt/render/project/src/data
