@@ -24,6 +24,7 @@ No se crea un Cron Job separado. Render no permite adjuntar discos persistentes 
 5. Aplicar el Blueprint y esperar a que el Web Service quede `Live`.
 
 El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria y presupuestos de IA. Las credenciales no se guardan en Git.
+También fija el inicio del histórico comercial SPT en `2025-01-01`: la auditoría requiere los doce meses de 2025 y una instalación nueva no puede depender de un archivo histórico preexistente.
 
 ## Capacidad y costo
 
@@ -37,7 +38,7 @@ Por eso el Blueprint usa `standard` (2 GB, 1 CPU). Antes de considerar el despli
 
 Un disco nuevo no contiene datos. Para que la URL y el health check estén disponibles durante la carga inicial, el servidor abre primero el snapshot demostrativo y dispara automáticamente una actualización `bootstrap`.
 
-La primera captura puede tardar y utilizar bastante disco o memoria. En los logs debe aparecer:
+La primera captura descarga el histórico comercial completo desde enero de 2025, por lo que puede tardar más que una actualización ordinaria y utilizar bastante disco o memoria. En los logs debe aparecer:
 
 - el servidor escuchando en `0.0.0.0` y el puerto asignado por Render;
 - la automatización habilitada;
