@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { once } from 'node:events';
 import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
-import { mkdir, readFile, rename } from 'node:fs/promises';
+import { access, mkdir, readFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parser } from 'stream-json';
 import { pick } from 'stream-json/filters/pick.js';
@@ -18,6 +18,7 @@ const rawDirectory = resolve(process.cwd(), 'data/raw');
 const target = resolve(rawDirectory, 'gesi-salice-latest.json');
 const reuseCatalog = process.argv.includes('--reuse-catalog');
 const shouldReadExistingCapture = reuseCatalog || !process.env.GESI_SPT_HISTORY_FROM;
+const hasExistingCapture = await access(target).then(() => true).catch(() => false);
 
 async function readExistingCaptureValue<T>(key: string): Promise<T | null> {
   const output = createReadStream(target)
@@ -37,10 +38,10 @@ async function forEachExistingCaptureRow(key: string, handler: (row: GesiRow) =>
   for await (const item of output as AsyncIterable<{ value: GesiRow }>) await handler(item.value);
 }
 
-const existingCaptureMeta = shouldReadExistingCapture
+const existingCaptureMeta = shouldReadExistingCapture && hasExistingCapture
   ? await readExistingCaptureValue<GesiRawCapture['captureMeta']>('captureMeta').catch(() => null)
   : null;
-const previousCapture = reuseCatalog
+const previousCapture = reuseCatalog && hasExistingCapture
   ? await readFile(target, 'utf8').then((contents) => JSON.parse(contents) as GesiRawCapture).catch(() => null)
   : null;
 
