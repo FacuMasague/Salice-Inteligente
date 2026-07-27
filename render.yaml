@@ -5,7 +5,7 @@ services:
     plan: standard
     region: virginia
     autoDeployTrigger: checksPass
-    buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm run build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm run build
     startCommand: pnpm start
     healthCheckPath: /api/health
     disk:
