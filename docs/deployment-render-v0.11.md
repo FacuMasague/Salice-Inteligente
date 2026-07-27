@@ -5,7 +5,7 @@
 La producción usa un único Web Service pago de Render con:
 
 - Node.js 24 y `pnpm`;
-- una sola instancia `pro` de 4 GB;
+- una sola instancia `standard` de 2 GB;
 - disco persistente de 5 GB montado en `/opt/render/project/src/data`;
 - health check en `/api/health`;
 - programador interno a las 03:00 y 15:00 de Argentina.
@@ -27,9 +27,11 @@ El Blueprint define build, start, plan, región, disco, health check, horarios, 
 
 ## Capacidad y costo
 
-La captura real usada para validar v0.11 pesa aproximadamente 449 MB. La normalización alcanzó 1,62 GB de memoria residente y la construcción comercial 1,50 GB; la web activa ronda 0,51 GB. Ejecutar ambas dentro de los 2 GB del plan Standard no deja un margen seguro.
+La captura real usada para validar v0.11 pesa aproximadamente 449 MB. El flujo inicial materializaba el archivo completo: la normalización alcanzaba 1,62 GB de memoria residente y la construcción comercial 1,50 GB.
 
-Por eso el Blueprint recomienda `pro` (4 GB, 2 CPU). A julio de 2026 Render publica aproximadamente USD 85/mes para Pro, frente a USD 25/mes para Standard, más el disco persistente. No conviene bajar el plan hasta reducir el uso de memoria de la captura o confirmar con métricas de producción que el proceso completo cabe sin reinicios.
+El despliegue Standard usa un flujo de memoria acotada. La captura descarga los recursos de forma secuencial y escribe el JSON progresivamente. La normalización omite el histórico SPT, que no consume, y la base comercial relee el archivo por secciones y vuelca cada comprobante directamente a SQLite. En la medición local de la misma captura, la normalización bajó a 1,15 GB y la construcción comercial a 0,36 GB; esta última pasó de unos 5 segundos a unos 145 segundos. Los procesos hijos tienen límites de heap separados para priorizar estabilidad sobre velocidad.
+
+Por eso el Blueprint usa `standard` (2 GB, 1 CPU). Antes de considerar el despliegue cerrado se debe ejecutar una actualización completa en Render y revisar la métrica de memoria de las etapas, especialmente la captura GESI.
 
 ## Primer arranque
 

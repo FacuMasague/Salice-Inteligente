@@ -648,6 +648,7 @@ const SELLER_PROMPT = `Resumí cada cartera activa usando únicamente sus agrega
 No evalúes productividad, no compares vendedores como ranking, no crees objetivos ni tareas y no interpretes notas como desempeño.
 Nombrá siempre las señales completas: riesgo de cobranza, oportunidad comercial y prioridad de revisión. No uses las abreviaturas C, O o P. La oportunidad se calcula sólo sobre clientes elegibles.
 Devolvé exactamente un item por vendedor recibido y citá evidenceIds en cada señal o aspecto a revisar.
+No calcules porcentajes, proporciones ni diferencias nuevas. Los puntajes recibidos son valores absolutos, no porcentajes; no agregues el símbolo "%". Usá solamente cifras que aparezcan de forma explícita en la evidencia.
 Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros.`;
 
 const PRODUCT_PROMPT = `Clasificá un producto nuevo en las 33 dimensiones recibidas usando únicamente nombre, descripción y maestros comerciales disponibles.
@@ -821,7 +822,7 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-terra',
       effort: 'low',
       prompt: SELLER_PROMPT,
-      promptVersion: 3,
+      promptVersion: 5,
       schemaVersion: 2,
       schemaName: 'salice_seller_summaries_v1',
       schema: SELLER_SUMMARY_SCHEMA as unknown as Record<string, unknown>,

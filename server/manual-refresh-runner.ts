@@ -20,9 +20,10 @@ export function startManualRefresh(workspace = process.cwd(), requestedTrigger =
   if (activeProcess) return { started: false as const, ...manualRefreshProcessStatus() };
   const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
   const script = resolve(workspace, 'scripts/refresh-gesi-manual.ts');
+  const controllerHeapMb = Math.max(256, Number(process.env.SALICE_REFRESH_CONTROLLER_HEAP_MB) || 384);
   startedAt = new Date().toISOString();
   trigger = requestedTrigger;
-  const child = spawn(process.execPath, [tsxCli, script], {
+  const child = spawn(process.execPath, [`--max-old-space-size=${controllerHeapMb}`, tsxCli, script], {
     cwd: workspace,
     env: { ...process.env, SALICE_REFRESH_TRIGGER: requestedTrigger },
     stdio: ['ignore', 'inherit', 'inherit'],

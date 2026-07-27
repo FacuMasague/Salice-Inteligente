@@ -1,6 +1,12 @@
 import 'dotenv/config';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
+import { mkdir, readFile, rename } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { parser } from 'stream-json';
+import { pick } from 'stream-json/filters/pick.js';
+import { streamArray } from 'stream-json/streamers/stream-array.js';
+import { streamValues } from 'stream-json/streamers/stream-values.js';
 import { GesiClient } from '../server/gesi/client.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 
@@ -12,10 +18,31 @@ const rawDirectory = resolve(process.cwd(), 'data/raw');
 const target = resolve(rawDirectory, 'gesi-salice-latest.json');
 const reuseCatalog = process.argv.includes('--reuse-catalog');
 const shouldReadExistingCapture = reuseCatalog || !process.env.GESI_SPT_HISTORY_FROM;
-const existingCapture = shouldReadExistingCapture
+
+async function readExistingCaptureValue<T>(key: string): Promise<T | null> {
+  const output = createReadStream(target)
+    .pipe(parser.asStream())
+    .pipe(pick.asStream({ filter: key }))
+    .pipe(streamValues.asStream());
+  let result: T | null = null;
+  for await (const item of output as AsyncIterable<{ value: T }>) result = item.value;
+  return result;
+}
+
+async function forEachExistingCaptureRow(key: string, handler: (row: GesiRow) => void | Promise<void>) {
+  const output = createReadStream(target)
+    .pipe(parser.asStream())
+    .pipe(pick.asStream({ filter: key }))
+    .pipe(streamArray.asStream());
+  for await (const item of output as AsyncIterable<{ value: GesiRow }>) await handler(item.value);
+}
+
+const existingCaptureMeta = shouldReadExistingCapture
+  ? await readExistingCaptureValue<GesiRawCapture['captureMeta']>('captureMeta').catch(() => null)
+  : null;
+const previousCapture = reuseCatalog
   ? await readFile(target, 'utf8').then((contents) => JSON.parse(contents) as GesiRawCapture).catch(() => null)
   : null;
-const previousCapture = reuseCatalog ? existingCapture : null;
 
 const empresaID = Number(process.env.GESI_EMPRESA_ID);
 const sucursalID = Number(process.env.GESI_SUCURSAL_ID);
@@ -210,50 +237,44 @@ const tracked = async (label: string, promise: Promise<GesiRow[]>) => {
   console.log(`${label}: ${rows.length}`);
   return rows;
 };
+const pendingPath = `/api/Ventas/Comprobantes/GetComprobantesPendientes?fechaHasta=${encodeURIComponent(historyUntil)}&sucursalID=${sucursalID}`;
+const fetchPendingDocuments = async () => {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const rows = await client.getAll<GesiRow>(pendingPath, 'comprobantes', 1000);
+    if (rows.length) return rows;
+    console.warn(`Comprobantes pendientes: respuesta vacía inesperada (${attempt}/3); se reintentará con una sesión nueva.`);
+    if (attempt < 3) {
+      await client.login();
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+    }
+  }
+  throw new Error('GESI devolvió tres veces una cartera pendiente vacía. Se conserva la captura anterior y no se permite activar datos incompletos.');
+};
 
-const [
-  clients,
-  products,
-  stocks,
-  balances,
-  allInvoiceHeaders,
-  allCreditNoteHeaders,
-  collectionHeaders,
-  pendingDocuments,
-  channels,
-  paymentMethods,
-  sellers,
-  rubros,
-  subRubros,
-  productBrands,
-  productLines,
-  productFamilies,
-  productGroups,
-  clientTypes,
-  zones,
-] = await Promise.all([
-  tracked('Clientes', client.getAll<GesiRow>('/api/Maestros/Clientes/GetList?sucursales=S&contactos=N&definicionesSucursal=S', 'clientes')),
-  tracked('Productos', previousCapture ? Promise.resolve(previousCapture.products) : client.getAll<GesiRow>('/api/Maestros/Productos/GetList?precios=N&stock=N&imagenes=N&costos=N&incluirSucursalesHabilitadas=S', 'productos')),
-  tracked('Existencias completas (incluye cero)', previousCapture?.captureMeta.inventoryIncludesZeroStock
-    ? Promise.resolve(previousCapture.stocks)
-    : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000)),
-  tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos')),
-  tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000)),
-  tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000)),
-  tracked('Cobros 365d', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Cobros/GetList', 'comprobantes', listBody(historyFrom), 1000)),
-  tracked('Comprobantes pendientes', client.getAll<GesiRow>(`/api/Ventas/Comprobantes/GetComprobantesPendientes?fechaHasta=${encodeURIComponent(historyUntil)}&sucursalID=${sucursalID}`, 'comprobantes', 1000)),
-  tracked('Canales', client.getAll<GesiRow>('/api/Maestros/CanalesDeVenta/GetList', 'canalesDeVenta')),
-  tracked('Formas de pago', client.getAll<GesiRow>('/api/Maestros/FormasDePago/GetList', 'formasDePago')),
-  tracked('Vendedores', client.getAll<GesiRow>('/api/Maestros/Vendedores/GetList', 'vendedores')),
-  tracked('Rubros', client.getAll<GesiRow>('/api/Maestros/Rubros/GetList', 'rubros')),
-  tracked('Subrubros', client.getAll<GesiRow>('/api/Maestros/SubRubros/GetList', 'subRubros')),
-  tracked('Marcas de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos1/GetList', 'filtroarticulos1')),
-  tracked('Líneas de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos2/GetList', 'filtroarticulos2')),
-  tracked('Familias de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos3/GetList', 'filtroarticulos3')),
-  tracked('Grupos de producto', client.getAll<GesiRow>('/api/Maestros/GruposDeProductos/GetList', 'grupoArticulos')),
-  tracked('Tipos de cliente', safeMaster('/api/Maestros/TiposDeCliente/GetList', 'tiposDeCliente', 'Tipos de cliente no disponibles')),
-  tracked('Zonas', safeMaster('/api/Maestros/Zonas/GetList', 'zonas', 'Zonas no disponibles')),
-]);
+// Standard prioriza un pico de memoria predecible. Los recursos se descargan
+// uno por vez: tarda más que Promise.all, pero evita acumular varias respuestas
+// paginadas y sus buffers de red al mismo tiempo.
+const clients = await tracked('Clientes', client.getAll<GesiRow>('/api/Maestros/Clientes/GetList?sucursales=S&contactos=N&definicionesSucursal=S', 'clientes'));
+const products = await tracked('Productos', previousCapture ? Promise.resolve(previousCapture.products) : client.getAll<GesiRow>('/api/Maestros/Productos/GetList?precios=N&stock=N&imagenes=N&costos=N&incluirSucursalesHabilitadas=S', 'productos'));
+const stocks = await tracked('Existencias completas (incluye cero)', previousCapture?.captureMeta.inventoryIncludesZeroStock
+  ? Promise.resolve(previousCapture.stocks)
+  : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000));
+const balances = await tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos'));
+const allInvoiceHeaders = await tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000));
+const allCreditNoteHeaders = await tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 1000));
+const collectionHeaders = await tracked('Cobros 365d', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Cobros/GetList', 'comprobantes', listBody(historyFrom), 1000));
+const pendingDocuments = await tracked('Comprobantes pendientes', fetchPendingDocuments());
+const channels = await tracked('Canales', client.getAll<GesiRow>('/api/Maestros/CanalesDeVenta/GetList', 'canalesDeVenta'));
+const paymentMethods = await tracked('Formas de pago', client.getAll<GesiRow>('/api/Maestros/FormasDePago/GetList', 'formasDePago'));
+const sellers = await tracked('Vendedores', client.getAll<GesiRow>('/api/Maestros/Vendedores/GetList', 'vendedores'));
+const rubros = await tracked('Rubros', client.getAll<GesiRow>('/api/Maestros/Rubros/GetList', 'rubros'));
+const subRubros = await tracked('Subrubros', client.getAll<GesiRow>('/api/Maestros/SubRubros/GetList', 'subRubros'));
+const productBrands = await tracked('Marcas de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos1/GetList', 'filtroarticulos1'));
+const productLines = await tracked('Líneas de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos2/GetList', 'filtroarticulos2'));
+const productFamilies = await tracked('Familias de producto', client.getAll<GesiRow>('/api/Maestros/FiltroArticulos3/GetList', 'filtroarticulos3'));
+const productGroups = await tracked('Grupos de producto', client.getAll<GesiRow>('/api/Maestros/GruposDeProductos/GetList', 'grupoArticulos'));
+const clientTypes = await tracked('Tipos de cliente', safeMaster('/api/Maestros/TiposDeCliente/GetList', 'tiposDeCliente', 'Tipos de cliente no disponibles'));
+const zones = await tracked('Zonas', safeMaster('/api/Maestros/Zonas/GetList', 'zonas', 'Zonas no disponibles'));
 
 const inventory = uniqueInventoryRows(stocks);
 if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y depósito; se conservó una por producto.`);
@@ -348,74 +369,123 @@ const invoices = allInvoiceHeaders
   .filter((row) => String(row.fechaDeEmision ?? '') >= historyFrom)
   .map((row) => String(row.fechaDeEmision ?? '') >= salesDetailFrom ? invoiceDetailByKey.get(documentIdentity(row)) ?? row : row);
 const creditNoteDetailByKey = new Map(creditNoteDetails.map((row) => [documentIdentity(row), row]));
-const preservedSptInvoices = process.env.GESI_SPT_HISTORY_FROM
-  ? []
-  : (existingCapture?.sptInvoices ?? []).filter((row) => String(row.fechaDeEmision ?? '') < salesHistoryFrom);
-const preservedSptCreditNotes = process.env.GESI_SPT_HISTORY_FROM
-  ? []
-  : (existingCapture?.sptCreditNotes ?? []).filter((row) => String(row.fechaDeEmision ?? '') < salesHistoryFrom);
+const preserveHistoricalSpt = !process.env.GESI_SPT_HISTORY_FROM && Boolean(existingCaptureMeta);
 const currentSptInvoices = allInvoiceHeaders.map((row) => invoiceDetailByKey.get(documentIdentity(row)) ?? row);
-const sptInvoices = [...preservedSptInvoices, ...currentSptInvoices];
-const sptCreditNotes = [
-  ...preservedSptCreditNotes,
-  ...allCreditNoteHeaders.map((row) => creditNoteDetailByKey.get(documentIdentity(row)) ?? row),
-];
-const sptCoverageFrom = preservedSptInvoices.length
-  ? existingCapture?.captureMeta.salesHistoryFrom ?? String(preservedSptInvoices[0]?.fechaDeEmision ?? '').slice(0, 10)
+const currentSptCreditNotes = allCreditNoteHeaders.map((row) => creditNoteDetailByKey.get(documentIdentity(row)) ?? row);
+const sptCoverageFrom = preserveHistoricalSpt
+  ? existingCaptureMeta?.salesHistoryFrom ?? salesHistoryFrom
   : salesHistoryFrom;
 const creditNotes = allCreditNoteHeaders
   .filter((row) => String(row.fechaDeEmision ?? '') >= historyFrom)
   .map((row) => String(row.fechaDeEmision ?? '') >= salesDetailFrom ? creditNoteDetailByKey.get(documentIdentity(row)) ?? row : row);
 const collectionDetailByKey = new Map(collectionDetails.map((row) => [documentIdentity(row), row]));
 const collections = collectionHeaders.map((row) => collectionDetailByKey.get(documentIdentity(row)) ?? row);
-const sptDetailCoverageFrom = [...sptInvoices, ...sptCreditNotes]
+const currentSptDetailCoverageFrom = [...currentSptInvoices, ...currentSptCreditNotes]
   .filter((row) => Array.isArray(row.detalleItems) && row.detalleItems.length > 0)
   .map((row) => String(row.fechaDeEmision ?? '').slice(0, 10))
   .filter(Boolean)
   .sort()[0] ?? sptSalesDetailFrom;
+const sptDetailCoverageFrom = [
+  preserveHistoricalSpt ? existingCaptureMeta?.sptSalesDetailFrom : '',
+  currentSptDetailCoverageFrom,
+].filter(Boolean).sort()[0] ?? sptSalesDetailFrom;
 
-const capture: GesiRawCapture = {
-  captureMeta: {
-    capturedAt: historyUntil,
-    empresaID,
-    sucursalID,
-    almacenPrincipalID,
-    almacenPrincipal: String(normalizedStocks.find((row) => row.almacen)?.almacen ?? `Depósito ${almacenPrincipalID}`),
-    inventoryIncludesZeroStock: true,
-    inventoryDuplicateRows: inventory.duplicateRows,
-    inventoryInvalidRows: inventory.invalidRows,
-    historyFrom,
-    salesHistoryFrom: sptCoverageFrom,
-    sptFetchFrom: salesHistoryFrom,
-    salesDetailFrom,
-    sptSalesDetailFrom: sptDetailCoverageFrom,
-    logisticsFrom,
-    historyUntil,
-    optionalEndpointWarnings,
-  },
-  clients,
-  products,
-  prices,
-  stocks: normalizedStocks,
-  balances,
-  invoices,
-  creditNotes,
-  sptInvoices,
-  sptCreditNotes,
-  collections,
-  pendingDocuments,
-  deliverySheets,
-  unassignedDeliveryDocuments,
-  masters: {
-    channels, paymentMethods, sellers, rubros, subRubros,
-    productBrands, productLines, productFamilies, productGroups,
-    clientTypes, zones,
-  },
+const captureMeta: GesiRawCapture['captureMeta'] = {
+  capturedAt: historyUntil,
+  empresaID,
+  sucursalID,
+  almacenPrincipalID,
+  almacenPrincipal: String(normalizedStocks.find((row) => row.almacen)?.almacen ?? `Depósito ${almacenPrincipalID}`),
+  inventoryIncludesZeroStock: true,
+  inventoryDuplicateRows: inventory.duplicateRows,
+  inventoryInvalidRows: inventory.invalidRows,
+  historyFrom,
+  salesHistoryFrom: sptCoverageFrom,
+  sptFetchFrom: salesHistoryFrom,
+  salesDetailFrom,
+  sptSalesDetailFrom: sptDetailCoverageFrom,
+  logisticsFrom,
+  historyUntil,
+  optionalEndpointWarnings,
 };
-
+const masters: GesiRawCapture['masters'] = {
+  channels, paymentMethods, sellers, rubros, subRubros,
+  productBrands, productLines, productFamilies, productGroups,
+  clientTypes, zones,
+};
 await mkdir(rawDirectory, { recursive: true });
 const temporary = `${target}.tmp`;
-await writeFile(temporary, `${JSON.stringify(capture)}\n`, 'utf8');
+console.log('Captura GESI: escribiendo el archivo progresivamente…');
+const output = createWriteStream(temporary, { encoding: 'utf8' });
+let firstProperty = true;
+let preservedSptInvoiceCount = 0;
+let preservedSptCreditNoteCount = 0;
+
+async function writeChunk(stream: WriteStream, value: string) {
+  if (!stream.write(value)) await once(stream, 'drain');
+}
+
+async function writePropertyPrefix(name: string) {
+  await writeChunk(output, `${firstProperty ? '' : ','}${JSON.stringify(name)}:`);
+  firstProperty = false;
+}
+
+async function writeValueProperty(name: string, value: unknown) {
+  await writePropertyPrefix(name);
+  await writeChunk(output, JSON.stringify(value));
+}
+
+async function writeArrayProperty(name: string, rows: GesiRow[]) {
+  await writePropertyPrefix(name);
+  await writeChunk(output, '[');
+  for (let index = 0; index < rows.length; index += 1) {
+    await writeChunk(output, `${index ? ',' : ''}${JSON.stringify(rows[index])}`);
+  }
+  await writeChunk(output, ']');
+}
+
+async function writeSptProperty(
+  name: 'sptInvoices' | 'sptCreditNotes',
+  currentRows: GesiRow[],
+) {
+  await writePropertyPrefix(name);
+  await writeChunk(output, '[');
+  let written = 0;
+  if (preserveHistoricalSpt) {
+    await forEachExistingCaptureRow(name, async (row) => {
+      if (String(row.fechaDeEmision ?? '') >= salesHistoryFrom) return;
+      await writeChunk(output, `${written ? ',' : ''}${JSON.stringify(row)}`);
+      written += 1;
+    });
+  }
+  if (name === 'sptInvoices') preservedSptInvoiceCount = written;
+  else preservedSptCreditNoteCount = written;
+  for (const row of currentRows) {
+    await writeChunk(output, `${written ? ',' : ''}${JSON.stringify(row)}`);
+    written += 1;
+  }
+  await writeChunk(output, ']');
+}
+
+await writeChunk(output, '{');
+await writeValueProperty('captureMeta', captureMeta);
+await writeArrayProperty('clients', clients);
+await writeArrayProperty('products', products);
+await writeArrayProperty('prices', prices);
+await writeArrayProperty('stocks', normalizedStocks);
+await writeArrayProperty('balances', balances);
+await writeArrayProperty('invoices', invoices);
+await writeArrayProperty('creditNotes', creditNotes);
+await writeSptProperty('sptInvoices', currentSptInvoices);
+await writeSptProperty('sptCreditNotes', currentSptCreditNotes);
+await writeArrayProperty('collections', collections);
+await writeArrayProperty('pendingDocuments', pendingDocuments);
+await writeArrayProperty('deliverySheets', deliverySheets);
+await writeArrayProperty('unassignedDeliveryDocuments', unassignedDeliveryDocuments);
+await writeValueProperty('masters', masters);
+await writeChunk(output, '}');
+output.end();
+await once(output, 'finish');
 await rename(temporary, target);
 
 console.log('Captura GESI Salice completada.');
@@ -437,11 +507,11 @@ console.log(JSON.stringify({
   sptSalesDetailFrom,
   invoices: invoices.length,
   invoicesWithDetail: invoices.filter((row) => Array.isArray(row.detalleItems)).length,
-  sptInvoices: sptInvoices.length,
+  sptInvoices: preservedSptInvoiceCount + currentSptInvoices.length,
   sptInvoicesWithDetail: invoiceDetails.length,
   creditNotes: creditNotes.length,
   creditNotesWithDetail: creditNotes.filter((row) => Array.isArray(row.detalleItems)).length,
-  sptCreditNotes: sptCreditNotes.length,
+  sptCreditNotes: preservedSptCreditNoteCount + currentSptCreditNotes.length,
   sptCreditNotesWithDetail: creditNoteDetails.length,
   collections365d: collections.length,
   pendingDocuments: pendingDocuments.length,

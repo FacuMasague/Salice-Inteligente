@@ -54,7 +54,9 @@
     "pdfkit": "^0.19.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "stream-chain": "4.2.5",
+    "stream-json": "3.5.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

@@ -2,7 +2,7 @@ services:
   - type: web
     name: salice-inteligente
     runtime: node
-    plan: pro
+    plan: standard
     region: virginia
     autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm run build
@@ -39,6 +39,12 @@ services:
         value: "30"
       - key: SALICE_OPERATIONS_BACKUP_RETENTION
         value: "10"
+      - key: SALICE_REFRESH_CONTROLLER_HEAP_MB
+        value: "384"
+      - key: SALICE_REFRESH_STAGE_HEAP_MB
+        value: "512"
+      - key: SALICE_REFRESH_CAPTURE_HEAP_MB
+        value: "768"
       - key: SALICE_AI_MAX_COST_USD_PER_RUN
         value: "1"
       - key: SALICE_AI_MONTHLY_BUDGET_USD

@@ -3,7 +3,8 @@
 ## Producción web
 
 - Se incorpora un Blueprint de Render con Node.js fijado, build reproducible, Web Service `pro`, health check y disco persistente de 5 GB.
-- El plan de 4 GB se eligió después de medir picos reales de 1,62 GB en la normalización y 1,50 GB en la base comercial, además de la memoria de la web.
+- El servicio usa Standard de 2 GB. La actualización intercambia velocidad por memoria: descargas secuenciales, escritura progresiva, normalización sin materializar el histórico SPT y construcción comercial comprobante por comprobante.
+- Sobre la captura real de 449 MB, la normalización bajó de 1,62 GB a 1,15 GB y la construcción comercial de 1,50 GB a 0,36 GB; esta última pasó de unos 5 a unos 145 segundos.
 - El servidor respeta `PORT` y escucha en `0.0.0.0` dentro de Render.
 - Snapshots, paquetes, bases operativas, feedback y artefactos de IA sobreviven reinicios y despliegues.
 - Un disco vacío inicia con la vista demostrativa y dispara una actualización inicial sin impedir que el servicio quede saludable.

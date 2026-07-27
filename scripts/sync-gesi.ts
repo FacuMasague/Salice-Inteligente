@@ -1,5 +1,10 @@
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import chain from 'stream-chain';
+import { parser } from 'stream-json';
+import { ignore } from 'stream-json/filters/ignore.js';
+import { streamObject } from 'stream-json/streamers/stream-object.js';
 import { normalizeCapture, validateNormalizedSnapshot } from '../server/gesi/normalize.js';
 import type { GesiRawCapture } from '../server/gesi/types.js';
 import { saveSnapshot } from '../server/store.js';
@@ -18,8 +23,30 @@ if (!candidateMode && getActiveBundleManifest()) {
   throw new Error('La activación directa de sync:gesi está deshabilitada desde v0.3.3. Usá pnpm run refresh:gesi para construir, auditar y activar el paquete completo.');
 }
 
-console.log('Leyendo la última captura cruda de Salice…');
-const capture = JSON.parse(await readFile(capturePath, 'utf8')) as GesiRawCapture;
+async function readNormalizationCapture() {
+  const output = chain([
+    createReadStream(capturePath),
+    parser(),
+    ignore({
+      filter: /^(sptInvoices|sptCreditNotes)$/,
+      streamKeys: false,
+      packKeys: true,
+    }),
+    streamObject(),
+  ]);
+  const capture: Partial<GesiRawCapture> = {};
+  for await (const item of output as AsyncIterable<{ key: string; value: unknown }>) {
+    (capture as Record<string, unknown>)[item.key] = item.value;
+  }
+  // La base SPT se procesa en streaming en su propia etapa. La normalización
+  // operativa no usa esas dos colecciones históricas y evita materializarlas.
+  capture.sptInvoices = [];
+  capture.sptCreditNotes = [];
+  return capture as GesiRawCapture;
+}
+
+console.log('Leyendo la captura cruda sin materializar el histórico SPT…');
+const capture = await readNormalizationCapture();
 if (capture.captureMeta.empresaID !== 3 || capture.captureMeta.sucursalID !== 3) {
   throw new Error('La captura no pertenece a Salice (empresa 3, sucursal 3).');
 }
