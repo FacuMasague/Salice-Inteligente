@@ -114,6 +114,55 @@ describe('orquestador de enriquecimiento IA', () => {
     store.close();
   });
 
+  it('reintenta una salida estructurada que el control de calidad bloquea', async () => {
+    const store = await testStore();
+    let invocation = 0;
+    const qualityDefinition: AiFunctionDefinition = {
+      ...definition({
+        reportId: 'general',
+        period: '2026-07-01 — 2026-07-27',
+        universe: 'Universo sintético',
+        partial: true,
+        metrics: [{ id: 'metric:net-sales', label: 'Venta neta', value: 1_250, unit: 'ARS' }],
+      }),
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          finding: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              text: { type: 'string' },
+              evidenceIds: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['text', 'evidenceIds'],
+          },
+        },
+        required: ['finding'],
+      },
+    };
+    const provider = new FakeAiProvider(() => ({
+      finding: {
+        text: 'La venta neta asciende a 1.250 ARS.',
+        evidenceIds: ++invocation === 1 ? [] : ['metric:net-sales'],
+      },
+    }));
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-quality-retry',
+      trigger: 'manual',
+      definitions: [qualityDefinition],
+      provider,
+      store,
+    });
+    expect(run.status).toBe('completed');
+    expect(run.completed).toBe(1);
+    expect(provider.calls).toHaveLength(2);
+    store.close();
+  });
+
   it('aísla una falla del proveedor y conserva un resultado auditable sin lanzar la excepción', async () => {
     const store = await testStore();
     const provider: AiProvider = {

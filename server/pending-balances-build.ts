@@ -5,17 +5,13 @@ import type { GesiRawCapture, GesiRow } from './gesi/types.js';
 import {
   EXCLUDED_RECEIVABLE_CLIENT_NAMES,
   MIN_RECEIVABLE_DOCUMENT_AMOUNT,
+  RECEIVABLE_SELLERS,
   isActionableReceivableAmount,
   isExcludedReceivableClient,
+  isReceivableSeller,
 } from '../shared/receivables-policy.js';
 
-export const PENDING_BALANCE_SELLERS = [
-  'Ana Ottaviano',
-  'Andres Dominguez',
-  'Edgardo Larrea',
-  'Ignacio Carea',
-  'Julieta Errecart',
-];
+export const PENDING_BALANCE_SELLERS = [...RECEIVABLE_SELLERS];
 
 const numeric = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const text = (value: unknown) => value == null ? '' : String(value).trim();
@@ -97,7 +93,12 @@ export function buildPendingBalancesDatabase(
     // El modelo publicado trata "Saldo Pendiente" como cartera de documentos
     // débito abierta. Recibos y notas de crédito pueden seguir sin aplicar en
     // GESI, pero no forman parte de esta suma (sí afectan el saldo neto CC).
-    if (document.anulado === true || !['F', 'D'].includes(text(document.subtipo)) || !isActionableReceivableAmount(document.saldoPendiente)) continue;
+    if (
+      document.anulado === true
+      || !['F', 'D'].includes(text(document.subtipo))
+      || !isActionableReceivableAmount(document.saldoPendiente)
+      || !isReceivableSeller(sellerLabels.get(numeric(document.vendedorID)))
+    ) continue;
     const clientID = numeric(document.clienteID);
     const current = pendingByClient.get(clientID) ?? [];
     current.push(document);
@@ -137,6 +138,7 @@ export function buildPendingBalancesDatabase(
       outstanding REAL NOT NULL,
       credit_term_days INTEGER,
       payment_method TEXT NOT NULL,
+      seller TEXT NOT NULL,
       status TEXT NOT NULL
     );
     CREATE INDEX clients_seller_idx ON clients(seller);
@@ -150,20 +152,26 @@ export function buildPendingBalancesDatabase(
     open_documents, overdue_documents, term_total_days, term_average_days, sales_30
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const insertDocument = database.prepare(`INSERT INTO documents (
-    document_id, client_id, document_number, issued_at, due_at, outstanding, credit_term_days, payment_method, status
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    document_id, client_id, document_number, issued_at, due_at, outstanding, credit_term_days, payment_method, seller, status
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
   let clientCount = 0;
   let documentCount = 0;
   database.exec('BEGIN');
   try {
     for (const [clientID, client] of clients) {
-      if (!PENDING_BALANCE_SELLERS.includes(client.seller)) continue;
       const documents = (pendingByClient.get(clientID) ?? []).map((row) => {
         const issuedAt = date(row.fechaDeEmision);
         const dueAt = date(row.fechaDePrimerVencimiento);
         const termDays = issuedAt && dueAt ? daysBetween(issuedAt, dueAt) : null;
-        return { row, issuedAt, dueAt, termDays, outstanding: roundMoney(numeric(row.saldoPendiente)) };
+        return {
+          row,
+          issuedAt,
+          dueAt,
+          termDays,
+          outstanding: roundMoney(numeric(row.saldoPendiente)),
+          seller: sellerLabels.get(numeric(row.vendedorID)) ?? '',
+        };
       }).filter((document) => document.issuedAt && document.dueAt && document.termDays != null && document.termDays >= 0 && document.termDays <= 365);
       const pendingBalance = roundMoney(documents.reduce((sum, document) => sum + document.outstanding, 0));
       if (pendingBalance <= .01) continue;
@@ -172,12 +180,18 @@ export function buildPendingBalancesDatabase(
       const earliestDue = [...documents].sort((left, right) => left.dueAt.localeCompare(right.dueAt))[0]?.dueAt ?? null;
       const termTotal = documents.reduce((sum, document) => sum + Number(document.termDays), 0);
       const termAverage = documents.length ? termTotal / documents.length : null;
+      const sellerOutstanding = new Map<string, number>();
+      for (const document of documents) {
+        sellerOutstanding.set(document.seller, (sellerOutstanding.get(document.seller) ?? 0) + document.outstanding);
+      }
+      const portfolioSeller = [...sellerOutstanding]
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'es'))[0]?.[0] ?? client.seller;
       const source = client.source;
       insertClient.run(
         clientID,
         text(source.razonSocial) || 'Cliente sin razón social',
         text(source.nombreDeFantasia),
-        client.seller,
+        portfolioSeller,
         client.paymentMethod,
         numeric(source.estadoID) === 1 ? 1 : 0,
         pendingBalance,
@@ -202,6 +216,7 @@ export function buildPendingBalancesDatabase(
           document.termDays,
           paymentLabels.get(numeric(document.row.formaDePagoID))
             ?? (numeric(document.row.formaDePagoID) ? `Forma de pago ${numeric(document.row.formaDePagoID)}` : client.paymentMethod),
+          document.seller,
           document.dueAt < asOfDate ? 'overdue' : 'open',
         );
         documentCount += 1;

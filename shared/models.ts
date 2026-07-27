@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.10.7';
+export const APP_VERSION = '0.10.9';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -172,6 +172,8 @@ export interface Invoice {
   creditTermDays: number | null;
   /** Forma de pago informada por el comprobante; no debe confundirse con la condición actual del cliente. */
   paymentMethod: string;
+  /** Vendedor informado por el comprobante; en snapshots anteriores puede faltar y se usa el de la ficha del cliente. */
+  seller?: string;
 }
 
 export interface CreditTermOption {
@@ -1223,6 +1225,7 @@ export interface PendingBalanceDocumentRow {
   outstanding: number;
   creditTermDays: number | null;
   paymentMethod: string;
+  seller: string;
   status: 'overdue' | 'not_due';
   overdueDays: number;
 }

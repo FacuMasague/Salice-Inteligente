@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronRight, CircleDollarSign, Database, Filter, PackageOpen, RefreshCw, Scale, ShoppingBasket, Store, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, CircleDollarSign, Database, PackageOpen, Scale, ShoppingBasket, Store, TrendingDown, TrendingUp, X } from 'lucide-react';
 import type {
   CommercialSalesBrandRow,
   CommercialSalesFilterKey,
@@ -9,6 +9,7 @@ import type {
   CommercialSalesReportPayload,
 } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
+import { BusinessReportFilters } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
@@ -138,6 +139,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
   const [report, setReport] = useState<CommercialSalesReportPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     fetch('/api/reports/commercial-sales/meta').then(async (response) => {
@@ -166,6 +168,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
   }, [filters, meta]);
 
   const activeFilterCount = useMemo(() => (Object.entries(filters) as [keyof CommercialSalesFilters, string][]).filter(([key, value]) => !['periodMode', 'month', 'year'].includes(key) && value).length, [filters]);
+  const advancedFilterCount = Number(Boolean(filters.brand)) + Number(Boolean(filters.productGroup));
   const update = (key: keyof CommercialSalesFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
   if (!meta && loading) return <ReportState state="loading" title="Preparando Ventas · Comercial" detail="Leyendo los movimientos capturados desde GESI…" />;
@@ -179,7 +182,6 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
   const differenceTitle = report.periodMode === 'year' ? 'Diferencia vs año anterior' : 'Diferencia vs mes anterior';
   const comparisonLegend = report.periodMode === 'year' ? String(Number(report.selectedPeriod) - 1) : 'Año anterior';
   const resetFilters = () => setFilters({ ...EMPTY_FILTERS, periodMode: filters.periodMode, month: meta.latestMonth, year: meta.latestYear });
-  const filterKeys: CommercialSalesFilterKey[] = ['seller', 'category', 'brand', 'productGroup'];
   const applySaved = (saved: Record<string, string>) => setFilters({
     periodMode: saved.periodMode === 'year' ? 'year' : 'month',
     month: saved.month || meta.latestMonth,
@@ -206,14 +208,23 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
     seller: { label: 'Vendedor' }, category: { label: 'Rubro' }, brand: { label: 'Marca' }, productGroup: { label: 'Grupo' },
   };
   return <div className="page-view commercial-page">
-    <section className="data-card commercial-filter-card" data-tour="commercial-sales-overview">
-      <div><span className="section-kicker"><Filter size={14} /> Reporte Ventas - Comercial</span><h2>Venta neta · {periodTitle}</h2><p>{report.periodMode === 'year' ? `Vista anual del ${dateLabel(report.periodStart)} al ${dateLabel(report.periodEnd)}.` : 'Vista mensual'} calculada sobre facturas y notas de crédito de GESI.</p><div className="commercial-period-tabs" role="group" aria-label="Frecuencia del reporte"><button type="button" className={filters.periodMode === 'month' ? 'active' : ''} aria-pressed={filters.periodMode === 'month'} onClick={() => update('periodMode', 'month')}>Mensual</button><button type="button" className={filters.periodMode === 'year' ? 'active' : ''} aria-pressed={filters.periodMode === 'year'} onClick={() => update('periodMode', 'year')}>Anual</button></div></div>
-      <div className="commercial-filters"><SingleSelectFilter label={filters.periodMode === 'year' ? 'Año' : 'Mes'} value={filters.periodMode === 'year' ? filters.year : filters.month} options={filters.periodMode === 'year' ? meta.years : meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update(filters.periodMode === 'year' ? 'year' : 'month', value)} />{filterKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!activeFilterCount} onClick={resetFilters}><X size={14} /> Limpiar {activeFilterCount ? `(${activeFilterCount})` : ''}</button></div>
+    <BusinessReportFilters
+      dataTour="commercial-sales-overview"
+      kicker={<><BarChart3 size={14} /> Reporte Ventas - Comercial</>}
+      title={<>Venta neta · {periodTitle}</>}
+      description={`${report.periodMode === 'year' ? `Vista anual del ${dateLabel(report.periodStart)} al ${dateLabel(report.periodEnd)}` : 'Vista mensual'} calculada sobre facturas y notas de crédito de GESI.`}
+      introExtra={<div className="business-report-mode-tabs" role="group" aria-label="Frecuencia del reporte"><button type="button" className={filters.periodMode === 'month' ? 'active' : ''} aria-pressed={filters.periodMode === 'month'} onClick={() => update('periodMode', 'month')}>Mensual</button><button type="button" className={filters.periodMode === 'year' ? 'active' : ''} aria-pressed={filters.periodMode === 'year'} onClick={() => update('periodMode', 'year')}>Anual</button></div>}
+      primary={<><SingleSelectFilter label={filters.periodMode === 'year' ? 'Año' : 'Mes'} value={filters.periodMode === 'year' ? filters.year : filters.month} options={filters.periodMode === 'year' ? meta.years : meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update(filters.periodMode === 'year' ? 'year' : 'month', value)} /><SelectFilter label={FILTER_LABELS.seller} value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label={FILTER_LABELS.category} value={filters.category} options={meta.options.category} onChange={(value) => update('category', value)} /></>}
+      advanced={<><SelectFilter label={FILTER_LABELS.brand} value={filters.brand} options={meta.options.brand} onChange={(value) => update('brand', value)} /><SelectFilter label={FILTER_LABELS.productGroup} value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className="button secondary" disabled={!activeFilterCount} onClick={resetFilters}><X size={14} /> Restablecer</button></>}
+      activeFilterCount={advancedFilterCount}
+      expanded={expanded}
+      onToggle={() => setExpanded((value) => !value)}
+      loading={loading}
+    >
       <ReportFilterActions view="commercial-sales" filters={linkFilters} labels={filterLabels} onClear={(key) => update(key as keyof CommercialSalesFilters, key === 'periodMode' ? 'month' : key === 'month' ? meta.latestMonth : key === 'year' ? meta.latestYear : '')} onReset={resetFilters}>
         <SavedViewsBar viewKey="commercial-sales" filters={{ ...filters }} onApply={applySaved} />
       </ReportFilterActions>
-      {loading && <div className="commercial-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
-    </section>
+    </BusinessReportFilters>
 
     <ReportContext
       universe="Empresa 3 · sucursales 3/6 · emisores Salice/MDQ Alarcón"

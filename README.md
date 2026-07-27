@@ -1,4 +1,4 @@
-# Salice Inteligente · v0.10.7
+# Salice Inteligente · v0.10.9
 
 Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz. Esta versión cierra la preparación funcional y visual previa al trabajo de publicación web previsto para v0.11.
 
@@ -95,6 +95,8 @@ Las preferencias de densidad, ayuda contextual y horarios previstos se guardan e
 
 La aplicación conserva la última actualización aprobada si un intento posterior falla. Notas, gestiones, promesas, vistas, objetivos, correcciones y feedback se almacenan por separado de los datos comerciales.
 
+La cartera documental sólo incluye facturas y notas de débito asignadas en el propio comprobante a Andres Dominguez, Edgardo Larrea, Ignacio Carea, Ana Ottaviano, Julieta Errecart o Gonzalo Russian. Continúan vigentes el mínimo de $1.000 y la exclusión de entidades internas o genéricas.
+
 Las copias pueden consultarse desde Acerca del programa. La restauración sigue siendo manual y administrada para evitar reemplazos accidentales.
 
 ## Verificación técnica
@@ -128,3 +130,5 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v0.10.5.md`
 - `docs/release-v0.10.6.md`
 - `docs/release-v0.10.7.md`
+- `docs/release-v0.10.8.md`
+- `docs/release-v0.10.9.md`

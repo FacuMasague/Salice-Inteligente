@@ -15,6 +15,7 @@ import {
   MIN_RECEIVABLE_DOCUMENT_AMOUNT,
   isActionableReceivableAmount,
   isExcludedReceivableClient,
+  isReceivableSeller,
 } from '../shared/receivables-policy.js';
 import { PENDING_BALANCE_SELLERS } from './pending-balances-build.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
@@ -52,6 +53,7 @@ type RawDocumentRow = {
   outstanding: number;
   credit_term_days: number | null;
   payment_method: string;
+  seller: string;
   status: string;
 };
 
@@ -80,14 +82,14 @@ function normalizeFilters(input: Partial<Record<string, unknown>>, meta: Pending
   };
 }
 
-function where(filters: PendingBalanceFilters, alias = '', includeStatus = true) {
+function where(filters: PendingBalanceFilters, alias = '', includeStatus = true, includeSeller = true) {
   const prefix = alias ? `${alias}.` : '';
   const clauses = ['1 = 1'];
   const parameters: SqlValue[] = [];
   const sellers = decodeMultiFilter(filters.seller);
   const paymentMethods = decodeMultiFilter(filters.paymentMethod);
   const statuses = decodeMultiFilter(filters.status);
-  if (sellers.length) { clauses.push(`${prefix}seller IN (${sellers.map(() => '?').join(', ')})`); parameters.push(...sellers); }
+  if (includeSeller && sellers.length) { clauses.push(`${prefix}seller IN (${sellers.map(() => '?').join(', ')})`); parameters.push(...sellers); }
   if (paymentMethods.length) { clauses.push(`${prefix}payment_method IN (${paymentMethods.map(() => '?').join(', ')})`); parameters.push(...paymentMethods); }
   if (includeStatus && statuses.length === 1 && statuses[0] === 'overdue') clauses.push(`${prefix}overdue_balance > 0.01`);
   if (includeStatus && statuses.length === 1 && statuses[0] === 'not_due') clauses.push(`${prefix}overdue_balance <= 0.01`);
@@ -115,7 +117,7 @@ export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
       branches: [3],
       excludedSellerGroup: 'MM',
       visibleSellers: PENDING_BALANCE_SELLERS,
-      balanceRule: 'Facturas y notas de débito abiertas con vencimiento válido y saldo pendiente desde $1.000',
+      balanceRule: 'Facturas y notas de débito abiertas con vencimiento válido, saldo pendiente desde $1.000 y vendedor documental habilitado',
       minimumDocumentOutstanding: MIN_RECEIVABLE_DOCUMENT_AMOUNT,
       excludedClients: [...EXCLUDED_RECEIVABLE_CLIENT_NAMES],
     },
@@ -125,9 +127,8 @@ export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
   const policyClientIds = new Set(rows<{ client_id: number; client_name: string; trade_name: string }>(
     value.prepare('SELECT client_id, client_name, trade_name FROM clients'),
   ).filter((row) => !isExcludedReceivableClient(row.client_name, row.trade_name)).map((row) => Number(row.client_id)));
-  const policyDocuments = rows<{ client_id: number; outstanding: number }>(
-    value.prepare('SELECT client_id, outstanding FROM documents'),
-  ).filter((row) => policyClientIds.has(Number(row.client_id)) && isActionableReceivableAmount(row.outstanding));
+  const policyDocuments = rawDocumentRows(value)
+    .filter((row) => policyClientIds.has(Number(row.client_id)));
   const clientsWithDocuments = new Set(policyDocuments.map((row) => Number(row.client_id)));
   cachedMeta = {
     ...unavailable,
@@ -139,7 +140,7 @@ export function getPendingBalancesReportMeta(): PendingBalanceReportMeta {
     clientCount: clientsWithDocuments.size,
     documentCount: policyDocuments.length,
     options: {
-      sellers: JSON.parse(meta.get('sellers') ?? JSON.stringify(PENDING_BALANCE_SELLERS)) as string[],
+      sellers: PENDING_BALANCE_SELLERS,
       paymentMethods: rows<{ payment_method: string }>(value.prepare('SELECT DISTINCT payment_method FROM clients ORDER BY payment_method COLLATE NOCASE')).map((row) => row.payment_method),
     },
     universe: {
@@ -155,15 +156,18 @@ function rawDocumentRows(value: DatabaseSync, clientIds?: number[]): RawDocument
   const validIds = [...new Set((clientIds ?? []).filter(Number.isFinite))];
   if (clientIds && !validIds.length) return [];
   const filter = validIds.length ? `WHERE d.client_id IN (${validIds.map(() => '?').join(', ')})` : '';
-  const hasDocumentPaymentMethod = rows<{ name: string }>(value.prepare('PRAGMA table_info(documents)')).some((column) => column.name === 'payment_method');
-  return rows<RawDocumentRow>(value.prepare(`SELECT d.*, ${hasDocumentPaymentMethod ? 'd.payment_method' : 'c.payment_method'} AS payment_method
+  const documentColumns = rows<{ name: string }>(value.prepare('PRAGMA table_info(documents)'));
+  const hasDocumentPaymentMethod = documentColumns.some((column) => column.name === 'payment_method');
+  const hasDocumentSeller = documentColumns.some((column) => column.name === 'seller');
+  return rows<RawDocumentRow>(value.prepare(`SELECT d.*, ${hasDocumentPaymentMethod ? 'd.payment_method' : 'c.payment_method'} AS payment_method,
+      ${hasDocumentSeller ? 'd.seller' : 'c.seller'} AS seller
     FROM documents d JOIN clients c ON c.client_id = d.client_id ${filter}
     ORDER BY d.due_at, d.document_number`), validIds)
-    .filter((row) => isActionableReceivableAmount(row.outstanding));
+    .filter((row) => isActionableReceivableAmount(row.outstanding) && isReceivableSeller(row.seller));
 }
 
 function clientRows(value: DatabaseSync, filters: PendingBalanceFilters, asOfDate: string): PendingBalanceClientRow[] {
-  const filter = where(filters, '', false);
+  const filter = where(filters, '', false, false);
   const rawClients = rows<RawClientRow>(value.prepare(`SELECT * FROM clients WHERE ${filter.sql}`), filter.parameters)
     .filter((row) => !isExcludedReceivableClient(row.client_name, row.trade_name));
   const documentsByClient = new Map<number, RawDocumentRow[]>();
@@ -173,9 +177,17 @@ function clientRows(value: DatabaseSync, filters: PendingBalanceFilters, asOfDat
     documentsByClient.set(Number(document.client_id), current);
   }
   const statuses = decodeMultiFilter(filters.status);
+  const selectedSellers = decodeMultiFilter(filters.seller);
   return rawClients.map((row): PendingBalanceClientRow | null => {
-    const documents = documentsByClient.get(Number(row.client_id)) ?? [];
+    const documents = (documentsByClient.get(Number(row.client_id)) ?? [])
+      .filter((document) => !selectedSellers.length || selectedSellers.includes(document.seller));
     if (!documents.length) return null;
+    const sellerOutstanding = new Map<string, number>();
+    for (const document of documents) {
+      sellerOutstanding.set(document.seller, (sellerOutstanding.get(document.seller) ?? 0) + Number(document.outstanding));
+    }
+    const seller = [...sellerOutstanding]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'es'))[0]?.[0] ?? row.seller;
     const overdue = documents.filter((document) => document.due_at < asOfDate);
     const pendingBalance = documents.reduce((sum, document) => sum + Number(document.outstanding), 0);
     const overdueBalance = overdue.reduce((sum, document) => sum + Number(document.outstanding), 0);
@@ -188,7 +200,7 @@ function clientRows(value: DatabaseSync, filters: PendingBalanceFilters, asOfDat
       clientId: Number(row.client_id),
       name: row.client_name,
       tradeName: row.trade_name,
-      seller: row.seller,
+      seller,
       paymentMethod: row.payment_method,
       active: Boolean(row.active),
       pendingBalance,
@@ -265,7 +277,10 @@ export function buildPendingBalancesReport(input: Partial<Record<string, unknown
   if (!value || !meta.available) return null;
   const filters = normalizeFilters(input, meta);
   const clients = clientRows(value, filters, meta.asOfDate);
-  const documents = listPendingBalanceDocuments(clients.map((client) => client.clientId));
+  const documents = listPendingBalanceDocuments(
+    clients.map((client) => client.clientId),
+    decodeMultiFilter(filters.seller),
+  );
   const pendingBalance = clients.reduce((sum, row) => sum + row.pendingBalance, 0);
   const overdueBalance = clients.reduce((sum, row) => sum + row.overdueBalance, 0);
   const sales30 = clients.reduce((sum, row) => sum + row.sales30, 0);
@@ -289,7 +304,7 @@ export function buildPendingBalancesReport(input: Partial<Record<string, unknown
   };
 }
 
-export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanceDocumentRow[] {
+export function listPendingBalanceDocuments(clientIds?: number[], sellers: string[] = []): PendingBalanceDocumentRow[] {
   const value = db();
   const meta = getPendingBalancesReportMeta();
   if (!value || !meta.available) return [];
@@ -297,7 +312,7 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
     value.prepare('SELECT client_id, client_name, trade_name FROM clients'),
   ).filter((client) => !isExcludedReceivableClient(client.client_name, client.trade_name)).map((client) => Number(client.client_id)));
   return rawDocumentRows(value, clientIds)
-    .filter((row) => allowedClientIds.has(Number(row.client_id)))
+    .filter((row) => allowedClientIds.has(Number(row.client_id)) && (!sellers.length || sellers.includes(row.seller)))
     .map((row) => ({
     documentId: row.document_id,
     clientId: Number(row.client_id),
@@ -307,6 +322,7 @@ export function listPendingBalanceDocuments(clientIds?: number[]): PendingBalanc
     outstanding: Number(row.outstanding),
     creditTermDays: row.credit_term_days == null ? null : Number(row.credit_term_days),
     paymentMethod: row.payment_method || 'Sin condición informada',
+    seller: row.seller,
     status: row.status === 'overdue' ? 'overdue' : 'not_due',
     overdueDays: row.due_at < meta.asOfDate
       ? Math.max(0, Math.round((new Date(`${meta.asOfDate}T12:00:00Z`).getTime() - new Date(`${row.due_at}T12:00:00Z`).getTime()) / 86_400_000))

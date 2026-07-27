@@ -19,6 +19,7 @@ import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductConte
 import {
   isActionableReceivableAmount,
   isExcludedReceivableClient,
+  isReceivableSeller,
 } from '../../shared/receivables-policy.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
 
@@ -436,12 +437,17 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         return paymentMethodLabels.get(documentPaymentID)
           || (documentPaymentID ? `Forma de pago ${documentPaymentID}` : paymentMethod);
       };
+      const documentSeller = (document: GesiRow) => sellerLabels.get(number(document.vendedorID)) || '';
       const channelID = number(row.canalDeVentaID);
       const zoneID = number(row.zonaID);
       const typeID = number(row.tipoDeClienteID);
       const channel = channelLabels.get(channelID) || (channelID ? `Canal ${channelID}` : 'Sin canal');
       const openInvoices: Invoice[] = (pendingByClient.get(id) ?? [])
-        .filter((document) => isActionableReceivableAmount(document.saldoPendiente) && date(document.fechaDePrimerVencimiento))
+        .filter((document) => (
+          isActionableReceivableAmount(document.saldoPendiente)
+          && isReceivableSeller(documentSeller(document))
+          && date(document.fechaDePrimerVencimiento)
+        ))
         .map((document) => {
           const dueAt = date(document.fechaDePrimerVencimiento);
           return {
@@ -454,6 +460,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
             status: invoiceStatus(dueAt, snapshotDate),
             creditTermDays: invoiceCreditTermDays(date(document.fechaDeEmision), dueAt),
             paymentMethod: documentPaymentMethod(document),
+            seller: documentSeller(document),
           };
         });
       const paidInvoices: Invoice[] = paymentSamples.slice(-5).reverse().map((sample) => ({
@@ -467,6 +474,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         status: 'paid',
         creditTermDays: invoiceCreditTermDays(sample.issuedAt, sample.dueAt),
         paymentMethod: documentPaymentMethod(sample.invoice),
+        seller: documentSeller(sample.invoice) || undefined,
       }));
       const overdue = openInvoices.filter((invoice) => invoice.status === 'overdue');
       const dueSoon = openInvoices.some((invoice) => invoice.status === 'due_soon');

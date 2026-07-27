@@ -13,7 +13,7 @@ function capture(): GesiRawCapture {
   const document = {
     empresaID: 3, clienteID: 101, comprobanteID: 9, serie: 'B', puntoDeVentaID: 1, numero: 123,
     subtipo: 'F', fechaDeEmision: '2026-07-01', fechaDePrimerVencimiento: '2026-07-15',
-    importeTotal: 25_000, saldoPendiente: 12_500, formaDePagoID: 2, anulado: false,
+    importeTotal: 25_000, saldoPendiente: 12_500, formaDePagoID: 2, vendedorID: 7, anulado: false,
   };
   return {
     captureMeta: {
@@ -61,10 +61,11 @@ describe('forma de pago documental', () => {
     const path = join(directory, 'pending.sqlite');
     buildPendingBalancesDatabase(capture(), path);
     const database = new DatabaseSync(path, { readOnly: true });
-    const document = database.prepare('SELECT payment_method FROM documents').get() as { payment_method: string };
+    const document = database.prepare('SELECT payment_method, seller FROM documents').get() as { payment_method: string; seller: string };
     const client = database.prepare('SELECT payment_method FROM clients').get() as { payment_method: string };
     database.close();
     expect(document.payment_method).toBe('CARTERA');
+    expect(document.seller).toBe('Ana Ottaviano');
     expect(client.payment_method).toBe('CTA CTE 30 DIAS');
   });
 
@@ -80,6 +81,16 @@ describe('forma de pago documental', () => {
     const raw = capture();
     raw.clients[0].razonSocial = 'GBA M6 S.A.';
     expect(normalizeCapture(raw).clients).toHaveLength(0);
+  });
+
+  it('filtra por el vendedor de la factura y no por el responsable actual del cliente', () => {
+    const raw = capture();
+    raw.masters.sellers.push({ vendedorID: 8, fantasia: 'Administración' });
+    raw.pendingDocuments[0].vendedorID = 8;
+    const client = normalizeCapture(raw).clients[0];
+    expect(client.seller).toBe('Ana Ottaviano');
+    expect(client.invoices.filter((invoice) => invoice.outstanding > 0)).toHaveLength(0);
+    expect(client.overdueOutstanding).toBe(0);
   });
 
   it('distingue facturas sin foja, en foja abierta y en foja cerrada sin llamarlas entregadas', () => {

@@ -8,6 +8,15 @@ export const EXCLUDED_RECEIVABLE_CLIENT_NAMES = [
   'Salice Distribuciones S.A.',
 ] as const;
 
+export const RECEIVABLE_SELLERS = [
+  'Andres Dominguez',
+  'Edgardo Larrea',
+  'Ignacio Carea',
+  'Ana Ottaviano',
+  'Julieta Errecart',
+  'Gonzalo Russian',
+] as const;
+
 const identity = (value: unknown) => String(value ?? '')
   .normalize('NFD')
   .replace(/\p{Diacritic}/gu, '')
@@ -15,9 +24,14 @@ const identity = (value: unknown) => String(value ?? '')
   .replace(/[^a-z0-9]+/g, '');
 
 const excludedIdentities = new Set(EXCLUDED_RECEIVABLE_CLIENT_NAMES.map(identity));
+const receivableSellerIdentities = new Set(RECEIVABLE_SELLERS.map(identity));
 
 export function isExcludedReceivableClient(...names: unknown[]) {
   return names.some((name) => excludedIdentities.has(identity(name)));
+}
+
+export function isReceivableSeller(value: unknown) {
+  return receivableSellerIdentities.has(identity(value));
 }
 
 export function isActionableReceivableAmount(value: unknown) {
@@ -40,7 +54,11 @@ export function applyReceivablesPolicyToClient(client: Client, snapshotDate: str
   if (isExcludedReceivableClient(client.name, client.tradeName)) return null;
 
   const invoices = client.invoices.filter((invoice) => (
-    invoice.outstanding <= 0 || isActionableReceivableAmount(invoice.outstanding)
+    invoice.outstanding <= 0
+    || (
+      isActionableReceivableAmount(invoice.outstanding)
+      && isReceivableSeller(invoice.seller ?? client.seller)
+    )
   ));
   const openInvoices = invoices.filter((invoice): invoice is Invoice => invoice.outstanding > 0);
   const overdue = openInvoices.filter((invoice) => invoice.status === 'overdue');

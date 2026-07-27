@@ -2270,6 +2270,11 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 }
 .business-report-filter-copy h2 { margin-top:5px;color:#193a31;font-size:20px;text-transform:capitalize; }
 .business-report-filter-copy > p { max-width:620px;margin-top:5px;color:#74837c;font-size:12px;line-height:1.48; }
+.business-report-mode-tabs { display:inline-flex;gap:3px;margin-top:11px;padding:3px;background:#eef3ef;border:1px solid #dfe7e1;border-radius:9px; }
+.business-report-mode-tabs button { min-width:82px;height:32px;padding:0 14px;color:#6d7d75;background:transparent;border:0;border-radius:7px;cursor:pointer;font-size:11px;font-weight:850;transition:background .15s ease,color .15s ease,box-shadow .15s ease; }
+.business-report-mode-tabs button:hover { color:#315e4c;background:#f7faf8; }
+.business-report-mode-tabs button.active { color:#fff;background:#356b54;box-shadow:0 3px 9px rgba(37,83,64,.18); }
+.business-report-mode-tabs button:focus-visible { outline:2px solid #5b8e78;outline-offset:1px; }
 .business-report-filter-controls {
   display:grid;
   grid-template-columns:repeat(3,minmax(130px,1fr)) auto;

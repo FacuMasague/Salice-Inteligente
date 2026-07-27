@@ -16,7 +16,7 @@ describeWithDatabase('Saldos Pendientes Salice construido desde GESI', () => {
     expect(meta.salesFrom).toBe(expectedSalesFrom.toISOString().slice(0, 10));
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.universe.branches).toEqual([3]);
-    expect(meta.options.sellers).toEqual(['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Ignacio Carea', 'Julieta Errecart']);
+    expect(meta.options.sellers).toEqual(['Andres Dominguez', 'Edgardo Larrea', 'Ignacio Carea', 'Ana Ottaviano', 'Julieta Errecart', 'Gonzalo Russian']);
     expect(meta.universe.minimumDocumentOutstanding).toBe(1_000);
     expect(meta.universe.excludedClients).toContain('Consumidor Final');
   });

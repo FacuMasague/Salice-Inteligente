@@ -327,6 +327,16 @@ export async function runAiEnrichment(input: EnrichmentInput) {
               const semanticValidation = definition.validateOutput?.(response.output, job, input.snapshot);
               if (semanticValidation?.valid === false) {
                 validationError = `Salida semánticamente inválida: ${semanticValidation.error.slice(0, 1_000)}`;
+              } else {
+                const qualityValidation = auditAiOutput({
+                  functionKey: definition.key,
+                  output: response.output,
+                  evidence: job.evidence,
+                  evidenceRefs: job.evidenceRefs,
+                });
+                if (qualityValidation.status === 'blocked') {
+                  validationError = `Salida bloqueada por calidad: ${qualityValidation.issues.join(' ').slice(0, 1_000)}`;
+                }
               }
             }
             if (validationError) {

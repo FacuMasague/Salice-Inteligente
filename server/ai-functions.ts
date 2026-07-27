@@ -619,6 +619,7 @@ function sellerEvidence(data: DashboardData) {
 const REPORT_PROMPT = `Sos el redactor analítico de Salice Inteligente. Describí exclusivamente el paquete compacto recibido.
 No recalcules cifras, no inventes causas, no presentes hipótesis como hechos y no compares universos incompatibles.
 Citá en cada hallazgo, impulsor, aspecto a revisar y respuesta los evidenceIds exactos recibidos.
+No devuelvas ningún hallazgo, impulsor, aspecto a revisar ni respuesta con evidenceIds vacío.
 Si el período es parcial, declaralo. Diferenciá resultados reales, objetivos, comparaciones y limitaciones.
 Presentá todos los porcentajes con exactamente dos decimales y todos los valores absolutos redondeados a números enteros.
 La salida se almacena junto al snapshot; no des instrucciones, tareas ni conversaciones abiertas.`;
@@ -706,9 +707,9 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-terra',
       effort: 'medium',
       prompt: REPORT_PROMPT,
-      promptVersion: 2,
-      schemaVersion: 1,
-      schemaName: 'salice_report_narrative_v1',
+      promptVersion: 3,
+      schemaVersion: 2,
+      schemaName: 'salice_report_narrative_v2',
       schema: REPORT_NARRATIVE_SCHEMA as unknown as Record<string, unknown>,
       maxOutputTokens: 2_200,
       buildJobs: () => Object.entries(buildDefaultReportPayloads())
@@ -729,8 +730,8 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-terra',
       effort: 'medium',
       prompt: EXECUTIVE_PROMPT,
-      promptVersion: 2,
-      schemaVersion: 1,
+      promptVersion: 3,
+      schemaVersion: 2,
       schemaName: 'salice_executive_brief_v1',
       schema: EXECUTIVE_BRIEF_SCHEMA as unknown as Record<string, unknown>,
       maxOutputTokens: 2_200,
@@ -763,7 +764,7 @@ export function createAiFunctionDefinitions(input: {
       effort: 'low',
       prompt: COMMERCIAL_PROMPT,
       promptVersion: 4,
-      schemaVersion: 2,
+      schemaVersion: 3,
       schemaName: 'salice_commercial_explanations_v2',
       schema: COMMERCIAL_EXPLANATION_SCHEMA as unknown as Record<string, unknown>,
       maxOutputTokens: 2_500,
@@ -823,7 +824,7 @@ export function createAiFunctionDefinitions(input: {
       effort: 'low',
       prompt: SELLER_PROMPT,
       promptVersion: 3,
-      schemaVersion: 1,
+      schemaVersion: 2,
       schemaName: 'salice_seller_summaries_v1',
       schema: SELLER_SUMMARY_SCHEMA as unknown as Record<string, unknown>,
       maxOutputTokens: 2_500,

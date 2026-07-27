@@ -9,6 +9,7 @@ const text = (maxLength: number, minLength = 1) => ({
 const evidenceIds = {
   type: 'array',
   items: text(160),
+  minItems: 1,
   maxItems: 12,
 };
 

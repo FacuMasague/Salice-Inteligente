@@ -2,7 +2,12 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, CircleDollarSign, Search } from 'lucide-react';
 import type { Client, Invoice } from '../../shared/models';
 import { decodeMultiFilter, encodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
-import { MIN_RECEIVABLE_DOCUMENT_AMOUNT, isActionableReceivableAmount } from '../../shared/receivables-policy';
+import {
+  MIN_RECEIVABLE_DOCUMENT_AMOUNT,
+  RECEIVABLE_SELLERS,
+  isActionableReceivableAmount,
+  isReceivableSeller,
+} from '../../shared/receivables-policy';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
@@ -28,10 +33,13 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
   const [paymentMethod, setPaymentMethod] = useState('');
   const [tableSort, setTableSort] = useState(emptySort<FinanceSortKey>());
   const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
-  const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
+  const sellers = RECEIVABLE_SELLERS.map((value) => value);
   const paymentMethods = useMemo(() => [...new Set(activeClients.flatMap((client) => client.invoices.map((invoice) => invoice.paymentMethod || client.paymentMethod)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const invoices: InvoiceWithClient[] = activeClients.flatMap((client) => client.invoices
-    .filter((invoice) => isActionableReceivableAmount(invoice.outstanding))
+    .filter((invoice) => (
+      isActionableReceivableAmount(invoice.outstanding)
+      && isReceivableSeller(invoice.seller ?? client.seller)
+    ))
     .map((invoice) => {
       const daysToDue = daysBetween(snapshotDate, invoice.dueAt);
       return { ...invoice, client, daysToDue, overdueDays: Math.max(0, -daysToDue) };
@@ -42,11 +50,11 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
   const matchesAging = (invoice: InvoiceWithClient) => matchesMultiFilter(agingKey(invoice), aging);
   const baseFiltered = invoices
     .filter((invoice) => matchesMultiFilter(invoice.status, status))
-    .filter((invoice) => matchesMultiFilter(invoice.client.seller, seller))
+    .filter((invoice) => matchesMultiFilter(invoice.seller ?? invoice.client.seller, seller))
     .filter((invoice) => matchesMultiFilter(invoice.client.portfolioStatus, portfolio))
     .filter((invoice) => matchesMultiFilter(invoice.client.creditTermStatus, creditTerm))
     .filter((invoice) => matchesMultiFilter(invoice.paymentMethod || invoice.client.paymentMethod, paymentMethod))
-    .filter((invoice) => `${invoice.client.name} ${invoice.client.tradeName} ${invoice.client.reference} ${invoice.number} ${invoice.client.seller} ${invoice.paymentMethod || invoice.client.paymentMethod}`.toLowerCase().includes(query.trim().toLowerCase()));
+    .filter((invoice) => `${invoice.client.name} ${invoice.client.tradeName} ${invoice.client.reference} ${invoice.number} ${invoice.seller ?? invoice.client.seller} ${invoice.paymentMethod || invoice.client.paymentMethod}`.toLowerCase().includes(query.trim().toLowerCase()));
   const originallySorted = baseFiltered
     .filter(matchesAging)
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || b.outstanding - a.outstanding);
@@ -131,14 +139,14 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
       </section>
 
       <section className="data-card">
-        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)}.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
+        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)} emitidos por los seis vendedores habilitados.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table finance-table">
             <thead><tr><th aria-sort={ariaSort('status')}><SortButton label="Estado" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('invoice')}><SortButton label="Comprobante" direction={direction('invoice')} onClick={() => changeTableSort('invoice')} /></th><th aria-sort={ariaSort('issuedAt')}><SortButton label="Compra / emisión" direction={direction('issuedAt')} onClick={() => changeTableSort('issuedAt')} /></th><th aria-sort={ariaSort('dueAt')}><SortButton label="Vencimiento" direction={direction('dueAt')} onClick={() => changeTableSort('dueAt')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo factura" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('outstanding')}><SortButton label="Saldo pendiente" direction={direction('outstanding')} onClick={() => changeTableSort('outstanding')} /></th><th aria-sort={ariaSort('age')}><SortButton label="Antigüedad" direction={direction('age')} onClick={() => changeTableSort('age')} /></th><th aria-sort={ariaSort('behavior')}><SortButton label="Cuenta corriente / conducta" direction={direction('behavior')} onClick={() => changeTableSort('behavior')} /></th><th aria-sort={ariaSort('risk')}><SortButton label="Riesgo" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th /></tr></thead>
             <tbody>
               {visibleInvoices.map((invoice) => <tr key={invoice.id} onClick={() => onOpenInvoice(invoice.id)}>
                 <td><span className={`invoice-pill ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span></td>
-                <td><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong></button>{clientSecondaryName(invoice.client) && <span className="cell-sub client-trade-name">{clientSecondaryName(invoice.client)}</span>}<span className="cell-sub"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.client.seller); }}>{invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span></td>
+                <td><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong></button>{clientSecondaryName(invoice.client) && <span className="cell-sub client-trade-name">{clientSecondaryName(invoice.client)}</span>}<span className="cell-sub"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span></td>
                 <td><strong className="normal-weight">{invoice.number}</strong></td>
                 <td>{compactDate(invoice.issuedAt)}</td><td><strong>{compactDate(invoice.dueAt)}</strong></td>
                 <td><strong>{invoice.creditTermDays != null ? `${invoice.creditTermDays} días` : 'Sin dato'}</strong><span className="cell-sub">compra/emisión → vencimiento</span></td>
