@@ -1,4 +1,4 @@
-import type { DeliveryAssignmentStatus, LogisticsSnapshot } from '../../shared/models';
+import type { DeliveryAssignmentStatus, DeliveryInvoice, LogisticsSnapshot } from '../../shared/models';
 
 export const DELIVERY_ASSIGNMENT_LABELS: Record<DeliveryAssignmentStatus, string> = {
   unassigned: 'Sin asignar a foja',
@@ -11,6 +11,16 @@ export function deliveryAssignmentText(status: DeliveryAssignmentStatus, sheetId
   if (status === 'open_sheet' && sheetId) return `Foja ${sheetId} abierta`;
   if (status === 'closed_sheet' && sheetId) return `Foja ${sheetId} cerrada`;
   return DELIVERY_ASSIGNMENT_LABELS[status];
+}
+
+export function summarizeReliableInvoiceKilos(invoices: DeliveryInvoice[]) {
+  const reliableInvoices = invoices.filter((invoice) => invoice.kiloDataStatus === 'available' || invoice.kiloDataStatus === 'estimated');
+  return {
+    kilos: reliableInvoices.reduce((sum, invoice) => sum + (invoice.kilos ?? 0), 0),
+    reliableInvoiceCount: reliableInvoices.length,
+    totalInvoiceCount: invoices.length,
+    complete: invoices.length > 0 && reliableInvoices.length === invoices.length,
+  };
 }
 
 export type InvoiceDeliveryDisplayStatus = DeliveryAssignmentStatus | 'outside_coverage' | 'unavailable';

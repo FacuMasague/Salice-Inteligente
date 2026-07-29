@@ -32,3 +32,4 @@
 - Los reportes determinísticos se publican aunque la IA falle o se omita.
 - Se mantienen validaciones, presupuestos por actualización y alertas mensuales de v0.9.5.
 - Se agregan pruebas de horarios, recuperación, hashes estables, clientes ya explicados, reutilización exacta y cambios reales de evidencia.
+- La descarga de precios usa lotes acotados para evitar URLs excesivas y reintenta cortes transitorios de transporte como conexiones terminadas por GESI o el proxy.

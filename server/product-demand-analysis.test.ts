@@ -5,10 +5,10 @@ import { buildProductDemandAnalysisFromDatabase } from './product-demand-analysi
 describe('análisis de demanda y rotación', () => {
   let database: DatabaseSync;
   const products = [
-    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros' },
-    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros' },
-    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene' },
-    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene' },
+    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 10, contentKg: 2, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 0, contentKg: 2, masterStatus: 'active' as const, commercialStatus: 'not_commercializable' as const },
+    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 8, contentKg: null, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 0, contentKg: null, masterStatus: 'inactive' as const, commercialStatus: 'not_commercializable' as const },
   ];
 
   beforeEach(() => {
@@ -18,11 +18,11 @@ describe('análisis de demanda y rotación', () => {
       INSERT INTO report_meta VALUES ('max_date', '2026-07-22'), ('coverage_from', '2025-01-01'), ('source_system', 'GESI prueba');
       CREATE TABLE movements (
         sale_date TEXT, product_id TEXT, brand TEXT, category TEXT, product_group TEXT,
-        company_id INTEGER, branch_id INTEGER, source_kind TEXT, units REAL, net_amount REAL, client_id INTEGER
+        company_id INTEGER, branch_id INTEGER, source_kind TEXT, units REAL, kilos REAL, net_amount REAL, client_id INTEGER
       );
     `);
-    const insert = database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?)');
-    const add = (date: string, product: string, units: number, client: number, kind = 'invoice') => insert.run(date, product, product === 'C' ? 'Marca 2' : 'Marca 1', product === 'C' ? 'Higiene' : 'Alimentos', product === 'C' ? 'Higiene' : 'Perros', kind, units, units * 100, client);
+    const insert = database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?, ?)');
+    const add = (date: string, product: string, units: number, client: number, kind = 'invoice') => insert.run(date, product, product === 'C' ? 'Marca 2' : 'Marca 1', product === 'C' ? 'Higiene' : 'Alimentos', product === 'C' ? 'Higiene' : 'Perros', kind, units, units * 2, units * 100, client);
     add('2026-06-01', 'A', 10, 1);
     add('2026-06-01', 'B', 10, 1);
     add('2026-06-25', 'A', 4, 1);
@@ -65,5 +65,44 @@ describe('análisis de demanda y rotación', () => {
     const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product' });
     expect(result.historyStatus).toBe('partial_current');
     expect(result.rows.every((row) => row.trend === 'insufficient_history')).toBe(true);
+  });
+
+  it('aplica dimensiones comerciales y disponibilidad antes de recalcular filas y totales', () => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, {
+      window: '30',
+      dimension: 'product',
+      brand: 'Marca 1',
+      family: 'Alimentos',
+      group: 'Perros',
+      line: 'Secos',
+      availability: 'stock',
+      masterStatus: 'active',
+      trend: 'accelerating',
+      stability: 'stable',
+      search: 'Producto A',
+    });
+    expect(result.rows.map((row) => row.id)).toEqual(['A']);
+    expect(result.summary.current).toMatchObject({ units: 15, kilos: 30, buyers: 2 });
+    expect(result.filters).toMatchObject({ brand: 'Marca 1', availability: 'stock', trend: 'accelerating' });
+  });
+
+  it('infiere kilos desde unidades aunque cantidadU2 no esté informada', () => {
+    database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?, ?)')
+      .run('2026-07-19', 'A', 'Marca 1', 'Alimentos', 'Perros', 'invoice', 1, 0, 100, 3);
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product', brand: 'Marca 1', availability: 'stock' });
+    expect(result.rows[0]).toMatchObject({ id: 'A', kiloDataStatus: 'estimated', current: { units: 16, kilos: 32 } });
+    expect(result.summary).toMatchObject({ productsWithSales: 1, productsWithKilos: 1, productsWithoutKilos: 0 });
+  });
+
+  it('mantiene visible la falta de conversión cuando el producto no tiene peso por unidad', () => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product', brand: 'Marca 2' });
+    expect(result.rows.find((row) => row.id === 'C')).toMatchObject({ kiloDataStatus: 'unavailable', current: { units: 3, kilos: 0 } });
+    expect(result.summary).toMatchObject({ productsWithSales: 1, productsWithKilos: 0, productsWithoutKilos: 1 });
+  });
+
+  it.each([30, 90, 180] as const)('resuelve una ventana temporal de %i días', (window) => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window, dimension: 'product' });
+    expect(result.windowDays).toBe(window);
+    expect(result.currentRange.through).toBe('2026-07-22');
   });
 });

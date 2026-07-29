@@ -52,6 +52,8 @@ export interface ProductPriceRow {
   effective: PriceComparison;
   referencePricePerKg: number | null;
   effectivePricePerKg: number | null;
+  competitorReferencePricePerKg: number | null;
+  competitorPriceSampleSize: number;
   pricePerKgStatus: PricePerKgStatus;
   pricePerKgExplanation: string;
   currentEffective: EffectivePriceObservation;
@@ -107,6 +109,12 @@ const rounded = (value: number, digits = 2) => Math.round(value * 10 ** digits) 
 
 export function effectiveUnitPrice(sales: number, units: number) {
   return sales > 0 && units > 0 ? rounded(sales / units) : null;
+}
+
+export function referenceUnitPricePerKg(price: number, contentKg: number | null) {
+  if (!(price > 0) || !(Number(contentKg) > 0)) return null;
+  const value = rounded(price / Number(contentKg));
+  return value >= 0.01 ? value : null;
 }
 
 export function comparePriceValues(current: number | null, previous: number | null, strongThreshold = STRONG_PRICE_CHANGE_PERCENT): PriceComparison {

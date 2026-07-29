@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp,
+  AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock3, FileText, MapPin, Navigation, Route, Search, Sparkles, Truck,
 } from 'lucide-react';
 import { groupDeliveryInvoices } from '../../shared/algorithms';
 import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
-import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText } from '../lib/delivery-status';
+import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText, summarizeReliableInvoiceKilos } from '../lib/delivery-status';
 import { compactDate, minutesAsTime, money, number } from '../lib/format';
 import { clientPrimaryName } from '../lib/client-name';
+import { DeliverySheetMap, type DeliveryMapPoint } from '../components/DeliverySheetMap';
 
 const statusOptions = [
   { value: 'all', label: 'Todos los estados' },
@@ -47,6 +48,11 @@ export function RoutesView({
   const [status, setStatus] = useState('all');
   const [locality, setLocality] = useState('');
   const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'planner' | 'sheets'>('planner');
+  const [driver, setDriver] = useState('');
+  const [zone, setZone] = useState('');
+  const [sheetNumber, setSheetNumber] = useState('');
+  const [selectedSheetId, setSelectedSheetId] = useState('all');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [manualOrder, setManualOrder] = useState<number[]>([]);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
@@ -58,6 +64,10 @@ export function RoutesView({
 
   const localities = useMemo(() => [...new Set(logistics.invoices.map((invoice) => invoice.locality).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'es')), [logistics.invoices]);
+  const sheetById = useMemo(() => new Map(logistics.sheets.map((sheet) => [sheet.id, sheet])), [logistics.sheets]);
+  const drivers = useMemo(() => [...new Set(logistics.sheets.map((sheet) => sheet.driver).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [logistics.sheets]);
+  const zones = useMemo(() => [...new Set(logistics.sheets.flatMap((sheet) => [sheet.zone, sheet.subzone]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [logistics.sheets]);
+  const sheetNumbers = useMemo(() => logistics.sheets.map((sheet) => String(sheet.id)).sort((a, b) => Number(b) - Number(a)), [logistics.sheets]);
   const filteredInvoices = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('es');
     return logistics.invoices.filter((invoice) => {
@@ -66,14 +76,38 @@ export function RoutesView({
         && invoice.issuedAt <= through
         && (status === 'all' || invoice.assignmentStatus === status)
         && (!locality || locality.split('|').includes(invoice.locality))
+        && (!driver || (invoice.sheet?.driver && driver.split('|').includes(invoice.sheet.driver)))
+        && (!zone || (invoice.sheet && [sheetById.get(invoice.sheet.id)?.zone, sheetById.get(invoice.sheet.id)?.subzone].some((value) => value && zone.split('|').includes(value))))
+        && (!sheetNumber || (invoice.sheet && sheetNumber.split('|').includes(String(invoice.sheet.id))))
         && (!normalizedQuery || `${invoice.number} ${invoice.deliveryAddress} ${invoice.locality} ${client?.name ?? ''} ${client?.tradeName ?? ''}`
           .toLocaleLowerCase('es').includes(normalizedQuery));
     });
-  }, [clientById, from, locality, logistics.invoices, query, status, through]);
+  }, [clientById, driver, from, locality, logistics.invoices, query, sheetById, sheetNumber, status, through, zone]);
   const stops = useMemo(() => groupDeliveryInvoices(filteredInvoices, clients), [clients, filteredInvoices]);
   const stopByClient = useMemo(() => new Map(stops.map((stop) => [stop.clientId, stop])), [stops]);
   const selectedStops = manualOrder.map((id) => stopByClient.get(id)).filter((stop): stop is NonNullable<typeof stop> => Boolean(stop));
   const selectedInvoices = selectedStops.flatMap((stop) => stop.invoices);
+  const visibleSheetIds = useMemo(() => new Set(filteredInvoices.flatMap((invoice) => invoice.sheet ? [invoice.sheet.id] : [])), [filteredInvoices]);
+  const visibleSheets = useMemo(() => logistics.sheets.filter((sheet) => visibleSheetIds.has(sheet.id)), [logistics.sheets, visibleSheetIds]);
+  const mapInvoices = useMemo(() => selectedSheetId === 'all'
+    ? filteredInvoices
+    : selectedSheetId === 'unassigned'
+      ? filteredInvoices.filter((invoice) => !invoice.sheet)
+      : filteredInvoices.filter((invoice) => invoice.sheet?.id === Number(selectedSheetId)), [filteredInvoices, selectedSheetId]);
+  const mapPoints = useMemo(() => {
+    const grouped = new Map<number, DeliveryMapPoint>();
+    for (const invoice of mapInvoices) {
+      const client = clientById.get(invoice.clientId);
+      if (!client?.coordinates) continue;
+      const current = grouped.get(client.id);
+      if (current) current.invoices.push(invoice);
+      else grouped.set(client.id, { client, invoices: [invoice], status: invoice.assignmentStatus });
+    }
+    return [...grouped.values()];
+  }, [clientById, mapInvoices]);
+  const unmappedInvoices = useMemo(() => mapInvoices.filter((invoice) => !clientById.get(invoice.clientId)?.coordinates), [clientById, mapInvoices]);
+  const reliableKiloSummary = useMemo(() => summarizeReliableInvoiceKilos(mapInvoices), [mapInvoices]);
+  const selectedSheet = selectedSheetId !== 'all' && selectedSheetId !== 'unassigned' ? sheetById.get(Number(selectedSheetId)) : null;
 
   useEffect(() => {
     setSelectedIds((current) => new Set([...current].filter((id) => stopByClient.has(id))));
@@ -156,6 +190,7 @@ export function RoutesView({
           <span className="section-kicker"><Truck size={15} /> Repartos desde GESI · sólo lectura</span>
           <h2>Facturas y fojas de reparto</h2>
           <p>Una foja cerrada confirma el cierre de la carga en GESI; no demuestra que el cliente haya recibido la mercadería.</p>
+          <div className="delivery-mode-switch"><button className={mode === 'planner' ? 'active' : ''} onClick={() => setMode('planner')}><Route size={14} /> Planificador</button><button className={mode === 'sheets' ? 'active' : ''} onClick={() => setMode('sheets')}><MapPin size={14} /> Mapa de fojas</button></div>
         </div>
         <div className="delivery-coverage"><span>Cobertura</span><strong>{compactDate(coverageFrom)}–{compactDate(coverageThrough)}</strong><small>{number(logistics.sheets.length)} fojas leídas</small></div>
       </section>
@@ -172,10 +207,39 @@ export function RoutesView({
         <label><span>HASTA</span><input type="date" min={from} max={coverageThrough} value={through} onChange={(event) => setThrough(event.target.value)} /></label>
         <SingleSelectFilter label="Estado de reparto" value={status} options={statusOptions} onChange={setStatus} />
         <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
+        {mode === 'sheets' && <MultiSelectFilter label="Chofer" value={driver} options={drivers} onChange={setDriver} />}
+        {mode === 'sheets' && <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />}
+        {mode === 'sheets' && <MultiSelectFilter label="Número de foja" value={sheetNumber} options={sheetNumbers} onChange={setSheetNumber} />}
         <label className="delivery-route-search"><span>BUSCAR</span><div><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, factura o domicilio" /></div></label>
       </section>
 
-      <div className="delivery-route-workspace">
+      {mode === 'sheets' ? <div className="delivery-sheet-workspace">
+        <aside className="data-card delivery-sheet-directory">
+          <header><div><span className="section-kicker"><FileText size={14} /> Fojas visibles</span><h2>Seleccionar carga</h2><p>La posición de cada cliente no representa el orden real del reparto.</p></div></header>
+          <button className={selectedSheetId === 'all' ? 'active' : ''} onClick={() => setSelectedSheetId('all')}><span><strong>Todas las facturas filtradas</strong><small>{filteredInvoices.length} comprobantes</small></span><ChevronRight size={15} /></button>
+          {filteredInvoices.some((invoice) => !invoice.sheet) && <button className={selectedSheetId === 'unassigned' ? 'active' : ''} onClick={() => setSelectedSheetId('unassigned')}><span><strong>Sin foja asignada</strong><small>{filteredInvoices.filter((invoice) => !invoice.sheet).length} comprobantes</small></span><em className="unassigned">Sin asignar</em><ChevronRight size={15} /></button>}
+          {visibleSheets.map((sheet) => {
+            const invoiceCount = filteredInvoices.filter((invoice) => invoice.sheet?.id === sheet.id).length;
+            return <button key={sheet.id} className={selectedSheetId === String(sheet.id) ? 'active' : ''} onClick={() => setSelectedSheetId(String(sheet.id))}><span><strong>Foja {sheet.id}</strong><small>{sheet.driver || 'Sin chofer'} · {sheet.zone || 'Sin zona'} · {invoiceCount} comprobantes</small></span><em className={sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'}>{sheet.status === 'closed' ? 'Cerrada' : 'Abierta'}</em><ChevronRight size={15} /></button>;
+          })}
+          {!visibleSheets.length && !filteredInvoices.some((invoice) => !invoice.sheet) && <div className="delivery-route-empty"><Search size={22} /><span>No hay fojas para los filtros elegidos.</span></div>}
+        </aside>
+        <section className="delivery-sheet-main">
+          <article className="data-card delivery-sheet-map-card">
+            <header><div><span className="section-kicker"><MapPin size={14} /> Mapa de fojas</span><h2>{selectedSheet ? `Foja ${selectedSheet.id}` : selectedSheetId === 'unassigned' ? 'Facturas sin asignar' : 'Distribución visible'}</h2><p>Abiertas en azul, cerradas en verde y sin asignar en naranja. Los puntos corregidos son aproximados.</p></div><div className="delivery-map-legend"><span className="open_sheet">Abierta</span><span className="closed_sheet">Cerrada</span><span className="unassigned">Sin asignar</span></div></header>
+            <DeliverySheetMap points={mapPoints} onOpenClient={onOpenClient} />
+          </article>
+          <article className="data-card delivery-sheet-detail">
+            <header><div><span className="section-kicker"><Truck size={14} /> Comprobantes de la selección</span><h2>{number(mapInvoices.length)} facturas · {money(mapInvoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</h2><p>{reliableKiloSummary.reliableInvoiceCount ? `${number(reliableKiloSummary.kilos, 2)} kg estimados en ${number(reliableKiloSummary.reliableInvoiceCount)} de ${number(reliableKiloSummary.totalInvoiceCount)} facturas` : 'Kilos sin conversión disponible'}{selectedSheet ? ` · ${selectedSheet.driver || 'sin chofer'} · ${selectedSheet.zone || 'sin zona'}` : ''}</p></div></header>
+            {mapInvoices.some((invoice) => invoice.kiloDataStatus === 'unavailable') && <p className="delivery-data-warning"><AlertTriangle size={13} /> Hay comprobantes con productos sin conversión a kilos; el monto continúa disponible.</p>}
+            <div className="delivery-sheet-invoices">{mapInvoices.map((invoice) => {
+              const client = clientById.get(invoice.clientId);
+              return <article key={invoice.id}><button className="entity-link" disabled={!client} onClick={() => client && onOpenClient(client)}><strong>{client ? clientPrimaryName(client) : `Cliente ${invoice.clientId}`}</strong><small>{invoice.locality} · {client?.locationStatus === 'corrected' ? 'ubicación aproximada' : client?.coordinates ? 'ubicación disponible' : 'sin ubicación'}</small></button><button className="entity-link" onClick={() => onOpenInvoice(invoice.id)}><strong>{invoice.number}</strong><small>{compactDate(invoice.issuedAt)}</small></button><span><strong>{money(invoice.amount, true)}</strong><small>{invoice.kiloDataStatus !== 'unavailable' ? `${number(invoice.kilos ?? 0, 2)} kg estimados` : 'sin conversión a kg'}</small></span></article>;
+            })}</div>
+            {!!unmappedInvoices.length && <details className="delivery-unmapped-list"><summary><AlertTriangle size={14} /> {unmappedInvoices.length} comprobantes sin punto en el mapa</summary><div>{unmappedInvoices.map((invoice) => { const client = clientById.get(invoice.clientId); return <button key={invoice.id} onClick={() => client && onOpenClient(client)} disabled={!client}><strong>{client ? clientPrimaryName(client) : `Cliente ${invoice.clientId}`}</strong><span>{invoice.number} · {invoice.locality || 'Sin localidad'}</span></button>; })}</div></details>}
+          </article>
+        </section>
+      </div> : <div className="delivery-route-workspace">
         <section className="data-card delivery-stop-picker">
           <header><div><span className="section-kicker"><MapPin size={14} /> Paradas agrupadas</span><h2>Clientes a incluir</h2><p>Varias facturas del mismo cliente forman una sola parada.</p></div><span className="count-badge">{selectedIds.size} elegidas</span></header>
           <div className="delivery-stop-list">
@@ -232,7 +296,7 @@ export function RoutesView({
             <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.stopMinutes} min por parada y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito, capacidad, ventanas horarias ni prueba de entrega.</p>
           </div>}
         </section>
-      </div>
+      </div>}
     </div>
   );
 }

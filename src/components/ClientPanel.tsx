@@ -7,6 +7,8 @@ import { invoiceDeliveryDisplay } from '../lib/delivery-status';
 import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
 import { partitionClientActivities } from '../lib/commercial-activities';
 import { ActionDialog } from './ActionDialog';
+import { AiCommercialExplanationCard } from './AiInsights';
+import type { AiCommercialExplanation, AiStoredArtifact } from '../../shared/ai';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
 const invoiceLabel = { paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', overdue: 'Vencida' } as const;
@@ -68,6 +70,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
   const [deletingOpportunityId, setDeletingOpportunityId] = useState('');
   const [opportunityDeleteError, setOpportunityDeleteError] = useState('');
   const [opportunityToDelete, setOpportunityToDelete] = useState<CommercialActivity | null>(null);
+  const [aiExplanation, setAiExplanation] = useState<AiStoredArtifact<AiCommercialExplanation> | null>(null);
 
   useEffect(() => {
     setTab('summary');
@@ -80,11 +83,16 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
     setReceivableEvents([]);
     setDeletingOpportunityId('');
     setOpportunityDeleteError('');
+    setAiExplanation(null);
     const controller = new AbortController();
     fetch(`/api/clients/${client.id}/operations`, { signal: controller.signal })
       .then((response) => response.json())
       .then((payload) => { setActivities(payload.activities || []); setPromises(payload.promises || []); setReceivableEvents(payload.receivableEvents || []); })
       .catch((error: Error) => { if (error.name !== 'AbortError') { setActivities([]); setPromises([]); setReceivableEvents([]); } });
+    fetch(`/api/ai/clients/${client.id}/explanation`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => setAiExplanation(payload?.artifact ?? null))
+      .catch((error: Error) => { if (error.name !== 'AbortError') setAiExplanation(null); });
     if (!client.active) {
       setRecommendationLoading(false);
       return () => controller.abort();
@@ -206,6 +214,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
                 <small>{client.salesBlocked ? 'Bloqueo de ventas informado' : client.sales90d <= 0 ? 'Sin compras en 90 días' : `Prioridad de revisión ${client.visitPriority}/100`}</small>
               </article>
             </section>
+            <AiCommercialExplanationCard artifact={aiExplanation} />
 
             {mode === 'full' && <ClientProfileCharts client={client} snapshotDate={snapshotDate} />}
 
@@ -333,12 +342,12 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
               <div className="section-title-row"><div><span className="section-kicker"><Sparkles size={14} /> Productos vinculados</span><h3>Oportunidades</h3></div><span className="count-badge">{opportunityActivities.length}</span></div>
               {!opportunityActivities.length && <p className="section-description">Todavía no hay notas vinculadas a oportunidades de productos.</p>}
               {opportunityDeleteError && <p className="form-error">{opportunityDeleteError}</p>}
-              <div className="panel-operation-list opportunity-activity-list">{opportunityActivities.map((activity) => <article key={activity.id}><span>Nota</span><div><strong>{activity.note || 'Oportunidad documentada por la oficina'}</strong><small>{longDate(activity.occurredAt)}</small><div className="opportunity-activity-products">{activity.productIds.map((productId) => { const product = products.find((item) => item.id === productId); return product ? <button className="entity-link product-entity-link" key={productId} onClick={() => onOpenProduct?.(product)}><Package size={13} />{product.name}<ChevronRight size={12} /></button> : <span key={productId}>Producto {productId} no disponible</span>; })}</div></div><button className="icon-button opportunity-delete-button" disabled={deletingOpportunityId === activity.id} onClick={() => setOpportunityToDelete(activity)} aria-label="Eliminar nota de oportunidad" title="Eliminar nota"><Trash2 size={15} /></button></article>)}</div>
+              <div className="panel-operation-list opportunity-activity-list">{opportunityActivities.map((activity) => <article key={activity.id}><span>Nota</span><div><strong>{activity.note || 'Oportunidad documentada por la oficina'}</strong><small>{longDate(activity.occurredAt)} · {activity.createdBy || 'Registro anterior'}</small><div className="opportunity-activity-products">{activity.productIds.map((productId) => { const product = products.find((item) => item.id === productId); return product ? <button className="entity-link product-entity-link" key={productId} onClick={() => onOpenProduct?.(product)}><Package size={13} />{product.name}<ChevronRight size={12} /></button> : <span key={productId}>Producto {productId} no disponible</span>; })}</div></div><button className="icon-button opportunity-delete-button" disabled={deletingOpportunityId === activity.id} onClick={() => setOpportunityToDelete(activity)} aria-label="Eliminar nota de oportunidad" title="Eliminar nota"><Trash2 size={15} /></button></article>)}</div>
             </section>
             <section className="panel-section first">
               <div className="section-title-row"><div><span className="section-kicker"><ClipboardCheck size={14} /> Registro local</span><h3>Notas sobre hechos externos</h3></div><span className="count-badge">{generalActivities.length}</span></div>
               {!generalActivities.length && <p className="section-description">Todavía no hay otras notas de visitas, llamadas u ofertas para este cliente.</p>}
-              <div className="panel-operation-list">{generalActivities.map((activity) => <article key={activity.id}><span>{activity.type === 'note' ? 'Nota' : activity.type === 'visit' ? 'Visita' : activity.type === 'call' ? 'Llamada' : activity.type === 'collection' ? 'Cobranza' : 'Oferta'}</span><div><strong>{activity.outcome === 'noted' ? 'Nota de oficina' : activity.outcome === 'sale' ? 'Venta concretada' : activity.outcome === 'promise' ? 'Promesa de pago' : activity.outcome === 'no_contact' ? 'Sin contacto' : activity.outcome === 'rescheduled' ? 'Reprogramada' : activity.outcome === 'no_interest' ? 'Sin interés por ahora' : 'Registro anterior'}</strong><small>{longDate(activity.occurredAt)}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}</div>
+              <div className="panel-operation-list">{generalActivities.map((activity) => <article key={activity.id}><span>{activity.type === 'note' ? 'Nota' : activity.type === 'visit' ? 'Visita' : activity.type === 'call' ? 'Llamada' : activity.type === 'collection' ? 'Cobranza' : 'Oferta'}</span><div><strong>{activity.outcome === 'noted' ? 'Nota de oficina' : activity.outcome === 'sale' ? 'Venta concretada' : activity.outcome === 'promise' ? 'Promesa de pago' : activity.outcome === 'no_contact' ? 'Sin contacto' : activity.outcome === 'rescheduled' ? 'Reprogramada' : activity.outcome === 'no_interest' ? 'Sin interés por ahora' : 'Registro anterior'}</strong><small>{longDate(activity.occurredAt)} · {activity.createdBy || 'Registro anterior'}{activity.note ? ` · ${activity.note}` : ''}</small></div>{activity.amount != null && <strong>{money(activity.amount, true)}</strong>}</article>)}</div>
             </section>
             <section className="panel-section">
               <div className="section-title-row"><div><span className="section-kicker"><CircleDollarSign size={14} /> Compromisos</span><h3>Promesas de pago</h3></div><span className="count-badge">{promises.filter((promise) => promise.status === 'pending').length} pendientes</span></div>

@@ -129,6 +129,26 @@ export function attachCommercialExplanations(
   });
 }
 
+export function getCommercialExplanation(clientId: number) {
+  return withStore((store) => {
+    const artifacts = store.listArtifacts<{ items: AiCommercialExplanation[] }>({
+      functionKey: 'commercial_inbox_explanation',
+    });
+    for (const artifact of artifacts) {
+      const item = artifact.output.items.find((candidate) => candidate.clientId === clientId);
+      if (item) {
+        return {
+          ...artifact,
+          entityType: 'client',
+          entityId: String(clientId),
+          output: item,
+        } satisfies AiStoredArtifact<AiCommercialExplanation>;
+      }
+    }
+    return null;
+  });
+}
+
 export function getSellerSummaries(snapshotAt: string) {
   return withStore((store) => {
     const artifacts = store.listArtifacts<{ items: AiSellerSummary[] }>({

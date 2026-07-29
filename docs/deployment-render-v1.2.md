@@ -1,4 +1,4 @@
-# Despliegue de Salice Inteligente en Render · v0.11
+# Despliegue de Salice Inteligente en Render · v1.2
 
 ## Arquitectura elegida
 
@@ -20,10 +20,12 @@ No se crea un Cron Job separado. Render no permite adjuntar discos persistentes 
 4. Completar las variables marcadas como secretas:
    - `GESI_USERNAME`;
    - `GESI_PASSWORD`;
-   - `OPENAI_API_KEY`.
+   - `OPENAI_API_KEY`;
+   - `SALICE_INITIAL_ADMIN_USERNAME`;
+   - `SALICE_INITIAL_ADMIN_PASSWORD`.
 5. Aplicar el Blueprint y esperar a que el Web Service quede `Live`.
 
-El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria y presupuestos de IA. Las credenciales no se guardan en Git.
+El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria, rol inicial Developer y presupuestos de IA. Las credenciales no se guardan en Git. La contraseña inicial debe tener al menos 8 caracteres y combinar letras y números.
 También fija el inicio del histórico comercial SPT de bootstrap en `2025-01-01`: la auditoría requiere los doce meses de 2025 y una instalación nueva no puede depender de un archivo histórico preexistente. Una vez creada la captura persistente, las actualizaciones ordinarias descargan sólo la ventana móvil y conservan el histórico anterior.
 
 ## Capacidad y costo
@@ -52,12 +54,16 @@ No considerar terminada la publicación hasta que Configuración muestre una act
 
 Comprobar en la URL pública:
 
-1. `/api/health` responde `200`;
-2. `/api/system/data-health` informa `schedule.enabled: true`, zona `America/Argentina/Buenos_Aires`, horarios `03:00` y `15:00`, y una próxima ejecución;
-3. la pantalla principal y los reportes cargan el último snapshot;
-4. Configuración muestra historial, consumo de IA y última actualización;
-5. una actualización sin cambios registra resultados reutilizados y no nuevas llamadas;
-6. un reporte modificado, un vendedor modificado o un cliente nuevo genera solamente su trabajo de IA correspondiente.
+1. `/api/health` responde `200` y no incluye fuente, fecha ni cifras;
+2. `/api/dashboard`, reportes y exportaciones responden `401` sin cookie de sesión;
+3. el administrador inicial puede ingresar y **Sistema → Usuarios** sólo está disponible para su rol;
+4. una cuenta nueva permanece pendiente hasta que el administrador la aprueba;
+5. una cuenta deshabilitada pierde acceso inmediatamente;
+6. `/api/system/data-health` informa `schedule.enabled: true`, zona `America/Argentina/Buenos_Aires`, horarios `03:00` y `15:00`, y una próxima ejecución después de iniciar sesión;
+7. la pantalla principal y los reportes cargan el último snapshot;
+8. Configuración muestra historial, consumo de IA y última actualización;
+9. una actualización sin cambios registra resultados reutilizados y no nuevas llamadas;
+10. un reporte modificado, un vendedor modificado o un cliente nuevo genera solamente su trabajo de IA correspondiente.
 
 ## Operación
 
@@ -67,6 +73,8 @@ Comprobar en la URL pública:
 - Conservar el health check y revisar alertas de frescura, presupuesto mensual y espacio del disco.
 - Una falla de GESI o de IA no reemplaza el último paquete determinístico aprobado.
 - La restauración de `operations.sqlite` sigue siendo manual y administrada.
+- No eliminar ni reemplazar las variables del administrador inicial hasta confirmar que existe al menos otro administrador activo.
+- No publicar credenciales en logs, capturas, documentación ni respuestas.
 
 Documentación oficial consultada:
 

@@ -132,6 +132,53 @@ describe('forma de pago documental', () => {
     });
   });
 
+  it('infiere kilos desde las unidades vendidas y el contenido neto por U1', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    raw.products = [{
+      productoID: 'SKU-1', estado: 'A', descripcion: 'Alimento seco para perro 20 kg', rubro: 'Alimentos Balanceados',
+      unidad1: 'UN', unidad2: 'KG', unidad2XUnidad1: 20,
+    }];
+    raw.invoices[0].detalleItems = [{
+      tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 2, cantidadU2: 0, importeTotalNeto: 25_000,
+    }];
+    const inferred = normalizeCapture(raw);
+    expect(inferred.products[0]).toMatchObject({ id: 'SKU-1', units90d: 2, contentKg: 20, kilos90d: 40, kiloDataStatus: 'estimated' });
+    expect(inferred.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 40, kiloDataStatus: 'estimated' });
+
+    (raw.invoices[0].detalleItems as Array<Record<string, unknown>>)[0].cantidadU2 = 12.5;
+    const sameInference = normalizeCapture(raw);
+    expect(sameInference.products[0]).toMatchObject({ id: 'SKU-1', units90d: 2, kilos90d: 40, kiloDataStatus: 'estimated' });
+    expect(sameInference.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 40, kiloDataStatus: 'estimated' });
+  });
+
+  it('no inventa una conversión cuando la presentación no expresa un peso por unidad', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    raw.products = [{ productoID: 'SKU-1', estado: 'A', descripcion: 'Correa para perro', rubro: 'Accesorios', unidad1: 'UN', unidad2: 'UN' }];
+    raw.invoices[0].detalleItems = [
+      { tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 1, cantidadU2: 6, importeTotalNeto: 15_000 },
+      { tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 1, cantidadU2: 0, importeTotalNeto: 10_000 },
+    ];
+    const normalized = normalizeCapture(raw);
+    expect(normalized.products[0]).toMatchObject({ contentKg: null, kilos90d: 0, kiloDataStatus: 'unavailable' });
+    expect(normalized.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 0, kiloDataStatus: 'unavailable' });
+  });
+
+  it('usa como tipo de cliente el maestro TiposDeCliente de GESI', () => {
+    const raw = capture();
+    raw.clients[0].tipoDeClienteID = 4;
+    raw.clients[0].canalDeVentaID = 8;
+    raw.masters.clientTypes = [{ tipoDeClienteID: 4, descripcion: 'Veterinaria' }];
+    raw.masters.channels = [{ canalDeVentaID: 8, descripcion: 'Minorista' }];
+    const client = normalizeCapture(raw).clients[0];
+    expect(client.segment).toBe('Veterinaria');
+    expect(client.channel).toBe('Minorista');
+  });
+
   it('sugiere lunes para una factura del viernes sin convertirlo en compromiso', () => {
     expect(suggestedDeliveryDate('2026-07-24')).toBe('2026-07-27');
     expect(suggestedDeliveryDate('2026-07-23')).toBe('2026-07-24');

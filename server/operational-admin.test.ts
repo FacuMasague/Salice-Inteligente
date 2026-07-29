@@ -8,6 +8,7 @@ import { createDemoSnapshot } from './data/demo-snapshot';
 
 let directory = '';
 let store: typeof import('./operational-store');
+const testUserId = 'usuario-prueba';
 
 beforeAll(async () => {
   directory = mkdtempSync(join(tmpdir(), 'salice-admin-v040-'));
@@ -88,27 +89,40 @@ describe('persistencia administrativa v0.4.0', () => {
 
   it('guarda vistas frecuentes sin mezclar las superficies', () => {
     const created = store.createSavedView({
+      userId: testUserId,
       viewKey: 'sales-explorer',
       name: 'Últimos noventa días',
       filters: { from: '2026-04-22', to: '2026-07-20' },
     });
-    const updated = store.updateSavedView(created.id, { favorite: true, filters: { seller: 'Reventas' } });
+    const updated = store.updateSavedView(testUserId, created.id, { favorite: true, filters: { seller: 'Reventas' } });
     const brandView = store.createSavedView({
+      userId: testUserId,
       viewKey: 'brands',
       name: 'Marca buscada',
       filters: { query: 'MaxPet', productQuery: 'gato', selectedBrand: 'MaxPet' },
     });
+    const privateView = store.createSavedView({
+      userId: 'otro-usuario',
+      viewKey: 'brands',
+      name: 'Vista privada de otra persona',
+      filters: { query: 'Mars' },
+    });
     expect(updated?.favorite).toBe(true);
-    expect(store.listSavedViews('sales-explorer')).toHaveLength(1);
-    expect(store.listSavedViews('brands')[0]?.filters).toMatchObject({ query: 'MaxPet', productQuery: 'gato' });
-    expect(store.listSavedViews('receivables')).toHaveLength(0);
-    expect(store.deleteSavedView(created.id)).toBe(true);
-    expect(store.deleteSavedView(brandView.id)).toBe(true);
-    expect(store.listSavedViews()).toHaveLength(0);
+    expect(store.listSavedViews(testUserId, 'sales-explorer')).toHaveLength(1);
+    expect(store.listSavedViews(testUserId, 'brands')[0]?.filters).toMatchObject({ query: 'MaxPet', productQuery: 'gato' });
+    expect(store.listSavedViews(testUserId, 'receivables')).toHaveLength(0);
+    expect(store.listSavedViews(testUserId, 'brands')).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: privateView.id })]));
+    expect(store.updateSavedView(testUserId, privateView.id, { favorite: true })).toBeNull();
+    expect(store.deleteSavedView(testUserId, privateView.id)).toBe(false);
+    expect(store.deleteSavedView(testUserId, created.id)).toBe(true);
+    expect(store.deleteSavedView(testUserId, brandView.id)).toBe(true);
+    expect(store.deleteSavedView('otro-usuario', privateView.id)).toBe(true);
+    expect(store.listSavedViews(testUserId)).toHaveLength(0);
   });
 
   it('guarda listas reproducibles y vínculos de oportunidades sin crear un workflow', () => {
     const list = store.createSavedView({
+      userId: testUserId,
       viewKey: 'products',
       purpose: 'product_opportunities',
       name: 'Mix para revisar',
@@ -130,7 +144,7 @@ describe('persistencia administrativa v0.4.0', () => {
       activityId: note.activity.id,
       snapshotAt: '2026-07-22T14:02:00.000Z',
     });
-    expect(store.listSavedViews('products', 'product_opportunities')).toEqual([
+    expect(store.listSavedViews(testUserId, 'products', 'product_opportunities')).toEqual([
       expect.objectContaining({ id: list.id, purpose: 'product_opportunities' }),
     ]);
     expect(store.listCommercialOpportunityLinks({ savedViewId: list.id })).toEqual([
@@ -139,12 +153,13 @@ describe('persistencia administrativa v0.4.0', () => {
     expect(note.activity.productIds).toEqual(['producto-123']);
     expect(note.nextAgendaItem).toBeNull();
     expect(note.promise).toBeNull();
-    expect(store.deleteSavedView(list.id)).toBe(true);
+    expect(store.deleteSavedView(testUserId, list.id)).toBe(true);
     expect(store.listCommercialOpportunityLinks({ clientId: 123 })).toEqual([]);
   });
 
   it('borra una nota de oportunidad sin borrar una selección guardada', () => {
     const list = store.createSavedView({
+      userId: testUserId,
       viewKey: 'products',
       purpose: 'product_opportunities',
       name: 'Selección que debe conservarse',
@@ -189,7 +204,7 @@ describe('persistencia administrativa v0.4.0', () => {
     ]));
     expect(store.deleteCommercialOpportunityNote(noteOnly.activity.id, 321)?.id).toBe(noteOnly.activity.id);
     expect(store.listCommercialOpportunityLinks({ clientId: 321 }).some((link) => link.productId === 'producto-322')).toBe(false);
-    expect(store.deleteSavedView(list.id)).toBe(true);
+    expect(store.deleteSavedView(testUserId, list.id)).toBe(true);
   });
 
   it('persiste la revisión humana de inventario sin modificar las señales GESI', () => {

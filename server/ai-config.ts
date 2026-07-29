@@ -22,6 +22,19 @@ export const TERRA_PRICING: AiPricing = {
   outputPerMillion: 15,
 };
 
+export const LUNA_PRICING: AiPricing = {
+  version: 'gpt-5.6-luna-2026-07-29',
+  currency: 'USD',
+  inputPerMillion: 1,
+  cachedInputPerMillion: 0.1,
+  cacheWritePerMillion: 1.25,
+  outputPerMillion: 6,
+};
+
+export function pricingForModel(model: string) {
+  return model === 'gpt-5.6-luna' ? LUNA_PRICING : TERRA_PRICING;
+}
+
 export function aiLimits(environment: NodeJS.ProcessEnv = process.env): AiLimits {
   return {
     maxEntitiesPerFunction: positiveInteger(environment.SALICE_AI_MAX_ENTITIES_PER_FUNCTION, 100, 1, 10_000),

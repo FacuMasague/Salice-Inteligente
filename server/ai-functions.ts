@@ -665,7 +665,7 @@ export function createAiFunctionDefinitions(input: {
   return [
     {
       key: 'product_vectorization',
-      model: 'gpt-5.6-terra',
+      model: 'gpt-5.6-luna',
       effort: 'high',
       prompt: PRODUCT_PROMPT,
       promptVersion: 1,
@@ -760,7 +760,7 @@ export function createAiFunctionDefinitions(input: {
     },
     {
       key: 'commercial_inbox_explanation',
-      model: 'gpt-5.6-terra',
+      model: 'gpt-5.6-luna',
       effort: 'low',
       prompt: COMMERCIAL_PROMPT,
       promptVersion: 4,
@@ -819,7 +819,7 @@ export function createAiFunctionDefinitions(input: {
     },
     {
       key: 'seller_summary',
-      model: 'gpt-5.6-terra',
+      model: 'gpt-5.6-luna',
       effort: 'low',
       prompt: SELLER_PROMPT,
       promptVersion: 5,

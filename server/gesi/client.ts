@@ -13,6 +13,30 @@ interface LoginResponse {
   error?: { code: number; message: string };
 }
 
+function retryableTransportError(error: unknown) {
+  if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) return true;
+  if (!(error instanceof TypeError)) return false;
+  const cause = error.cause && typeof error.cause === 'object'
+    ? error.cause as { code?: unknown; message?: unknown }
+    : null;
+  const description = [
+    error.message,
+    cause?.code,
+    cause?.message,
+  ].map((value) => String(value ?? '').toLocaleLowerCase('en')).join(' ');
+  return [
+    'terminated',
+    'fetch failed',
+    'network',
+    'socket',
+    'econnreset',
+    'econnrefused',
+    'etimedout',
+    'eai_again',
+    'und_err',
+  ].some((signal) => description.includes(signal));
+}
+
 export class GesiClient {
   private token = '';
 
@@ -66,8 +90,10 @@ export class GesiClient {
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let lastError: unknown;
     const maxAttempts = 5;
-    let rateLimited = false;
+    let attempts = 0;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      attempts = attempt;
+      let retryableStatus = false;
       try {
         const response = await fetch(`${this.config.baseUrl.replace(/\/$/, '')}${path}`, {
           ...init,
@@ -80,7 +106,7 @@ export class GesiClient {
           // fue rechazada. El capturador divide ese lote para aislarla; repetir
           // la misma carga cinco veces sólo consume el límite de GESI.
           if ((response.status < 500 && response.status !== 429) || response.status === 500) throw error;
-          rateLimited = response.status === 429;
+          retryableStatus = response.status === 429 || response.status >= 500;
           lastError = error;
         } else {
           const payload = await response.json() as T & { success?: boolean; error?: { message?: string } };
@@ -89,16 +115,15 @@ export class GesiClient {
         }
       } catch (error) {
         lastError = error;
-        const retryable = error instanceof DOMException && error.name === 'TimeoutError';
-        if (!retryable && !rateLimited || attempt === maxAttempts) break;
+        if ((!retryableTransportError(error) && !retryableStatus) || attempt === maxAttempts) break;
       }
       if (attempt < maxAttempts) {
-        const wait = rateLimited ? attempt * 1_500 : attempt * 750;
+        const wait = retryableStatus ? attempt * 1_500 : attempt * 750;
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
     }
     const reason = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`${path} falló luego de ${maxAttempts} intentos: ${reason}`);
+    throw new Error(`${path} falló luego de ${attempts} intento${attempts === 1 ? '' : 's'}: ${reason}`);
   }
 
   async getAll<T>(path: string, collectionKey: string, pageSize = 1000): Promise<T[]> {

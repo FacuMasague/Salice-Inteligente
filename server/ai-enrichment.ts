@@ -11,7 +11,7 @@ import type {
   AiSystemStatus,
   AiUsage,
 } from '../shared/ai.js';
-import { aiBudget, aiLimits, estimateAiCost, resolveOpenAiApiKey, TERRA_PRICING } from './ai-config.js';
+import { aiBudget, aiLimits, estimateAiCost, LUNA_PRICING, pricingForModel, resolveOpenAiApiKey, TERRA_PRICING } from './ai-config.js';
 import { assertCompactSafeEvidence, semanticRequestHash, sha256 } from './ai-evidence.js';
 import { AiProviderError, OpenAiResponsesProvider } from './ai-provider.js';
 import { createAiFunctionDefinitions } from './ai-functions.js';
@@ -289,11 +289,12 @@ export async function runAiEnrichment(input: EnrichmentInput) {
         let finalStatus: AiArtifactStatus = 'failed';
         let finalError: string | null = null;
         const configuredMaxOutputTokens = Math.min(definition.maxOutputTokens, limits.maxOutputTokensPerRequest);
+        const pricing = pricingForModel(definition.model);
 
         for (let attemptNumber = 1; attemptNumber <= limits.maxAttempts; attemptNumber += 1) {
-          const estimatedInputCost = estimatedRequestTokens * TERRA_PRICING.inputPerMillion / 1_000_000;
+          const estimatedInputCost = estimatedRequestTokens * pricing.inputPerMillion / 1_000_000;
           const remainingBudget = limits.maxEstimatedCostUsdPerRun - estimatedCostUsd - estimatedInputCost;
-          const affordableOutputTokens = Math.floor(Math.max(0, remainingBudget) * 1_000_000 / TERRA_PRICING.outputPerMillion);
+          const affordableOutputTokens = Math.floor(Math.max(0, remainingBudget) * 1_000_000 / pricing.outputPerMillion);
           const maxOutputTokens = Math.min(configuredMaxOutputTokens, affordableOutputTokens);
           if (maxOutputTokens < 64) {
             finalStatus = 'skipped';
@@ -316,7 +317,7 @@ export async function runAiEnrichment(input: EnrichmentInput) {
               maxOutputTokens,
               requestHash,
             });
-            const cost = estimateAiCost(response.usage);
+            const cost = estimateAiCost(response.usage, pricing);
             addUsage(totalUsage, response.usage);
             estimatedCostUsd += cost;
             const schemaValid = validate(response.output);
@@ -411,11 +412,11 @@ export async function runAiEnrichment(input: EnrichmentInput) {
             responseId: attempt.responseId,
             usage: attempt.usage,
             durationMs: attempt.durationMs,
-            pricingVersion: TERRA_PRICING.version,
-            inputRate: TERRA_PRICING.inputPerMillion,
-            cachedInputRate: TERRA_PRICING.cachedInputPerMillion,
-            cacheWriteRate: TERRA_PRICING.cacheWritePerMillion,
-            outputRate: TERRA_PRICING.outputPerMillion,
+            pricingVersion: pricing.version,
+            inputRate: pricing.inputPerMillion,
+            cachedInputRate: pricing.cachedInputPerMillion,
+            cacheWriteRate: pricing.cacheWritePerMillion,
+            outputRate: pricing.outputPerMillion,
             estimatedCostUsd: attempt.cost,
             error: attempt.error,
           });
@@ -537,6 +538,7 @@ export function getAiSystemStatus(activeSnapshotAt: string, workspace = process.
       artifactCounts: store.artifactCounts(activeSnapshotAt),
       limits,
       pricing: TERRA_PRICING,
+      pricingByModel: [TERRA_PRICING, LUNA_PRICING],
       usage: {
         currentMonth,
         allTime: store.usagePeriod(),

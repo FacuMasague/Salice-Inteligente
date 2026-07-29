@@ -127,6 +127,8 @@ export function buildProductPriceAnalysisFromDatabase(
       effective,
       referencePricePerKg: pricePerKg.status === 'reliable' ? product.referencePricePerKg : null,
       effectivePricePerKg,
+      competitorReferencePricePerKg: product.competitorReferencePricePerKg ?? null,
+      competitorPriceSampleSize: product.competitorPriceSampleSize ?? 0,
       pricePerKgStatus: pricePerKg.status,
       pricePerKgExplanation: pricePerKg.explanation,
       currentEffective,

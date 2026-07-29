@@ -53,11 +53,19 @@ export function formatAiDisplayText(value: string) {
     .replace(/\bP\s*[:=]\s*(\d{1,3})\b/g, 'prioridad de revisión $1/100')
     .replace(/\bO(?=\s+(?:no|sin)\b)/g, 'La oportunidad comercial');
 
-  return withPlainSignalNames.replace(NUMBER_TOKEN, (token) => {
+  return withPlainSignalNames.replace(NUMBER_TOKEN, (token, offset: number, source: string) => {
     const percentage = token.includes('%');
     const parsed = parseNumberToken(token, percentage);
     if (!Number.isFinite(parsed.value)) return token;
-    if (!percentage && !parsed.hasDecimals) return token;
+    if (!percentage && !parsed.hasDecimals) {
+      const before = source[offset - 1] ?? '';
+      const after = source[offset + token.length] ?? '';
+      const context = source.slice(Math.max(0, offset - 10), offset + token.length + 10);
+      if (/\d{1,2}-\d{1,2}-\d{4}/.test(context) || token.includes('.') || token.includes(',') || before === '-' || after === '-' || (token.startsWith('-') && /\d/.test(before))) return token;
+      return Math.abs(parsed.value) >= 1_000
+        ? new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(parsed.value)
+        : token;
+    }
 
     const formatted = new Intl.NumberFormat('es-AR', {
       minimumFractionDigits: percentage ? 2 : 0,

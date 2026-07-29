@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LogisticsSnapshot } from '../../shared/models';
-import { deliveryAssignmentText, invoiceDeliveryDisplay } from './delivery-status';
+import { deliveryAssignmentText, invoiceDeliveryDisplay, summarizeReliableInvoiceKilos } from './delivery-status';
 
 const logistics: LogisticsSnapshot = {
   coverageFrom: '2026-06-08T17:26:29.857Z',
@@ -77,5 +77,13 @@ describe('estado logístico de una factura en la ficha del cliente', () => {
       status: 'unavailable',
       label: 'Estado de foja no confirmado',
     });
+  });
+
+  it('suma kilos sólo de comprobantes con cobertura completa', () => {
+    const summary = summarizeReliableInvoiceKilos([
+      { ...logistics.invoices[0], kilos: 12.5, kiloDataStatus: 'available' },
+      { ...logistics.invoices[1], kilos: 4, kiloDataStatus: 'unavailable' },
+    ]);
+    expect(summary).toEqual({ kilos: 12.5, reliableInvoiceCount: 1, totalInvoiceCount: 2, complete: false });
   });
 });

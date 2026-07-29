@@ -183,7 +183,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
             <p><span>Resultados nuevos / reutilizados</span><strong>{system.ai.lastRun ? `${number(system.ai.lastRun.completed)} / ${number(system.ai.lastRun.reused)}` : '0 / 0'}</strong></p>
             <p><span>Consumo del mes</span><strong>{number(system.ai.usage.currentMonth.inputTokens)} entrada · {number(system.ai.usage.currentMonth.outputTokens)} salida</strong></p>
             <p><span>Límite por actualización</span><strong>USD {system.ai.limits.maxEstimatedCostUsdPerRun.toFixed(2)}</strong></p>
-            <p><span>Modelo</span><strong>gpt-5.6-terra · {system.ai.pricing.version}</strong></p>
+            <p><span>Modelos</span><strong>Terra para análisis complejos · Luna para tareas de alto volumen</strong></p>
           </div><div className="ai-function-usage">
             <header><strong>Consumo y resultados por función · mes actual</strong><span>Costo medido sobre intentos reales</span></header>
             {system.ai.usage.functions.length

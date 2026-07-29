@@ -15,6 +15,7 @@ import {
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 import { applyClientLocationQuality } from '../../shared/client-location.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
+import { referenceUnitPricePerKg } from '../../shared/product-prices.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
 import {
   isActionableReceivableAmount,
@@ -337,6 +338,12 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       group,
       pack,
     });
+    const contentKg = resolveProductContentKg({
+      unit1: unit,
+      unit2: text(row.unidad2),
+      unit2PerUnit1: number(row.unidad2XUnidad1) > 0 ? number(row.unidad2XUnidad1) : null,
+      descriptions: [productName, productDescription, pack],
+    });
     return {
       id,
       sku: id,
@@ -356,16 +363,13 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       discontinuationStatus: 'not_reported',
       catalogParticipation,
       price,
-      contentKg: vectorProfile.vector.alimento_seco >= 75 ? resolveProductContentKg({
-        unit1: unit,
-        unit2: text(row.unidad2),
-        unit2PerUnit1: number(row.unidad2XUnidad1) > 0 ? number(row.unidad2XUnidad1) : null,
-        descriptions: [productName, productDescription, pack],
-      }) : null,
+      contentKg,
       referencePricePerKg: null,
       pricePosition: 'unknown',
       stock: Math.round(inventory.operationalStock * 100) / 100,
       units90d: Math.round(units90d * 100) / 100,
+      kilos90d: contentKg ? Math.round(units90d * contentKg * 100) / 100 : 0,
+      kiloDataStatus: units90d <= 0 || contentKg ? 'estimated' : 'unavailable',
       monthlyUnits: Math.round(inventory.monthlyRotation * 100) / 100,
       sales90d: productSales90d.get(id) ?? 0,
       clients90d: productClients90d.get(id)?.size ?? 0,
@@ -393,9 +397,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   });
   const products = applyCatalogPricePositioning(baseProducts.map((product) => ({
     ...product,
-    referencePricePerKg: product.price > 0 && product.contentKg
-      ? Math.round(product.price / product.contentKg * 100) / 100
-      : null,
+    referencePricePerKg: referenceUnitPricePerKg(product.price, product.contentKg),
   })));
 
   const rawClients: Client[] = capture.clients
@@ -604,6 +606,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const explicitlyUnassigned = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentIdentity));
   const logisticsFrom = capture.captureMeta.logisticsFrom || addDays(snapshotDate, -45);
   const logisticsCoverageFrom = date(logisticsFrom);
+  const productContentKg = new Map(products.map((product) => [product.id, product.contentKg]));
   const logisticsInvoices: DeliveryInvoice[] = invoices
     .filter((row) => date(row.fechaDeEmision) >= logisticsCoverageFrom)
     .map((row) => {
@@ -612,6 +615,12 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const assignmentStatus: DeliveryInvoice['assignmentStatus'] = sheet
         ? sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'
         : explicitlyUnassigned.has(id) ? 'unassigned' : 'unknown';
+      const deliveryProductItems = (Array.isArray(row.detalleItems) ? (row.detalleItems as GesiRow[]) : [])
+        .filter((item) => text(item.tipoDeItem) === 'P' && number(item.cantidadU1) > 0);
+      const inferredKilos = deliveryProductItems.reduce((sum, item) => {
+        const contentKg = productContentKg.get(text(item.codigoDeItem));
+        return contentKg ? sum + number(item.cantidadU1) * contentKg : sum;
+      }, 0);
       return {
         id,
         clientId: number(row.clienteID),
@@ -619,6 +628,11 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         issuedAt: date(row.fechaDeEmision),
         suggestedDeliveryAt: suggestedDeliveryDate(date(row.fechaDeEmision)),
         amount: roundMoney(number(row.importeTotal)),
+        kilos: Math.round(inferredKilos * 100) / 100,
+        kiloDataStatus: (deliveryProductItems.length > 0
+          && deliveryProductItems.every((item) => (productContentKg.get(text(item.codigoDeItem)) ?? 0) > 0)
+          ? 'estimated'
+          : 'unavailable') as 'estimated' | 'unavailable',
         deliveryAddress: text(row.domicilioEntrega) || text(row.domicilio),
         locality: text(row.localidad) || 'Sin localidad',
         assignmentStatus,

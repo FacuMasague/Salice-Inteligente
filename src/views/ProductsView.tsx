@@ -17,7 +17,7 @@ import { money, number, shortDate } from '../lib/format';
 
 const vectorKeys = Object.keys(VECTOR_LABELS) as VectorKey[];
 
-type CatalogSort = 'rotation' | 'sales' | 'buyers' | 'stock' | 'price' | 'lastSale' | 'name' | 'original';
+type CatalogSort = 'rotation' | 'sales' | 'kilos' | 'buyers' | 'stock' | 'price' | 'lastSale' | 'name' | 'original';
 type ProductMode = 'inventory' | 'demand' | 'prices' | 'opportunities' | 'catalog' | 'compare' | 'vectors';
 
 export function ProductsView({ products, clients, snapshotDate, tutorialVectorMode = false, focusProductId = null, focusFamily = '', comparisonProductIds, comparisonRequest = 0, onComparisonChange, onFocusFamilyConsumed, onOpenProduct, onOpenBrand, onOpenClient, onOpenSeller, onDataChanged }: {
@@ -45,6 +45,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   const [family, setFamily] = useState('');
   const [brand, setBrand] = useState('');
   const [line, setLine] = useState('');
+  const [group, setGroup] = useState('');
   const [masterStatus, setMasterStatus] = useState('');
   const [inventoryStatus, setInventoryStatus] = useState('');
   const [availability, setAvailability] = useState<'commercial' | 'stock' | 'all'>('commercial');
@@ -105,6 +106,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   const families = useMemo(() => [...new Set(products.map((product) => product.family))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const brands = useMemo(() => [...new Set(products.map((product) => product.brand).filter((value) => !value.startsWith('Sin ')))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const lines = useMemo(() => [...new Set(products.map((product) => product.line).filter((value) => value && !value.startsWith('Sin ')))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const groups = useMemo(() => [...new Set(products.map((product) => product.group).filter((value) => value && !value.startsWith('Sin ')))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const filtered = products
     .map((product, originalIndex) => ({ product, originalIndex, inventoryDecision: classifyInventoryProduct(product) }))
@@ -112,6 +114,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     .filter(({ product }) => matchesMultiFilter(product.family, family))
     .filter(({ product }) => matchesMultiFilter(product.brand, brand))
     .filter(({ product }) => matchesMultiFilter(product.line, line))
+    .filter(({ product }) => matchesMultiFilter(product.group, group))
     .filter(({ product }) => matchesMultiFilter(product.masterStatus, masterStatus))
     .filter(({ inventoryDecision }) => matchesMultiFilter(inventoryDecision.status, inventoryStatus))
     .filter(({ product }) => availability === 'all' || (availability === 'stock' ? product.inventory?.status === 'positive' || product.stock > 0 : product.commercialStatus ? product.commercialStatus === 'commercializable' : product.stock > 0 && product.price > 0))
@@ -121,6 +124,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (sort === 'stock') return b.stock - a.stock || b.monthlyUnits - a.monthlyUnits;
       if (sort === 'price') return b.price - a.price || a.name.localeCompare(b.name, 'es');
       if (sort === 'sales') return b.sales90d - a.sales90d || b.monthlyUnits - a.monthlyUnits;
+      if (sort === 'kilos') return (b.kiloDataStatus !== 'unavailable' ? b.kilos90d ?? 0 : -1) - (a.kiloDataStatus !== 'unavailable' ? a.kilos90d ?? 0 : -1) || b.sales90d - a.sales90d;
       if (sort === 'buyers') return b.clients90d - a.clients90d || b.sales90d - a.sales90d;
       if (sort === 'lastSale') return b.lastSaleAt.localeCompare(a.lastSaleAt) || b.sales90d - a.sales90d;
       if (sort === 'name') return a.name.localeCompare(b.name, 'es');
@@ -145,13 +149,14 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     setSelectedId(id);
     setMode('catalog');
   };
-  const savedFilters = { mode, query, family, brand, line, masterStatus, inventoryStatus, availability, sort, selectedVector, selectedProduct: selected.id };
+  const savedFilters = { mode, query, family, brand, line, group, masterStatus, inventoryStatus, availability, sort, selectedVector, selectedProduct: selected.id };
   const applySaved = (saved: Record<string, string>) => {
     setMode(saved.mode === 'vectors' ? 'vectors' : saved.mode === 'compare' ? 'compare' : saved.mode === 'opportunities' ? 'opportunities' : saved.mode === 'prices' ? 'prices' : saved.mode === 'demand' ? 'demand' : saved.mode === 'catalog' ? 'catalog' : 'inventory');
     setQuery(saved.query ?? '');
     setFamily(saved.family ?? '');
     setBrand(saved.brand ?? '');
     setLine(saved.line ?? '');
+    setGroup(saved.group ?? '');
     setMasterStatus(saved.masterStatus ?? '');
     setInventoryStatus(saved.inventoryStatus ?? '');
     setAvailability((saved.availability as typeof availability) || 'commercial');
@@ -246,15 +251,15 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
         <div className="data-card-header stacked product-catalog-controls">
           <div><span className="section-kicker"><Boxes size={14} /> Catálogo operativo</span><h2>{number(filtered.length)} de {number(products.length)} productos</h2><p>Elegí un producto para consultar toda su información en la ficha de la derecha.</p></div>
           <label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU, marca o presentación…" /></label>
-          <div className="product-filter-grid product-filter-grid-v3 product-filter-primary"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializable observable' }, { value: 'stock', label: 'Stock positivo' }, { value: 'all', label: 'Todo el catálogo operativo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'sales', label: 'Mayor venta 90d' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor stock' }, { value: 'price', label: 'Mayor precio' }, { value: 'lastSale', label: 'Venta más reciente' }, { value: 'name', label: 'Nombre A–Z' }, { value: 'original', label: 'Orden original' }]} onChange={(value) => { setSort(value as CatalogSort); setPage(1); }} /></div>
-          <details className="product-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros{[line, masterStatus, inventoryStatus].filter(Boolean).length ? ` · ${[line, masterStatus, inventoryStatus].filter(Boolean).length} activos` : ''}<ChevronDown size={14} /></summary><div className="product-filter-grid product-filter-grid-v3"><MultiSelectFilter label="Línea" value={line} options={lines} onChange={(value) => { setLine(value); setPage(1); }} /><MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} /><MultiSelectFilter label="Inventario" value={inventoryStatus} options={[{ value: 'no_stock_with_demand', label: 'Sin stock con demanda' }, { value: 'critical_coverage', label: 'Cobertura crítica' }, { value: 'low_coverage', label: 'Cobertura baja' }, { value: 'adequate_coverage', label: 'Cobertura adecuada' }, { value: 'high_coverage', label: 'Cobertura alta' }, { value: 'stock_without_movement', label: 'Stock sin movimiento' }, { value: 'new_or_insufficient_history', label: 'Sin historia suficiente' }, { value: 'insufficient_data', label: 'Datos insuficientes' }, { value: 'out_of_assortment', label: 'Fuera de surtido/inactivo' }]} onChange={(value) => { setInventoryStatus(value); setPage(1); }} /></div></details>
+          <div className="product-filter-grid product-filter-grid-v3 product-filter-primary"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializable observable' }, { value: 'stock', label: 'Stock positivo' }, { value: 'all', label: 'Todo el catálogo operativo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'sales', label: 'Mayor venta 90d' }, { value: 'kilos', label: 'Más kilos 90d' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor stock' }, { value: 'price', label: 'Mayor precio' }, { value: 'lastSale', label: 'Venta más reciente' }, { value: 'name', label: 'Nombre A–Z' }, { value: 'original', label: 'Orden original' }]} onChange={(value) => { setSort(value as CatalogSort); setPage(1); }} /></div>
+          <details className="product-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros{[line, group, masterStatus, inventoryStatus].filter(Boolean).length ? ` · ${[line, group, masterStatus, inventoryStatus].filter(Boolean).length} activos` : ''}<ChevronDown size={14} /></summary><div className="product-filter-grid product-filter-grid-v3"><MultiSelectFilter label="Línea" value={line} options={lines} onChange={(value) => { setLine(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} /><MultiSelectFilter label="Inventario" value={inventoryStatus} options={[{ value: 'no_stock_with_demand', label: 'Sin stock con demanda' }, { value: 'critical_coverage', label: 'Cobertura crítica' }, { value: 'low_coverage', label: 'Cobertura baja' }, { value: 'adequate_coverage', label: 'Cobertura adecuada' }, { value: 'high_coverage', label: 'Cobertura alta' }, { value: 'stock_without_movement', label: 'Stock sin movimiento' }, { value: 'new_or_insufficient_history', label: 'Sin historia suficiente' }, { value: 'insufficient_data', label: 'Datos insuficientes' }, { value: 'out_of_assortment', label: 'Fuera de surtido/inactivo' }]} onChange={(value) => { setInventoryStatus(value); setPage(1); }} /></div></details>
         </div>
         <SavedViewsBar viewKey="products" filters={savedFilters} onApply={applySaved} />
         <div className="product-list">
           {visible.map((product) => <article key={product.id} role="button" tabIndex={0} className={`product-list-row ${product.id === selected.id ? 'active' : ''}`} onClick={() => setSelectedId(product.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(product.id); }}>
             <div className="product-thumb">{product.family === 'Higiene' ? 'HI' : product.family === 'Accesorios' ? 'AC' : product.vector.gatos > product.vector.perros ? 'GA' : 'PE'}</div>
-            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
-            <div className="product-list-numbers"><strong title="Precio de referencia">{product.price > 0 ? money(product.price) : 'Precio no informado'}</strong><span className={product.inventory?.status === 'negative' || product.stock < 30 ? 'negative' : ''}>{product.inventory?.status === 'unavailable' ? 'Stock no informado' : product.inventory?.status === 'negative' ? 'Stock de origen inválido' : `Stock disponible ${number(product.stock)}`}</span><small>{money(product.sales90d, true)} · 90d</small></div>
+            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {product.kiloDataStatus !== 'unavailable' ? `${number(product.kilos90d ?? 0, 2)} kg estimados/90d` : 'sin conversión a kilos'} · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
+            <div className="product-list-numbers"><strong title="Precio del producto">{product.price > 0 ? money(product.price) : 'Precio no informado'}</strong><span>{product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg propio` : 'Precio/kg no calculable'}</span><small>{product.competitorReferencePricePerKg ? `${money(product.competitorReferencePricePerKg)}/kg competencia` : 'Sin referencia competitiva'} · {money(product.sales90d, true)} / 90d</small></div>
             <ChevronRight size={17} />
           </article>)}
         </div>

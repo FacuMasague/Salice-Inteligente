@@ -31,6 +31,7 @@ import { isCommercialOpportunityEligible } from '../../shared/commercial-opportu
 import { matchesMultiFilter, multiFilterLabel } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { AiCommercialExplanationCard } from '../components/AiInsights';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { compactDate, longDate, money, shortDate } from '../lib/format';
@@ -121,10 +122,16 @@ export function AgendaView({
   const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller).filter((name) => name && name !== 'Sin vendedor'))]
     .sort((left, right) => left.localeCompare(right, 'es')), [activeClients]);
+  const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
+  const clientTypes = useMemo(() => [...new Set(activeClients.map((client) => client.segment).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'es')), [activeClients]);
+  const localities = useMemo(() => [...new Set(activeClients.map((client) => client.locality).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'es')), [activeClients]);
   const [date, setDate] = useState(today);
   const [seller, setSeller] = useState('');
   const [source, setSource] = useState('');
   const [attentionType, setAttentionType] = useState('');
+  const [clientType, setClientType] = useState('');
+  const [locality, setLocality] = useState('');
+  const [opportunity, setOpportunity] = useState('all');
   const [query, setQuery] = useState('');
   const [data, setData] = useState<CommercialInboxPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,24 +167,35 @@ export function AgendaView({
   const reload = () => setRefreshToken((value) => value + 1);
   const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const visibleEntries = useMemo(() => (data?.entries ?? []).filter((entry) => {
+    const client = clientById.get(entry.clientId);
     if (source && !entry.sources.some((value) => matchesMultiFilter(value, source))) return false;
     if (attentionType && !attentionTypes(entry).some((value) => matchesMultiFilter(value, attentionType))) return false;
+    if (clientType && (!client || !matchesMultiFilter(client.segment, clientType))) return false;
+    if (locality && !matchesMultiFilter(entry.locality, locality)) return false;
+    if (opportunity !== 'all' && (
+      opportunity === 'high' ? entry.commercialOpportunity < 70
+        : opportunity === 'medium' ? entry.commercialOpportunity < 40 || entry.commercialOpportunity >= 70
+          : entry.commercialOpportunity >= 40
+    )) return false;
     if (normalizedQuery && !`${entry.clientName} ${entry.seller} ${entry.locality} ${entry.signals.map((item) => `${item.label} ${item.detail}`).join(' ')}`
       .toLocaleLowerCase('es').includes(normalizedQuery)) return false;
     return true;
-  }), [attentionType, data, normalizedQuery, source]);
+  }), [attentionType, clientById, clientType, data, locality, normalizedQuery, opportunity, source]);
   const selectedEntry = visibleEntries.find((entry) => entry.clientId === selectedId) ?? visibleEntries[0] ?? null;
   const selectedClient = selectedEntry ? clients.find((client) => client.id === selectedEntry.clientId) ?? null : null;
   const selectedOpportunityEligible = selectedClient ? isCommercialOpportunityEligible(selectedClient) : false;
   const weekLabel = data
     ? `${shortDate(data.weekStart)} al ${shortDate(data.weekEnd)}`
     : 'semana seleccionada';
-  const savedFilters = { date, seller, source, attentionType, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
+  const savedFilters = { date, seller, source, attentionType, clientType, locality, opportunity, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
   const applySaved = (saved: Record<string, string>) => {
     setDate(saved.date || today());
     setSeller(saved.seller || '');
     setSource(saved.source || '');
     setAttentionType(saved.attentionType || '');
+    setClientType(saved.clientType || '');
+    setLocality(saved.locality || '');
+    setOpportunity(saved.opportunity || 'all');
     setQuery(saved.query || '');
     setSelectedId(Number(saved.selectedClientId) || null);
   };
@@ -201,7 +219,7 @@ export function AgendaView({
       <SavedViewsBar viewKey="agenda" filters={savedFilters} onApply={applySaved} />
 
       <div className="agenda-kpis" data-tour="agenda-kpis">
-        <article><span className="agenda-kpi-icon green"><UserRound size={19} /></span><div><span>Clientes visibles</span><strong>{data ? data.stats.clients : '—'}</strong><small>sin duplicarlos por motivo</small></div></article>
+        <article><span className="agenda-kpi-icon green"><UserRound size={19} /></span><div><span>Clientes visibles</span><strong>{data ? visibleEntries.length : '—'}</strong><small>sobre {data?.stats.clients ?? '—'} de la semana</small></div></article>
         <article title={data?.definitions.systemSignals}><span className="agenda-kpi-icon blue"><Sparkles size={19} /></span><div><span>Señales del sistema</span><strong>{data ? data.stats.systemSignals : '—'}</strong><small>orientan; no planifican</small></div></article>
         <article title={data?.definitions.dueItems}><span className="agenda-kpi-icon red"><CalendarDays size={19} /></span><div><span>Compromisos y recordatorios</span><strong>{data ? data.stats.dueItems : '—'}</strong><small>existentes hasta fin de semana</small></div></article>
         <article title={data?.definitions.notes}><span className="agenda-kpi-icon ochre"><MessageSquareText size={19} /></span><div><span>Notas de la semana</span><strong>{data ? data.stats.notes : '—'}</strong><small>hechos registrados por la oficina</small></div></article>
@@ -222,6 +240,9 @@ export function AgendaView({
           onChange={setAttentionType}
           allLabel="Todos"
         />
+        <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} allLabel="Todos" />
+        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} allLabel="Todas" />
+        <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
         <label className="inline-search"><FileText size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, localidad o motivo…" /></label>
         <span>{multiFilterLabel(seller, 'Todos los vendedores')}</span>
       </section>
@@ -278,7 +299,7 @@ export function AgendaView({
             <section className="agenda-history-section">
               <div className="section-title-row"><div><span className="section-kicker"><MessageSquareText size={14} /> Notas de oficina</span><h3>Hechos registrados fuera del sistema</h3></div><span className="count-badge">{selectedEntry.notes.length}</span></div>
               {!selectedEntry.notes.length && <p className="section-description">Todavía no hay notas para este cliente. Una nota no completa ni modifica las sugerencias.</p>}
-              {selectedEntry.notes.map((note) => <article className="agenda-activity-row" key={note.id}><span>{noteTypeLabels[note.type]}</span><div><strong>{note.note}</strong><small>{longDate(note.occurredAt)}</small></div></article>)}
+              {selectedEntry.notes.map((note) => <article className="agenda-activity-row" key={note.id}><span>{noteTypeLabels[note.type]}</span><div><strong>{note.note}</strong><small>{longDate(note.occurredAt)} · {note.createdBy || 'Registro anterior'}</small></div></article>)}
             </section>
 
             <footer className="agenda-detail-actions">

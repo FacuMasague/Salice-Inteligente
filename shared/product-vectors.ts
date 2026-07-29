@@ -510,8 +510,22 @@ export function applyCatalogPricePositioning(products: Product[]): Product[] {
   return products.map((product) => {
     const cohort = priceCohort(product);
     const comparable = cohort ? cohorts.get(cohort) ?? [] : [];
+    const competitors = comparable
+      .filter((item) => item.id !== product.id)
+      .map((item) => item.referencePricePerKg ?? 0)
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+    const competitorReferencePricePerKg = competitors.length >= 3
+      ? Math.round((competitors.length % 2
+        ? competitors[Math.floor(competitors.length / 2)]
+        : (competitors[competitors.length / 2 - 1] + competitors[competitors.length / 2]) / 2) * 100) / 100
+      : null;
+    const competitiveReference = {
+      competitorReferencePricePerKg,
+      competitorPriceSampleSize: competitors.length,
+    };
     if (!cohort || comparable.length < 12 || !product.referencePricePerKg || !comparable.some((item) => item.id === product.id)) {
-      return { ...product, pricePosition: 'unknown' };
+      return { ...product, ...competitiveReference, pricePosition: 'unknown' };
     }
     const sorted = comparable.map((item) => item.referencePricePerKg ?? 0).sort((a, b) => a - b);
     const belowOrEqual = sorted.filter((value) => value <= product.referencePricePerKg!).length;
@@ -531,6 +545,7 @@ export function applyCatalogPricePositioning(products: Product[]): Product[] {
     }
     return {
       ...product,
+      ...competitiveReference,
       pricePosition,
       vector,
       vectorMeta: {

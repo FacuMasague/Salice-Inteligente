@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessPricePerKg, classifyProductPriceAlert, comparePriceValues, effectivePriceSampleIsReliable, effectiveUnitPrice, lastObservedReferenceChange } from './product-prices';
+import { assessPricePerKg, classifyProductPriceAlert, comparePriceValues, effectivePriceSampleIsReliable, effectiveUnitPrice, lastObservedReferenceChange, referenceUnitPricePerKg } from './product-prices';
 
 const observation = (price: number | null, units = 10, activeDays = 4) => ({ price, units, activeDays, sales: price ? price * units : 0, buyers: 2 });
 
@@ -10,6 +10,12 @@ describe('reglas compartidas de precios de producto', () => {
     expect(comparePriceValues(80, 100).status).toBe('strong_decrease');
     expect(comparePriceValues(100, null).status).toBe('new_observed');
     expect(comparePriceValues(null, 100).status).toBe('unavailable');
+  });
+
+  it('omite referencias por kilo que se redondean a cero por un precio simbólico', () => {
+    expect(referenceUnitPricePerKg(15_000, 15)).toBe(1_000);
+    expect(referenceUnitPricePerKg(0.01, 15)).toBeNull();
+    expect(referenceUnitPricePerKg(15_000, null)).toBeNull();
   });
 
   it('exige muestra suficiente para alertar por precio efectivo', () => {

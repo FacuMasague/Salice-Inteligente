@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Product } from '../shared/models.js';
+import { matchesMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import {
   classifyDemandStability,
   classifyDemandTrend,
@@ -11,6 +12,7 @@ import {
   shiftIsoDate,
   type DemandDimension,
   type DemandPeriodMetrics,
+  type ProductDemandFilters,
   type DemandWindowDays,
   type ProductDemandPayload,
   type ProductDemandRow,
@@ -18,12 +20,15 @@ import {
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
-type CatalogProduct = Pick<Product, 'id' | 'sku' | 'name' | 'brand' | 'family' | 'group'>;
+type CatalogProduct = Pick<Product, 'id' | 'sku' | 'name' | 'brand' | 'family' | 'group' | 'line' | 'masterStatus' | 'commercialStatus' | 'stock' | 'contentKg'>;
 
 interface RawDemandRow {
   id: string;
   currentUnits: number;
   previousUnits: number;
+  currentKilos: number;
+  previousKilos: number;
+  currentMissingKiloProducts: number;
   currentSales: number;
   previousSales: number;
   currentBuyers: number;
@@ -54,59 +59,129 @@ function readMeta(database: DatabaseSync) {
 }
 
 function emptyMetrics(): DemandPeriodMetrics {
-  return { units: 0, sales: 0, buyers: 0, activeDays: 0 };
+  return { units: 0, kilos: 0, sales: 0, buyers: 0, activeDays: 0 };
 }
 
-function parseParameters(query: Record<string, unknown>) {
+function filterOptions(products: CatalogProduct[]) {
+  const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  return {
+    brands: unique(products.map((product) => product.brand)),
+    families: unique(products.map((product) => product.family)),
+    groups: unique(products.map((product) => product.group)),
+    lines: unique(products.map((product) => product.line)),
+  };
+}
+
+function parseParameters(query: Record<string, unknown>, products: CatalogProduct[]) {
   const requestedWindow = Number(query.window ?? 90) as DemandWindowDays;
   const requestedDimension = String(query.dimension ?? 'product') as DemandDimension;
+  const options = filterOptions(products);
+  const availability = ['all', 'stock', 'commercial'].includes(String(query.availability))
+    ? String(query.availability) as ProductDemandFilters['availability']
+    : 'all';
   return {
     windowDays: validWindows.has(requestedWindow) ? requestedWindow : 90,
     dimension: validDimensions.has(requestedDimension) ? requestedDimension : 'product',
+    filters: {
+      search: String(query.search ?? '').trim().slice(0, 200),
+      brand: normalizeMultiFilter(query.brand, options.brands),
+      family: normalizeMultiFilter(query.family, options.families),
+      group: normalizeMultiFilter(query.group, options.groups),
+      line: normalizeMultiFilter(query.line, options.lines),
+      availability,
+      masterStatus: normalizeMultiFilter(query.masterStatus, ['active', 'inactive', 'unknown']),
+      trend: normalizeMultiFilter(query.trend, ['accelerating', 'stable', 'declining', 'new_observed', 'no_demand', 'insufficient_history']),
+      stability: normalizeMultiFilter(query.stability, ['stable', 'variable', 'intermittent', 'insufficient']),
+    } satisfies ProductDemandFilters,
+    options,
   };
 }
 
 function catalogEntities(products: CatalogProduct[], dimension: DemandDimension) {
   const config = dimensionConfig[dimension];
-  const result = new Map<string, { label: string; detail: string; productCount: number }>();
+  const result = new Map<string, { label: string; detail: string; productCount: number; productIds: string[] }>();
   for (const product of products) {
     const id = config.productValue(product).trim() || config.fallback;
     const current = result.get(id);
-    if (current) current.productCount += 1;
+    if (current) { current.productCount += 1; current.productIds.push(product.id); }
     else result.set(id, {
       label: dimension === 'product' ? product.name : id,
       detail: dimension === 'product' ? `${product.sku} · ${product.brand} · ${product.family}` : '',
       productCount: 1,
+      productIds: [product.id],
     });
   }
   return result;
 }
 
-function summaryMetrics(database: DatabaseSync, from: string, through: string, productIds: string[]): DemandPeriodMetrics {
-  if (!productIds.length) return emptyMetrics();
+function kiloConversionCase(products: CatalogProduct[]) {
+  const withConversion = products.filter((product) => Number(product.contentKg) > 0);
+  return {
+    sql: withConversion.length
+      ? `CASE product_id ${withConversion.map(() => 'WHEN ? THEN ?').join(' ')} ELSE NULL END`
+      : 'NULL',
+    parameters: withConversion.flatMap((product) => [product.id, Number(product.contentKg)]),
+  };
+}
+
+function summaryMetrics(database: DatabaseSync, from: string, through: string, products: CatalogProduct[]): DemandPeriodMetrics {
+  if (!products.length) return emptyMetrics();
+  const productIds = products.map((product) => product.id);
   const placeholders = productIds.map(() => '?').join(',');
+  const conversion = kiloConversionCase(products);
   const row = database.prepare(`
-    SELECT COALESCE(SUM(units), 0) units, COALESCE(SUM(net_amount), 0) sales,
+    WITH weighted AS (
+      SELECT *, ${conversion.sql} AS kg_per_unit FROM movements
+    )
+    SELECT COALESCE(SUM(units), 0) units,
+      COALESCE(SUM(CASE WHEN kg_per_unit > 0 THEN units * kg_per_unit ELSE 0 END), 0) kilos,
+      COALESCE(SUM(net_amount), 0) sales,
       COUNT(DISTINCT client_id) buyers, COUNT(DISTINCT sale_date) activeDays
-    FROM movements
+    FROM weighted
     WHERE company_id = 3 AND branch_id = 3 AND source_kind = 'invoice' AND units > 0
       AND sale_date BETWEEN ? AND ? AND product_id IN (${placeholders})
-  `).get(from, through, ...productIds) as Partial<DemandPeriodMetrics>;
-  return { units: round(Number(row.units ?? 0)), sales: round(Number(row.sales ?? 0)), buyers: Number(row.buyers ?? 0), activeDays: Number(row.activeDays ?? 0) };
+  `).get(...conversion.parameters, from, through, ...productIds) as Partial<DemandPeriodMetrics>;
+  return { units: round(Number(row.units ?? 0)), kilos: round(Number(row.kilos ?? 0)), sales: round(Number(row.sales ?? 0)), buyers: Number(row.buyers ?? 0), activeDays: Number(row.activeDays ?? 0) };
+}
+
+function kiloCoverage(database: DatabaseSync, from: string, through: string, products: CatalogProduct[]) {
+  if (!products.length) return { productsWithSales: 0, productsWithKilos: 0, productsWithoutKilos: 0 };
+  const productIds = products.map((product) => product.id);
+  const placeholders = productIds.map(() => '?').join(',');
+  const soldIds = new Set((database.prepare(`
+    SELECT DISTINCT product_id FROM movements
+    WHERE company_id = 3 AND branch_id = 3 AND source_kind = 'invoice' AND units > 0
+      AND sale_date BETWEEN ? AND ? AND product_id IN (${placeholders})
+  `).all(from, through, ...productIds) as { product_id: string }[]).map((row) => row.product_id));
+  const productsWithSales = soldIds.size;
+  const productsWithKilos = products.filter((product) => soldIds.has(product.id) && Number(product.contentKg) > 0).length;
+  return { productsWithSales, productsWithKilos, productsWithoutKilos: Math.max(0, productsWithSales - productsWithKilos) };
 }
 
 export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, products: CatalogProduct[], query: Record<string, unknown> = {}): ProductDemandPayload {
-  const { windowDays, dimension } = parseParameters(query);
+  const { windowDays, dimension, filters, options } = parseParameters(query, products);
   const meta = readMeta(database);
   const sourceMaxDate = meta.get('max_date') ?? '';
   const coverageFrom = meta.get('coverage_from') || meta.get('min_date') || '';
   if (!sourceMaxDate) throw new Error('La base comercial no declara una fecha máxima.');
   const ranges = demandPeriodRanges(sourceMaxDate, windowDays);
   const historyStatus = demandHistoryStatus(coverageFrom, ranges);
-  const entities = catalogEntities(products, dimension);
-  const productIds = [...new Set(products.map((product) => product.id))];
+  const normalizedSearch = filters.search.toLocaleLowerCase('es');
+  const filteredProducts = products.filter((product) => (
+    matchesMultiFilter(product.brand, filters.brand)
+    && matchesMultiFilter(product.family, filters.family)
+    && matchesMultiFilter(product.group, filters.group)
+    && matchesMultiFilter(product.line, filters.line)
+    && matchesMultiFilter(product.masterStatus, filters.masterStatus)
+    && (filters.availability === 'all'
+      || (filters.availability === 'stock' ? product.stock > 0 : product.commercialStatus === 'commercializable'))
+    && (!normalizedSearch || `${product.name} ${product.sku} ${product.brand} ${product.family} ${product.group} ${product.line}`.toLocaleLowerCase('es').includes(normalizedSearch))
+  ));
+  const entities = catalogEntities(filteredProducts, dimension);
+  const productIds = [...new Set(filteredProducts.map((product) => product.id))];
   const placeholders = productIds.map(() => '?').join(',');
   const config = dimensionConfig[dimension];
+  const conversion = kiloConversionCase(filteredProducts);
   const segmentDays = windowDays / 3;
   const segment1Through = shiftIsoDate(ranges.current.from, segmentDays - 1);
   const segment2From = shiftIsoDate(segment1Through, 1);
@@ -114,9 +189,15 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
   const segment3From = shiftIsoDate(segment2Through, 1);
   const positive = "source_kind = 'invoice' AND units > 0";
   const rawRows = productIds.length ? database.prepare(`
+    WITH weighted AS (
+      SELECT *, ${conversion.sql} AS kg_per_unit FROM movements
+    )
     SELECT ${config.expression} id,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) currentUnits,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) previousUnits,
+      COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? AND kg_per_unit > 0 THEN units * kg_per_unit ELSE 0 END), 0) currentKilos,
+      COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? AND kg_per_unit > 0 THEN units * kg_per_unit ELSE 0 END), 0) previousKilos,
+      COUNT(DISTINCT CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? AND kg_per_unit IS NULL THEN product_id END) currentMissingKiloProducts,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN net_amount ELSE 0 END), 0) currentSales,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN net_amount ELSE 0 END), 0) previousSales,
       COUNT(DISTINCT CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN client_id END) currentBuyers,
@@ -128,12 +209,16 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) segment1,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) segment2,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) segment3
-    FROM movements
+    FROM weighted
     WHERE company_id = 3 AND branch_id = 3 AND product_id IN (${placeholders})
     GROUP BY ${config.expression}
   `).all(
+    ...conversion.parameters,
     ranges.current.from, ranges.current.through,
     ranges.previous.from, ranges.previous.through,
+    ranges.current.from, ranges.current.through,
+    ranges.previous.from, ranges.previous.through,
+    ranges.current.from, ranges.current.through,
     ranges.current.from, ranges.current.through,
     ranges.previous.from, ranges.previous.through,
     ranges.current.from, ranges.current.through,
@@ -147,10 +232,10 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
   ) as unknown as RawDemandRow[] : [];
   const rawById = new Map(rawRows.map((row) => [String(row.id || config.fallback), row]));
 
-  const rows: ProductDemandRow[] = [...entities.entries()].map(([id, entity]) => {
+  const allRows: ProductDemandRow[] = [...entities.entries()].map(([id, entity]) => {
     const raw = rawById.get(id);
-    const current = raw ? { units: round(Number(raw.currentUnits)), sales: round(Number(raw.currentSales)), buyers: Number(raw.currentBuyers), activeDays: Number(raw.currentActiveDays) } : emptyMetrics();
-    const previous = raw ? { units: round(Number(raw.previousUnits)), sales: round(Number(raw.previousSales)), buyers: Number(raw.previousBuyers), activeDays: Number(raw.previousActiveDays) } : emptyMetrics();
+    const current = raw ? { units: round(Number(raw.currentUnits)), kilos: round(Number(raw.currentKilos)), sales: round(Number(raw.currentSales)), buyers: Number(raw.currentBuyers), activeDays: Number(raw.currentActiveDays) } : emptyMetrics();
+    const previous = raw ? { units: round(Number(raw.previousUnits)), kilos: round(Number(raw.previousKilos)), sales: round(Number(raw.previousSales)), buyers: Number(raw.previousBuyers), activeDays: Number(raw.previousActiveDays) } : emptyMetrics();
     const firstSaleAt = raw?.firstSaleAt ?? '';
     const lastSaleAt = raw?.lastSaleAt ?? '';
     const variationPercent = demandVariation(current.units, previous.units);
@@ -161,6 +246,9 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       current, previous,
       rotationPer30Days: round(current.units / windowDays * 30),
       previousRotationPer30Days: round(previous.units / windowDays * 30),
+      kiloRotationPer30Days: round(current.kilos / windowDays * 30),
+      previousKiloRotationPer30Days: round(previous.kilos / windowDays * 30),
+      kiloDataStatus: current.units <= 0 || Number(raw?.currentMissingKiloProducts ?? 0) === 0 ? 'estimated' : 'unavailable',
       variationPercent: variationPercent == null ? null : round(variationPercent, 1),
       trend,
       stability: stabilityResult.status,
@@ -175,8 +263,12 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
     row.explanation = demandExplanation({ ...row, windowDays });
     return row;
   });
-  const current = summaryMetrics(database, ranges.current.from, ranges.current.through, productIds);
-  const previous = summaryMetrics(database, ranges.previous.from, ranges.previous.through, productIds);
+  const rows = allRows.filter((row) => matchesMultiFilter(row.trend, filters.trend) && matchesMultiFilter(row.stability, filters.stability));
+  const visibleIds = [...new Set(rows.flatMap((row) => entities.get(row.id)?.productIds ?? []))];
+  const visibleProducts = filteredProducts.filter((product) => visibleIds.includes(product.id));
+  const current = summaryMetrics(database, ranges.current.from, ranges.current.through, visibleProducts);
+  const previous = summaryMetrics(database, ranges.previous.from, ranges.previous.through, visibleProducts);
+  const coverage = kiloCoverage(database, ranges.current.from, ranges.current.through, visibleProducts);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -185,6 +277,8 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
     sourceMaxDate,
     windowDays,
     dimension,
+    filters,
+    options,
     currentRange: ranges.current,
     previousRange: ranges.previous,
     historyStatus,
@@ -192,6 +286,8 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       current,
       previous,
       variationPercent: previous.units > 0 ? round((current.units - previous.units) / previous.units * 100, 1) : null,
+      kiloVariationPercent: previous.kilos > 0 ? round((current.kilos - previous.kilos) / previous.kilos * 100, 1) : null,
+      ...coverage,
       accelerating: rows.filter((row) => row.trend === 'accelerating').length,
       declining: rows.filter((row) => row.trend === 'declining').length,
       newObserved: rows.filter((row) => row.trend === 'new_observed').length,
@@ -202,7 +298,7 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       return priority(b) - priority(a) || Math.abs(b.variationPercent ?? 0) - Math.abs(a.variationPercent ?? 0) || b.current.units - a.current.units || a.label.localeCompare(b.label, 'es');
     }),
     rules: {
-      demand: 'Unidades U1 positivas de facturas con detalle GESI; las notas de crédito no se presentan como demanda.',
+      demand: 'Las unidades U1 provienen de facturas con detalle GESI. Los kilos se estiman como unidades vendidas × contenido neto por U1; sin una presentación convertible, el producto queda fuera del total de kilos.',
       comparison: `Los ${windowDays} días terminados el ${sourceMaxDate} contra los ${windowDays} días inmediatamente anteriores.`,
       acceleration: 'Aceleración desde +20%; caída desde -20%; el intervalo intermedio se considera estable.',
       stability: `Coeficiente de variación sobre tres subperíodos de ${segmentDays} días: estable hasta 0,35; variable hasta 0,75; luego intermitente.`,

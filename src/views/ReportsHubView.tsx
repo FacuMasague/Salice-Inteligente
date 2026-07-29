@@ -25,9 +25,7 @@ import {
   type RecentReport,
   type ReportViewId,
 } from '../lib/report-center';
-
-const FAVORITES_KEY = 'salice-report-favorites-v080';
-const RECENTS_KEY = 'salice-report-recents-v080';
+import { useAuth } from '../auth';
 
 type ReportGroupId = 'direction' | 'sales' | 'portfolio' | 'brands';
 
@@ -201,10 +199,14 @@ export function ReportsHubView({
   onOpenDestination: (destination: ExecutiveSummaryDestination) => void;
   onOpenSheet: (sheetId: number) => void;
 }) {
+  const { user } = useAuth();
+  const favoritesKey = `salice-report-favorites-v120-${user.id}`;
+  const recentsKey = `salice-report-recents-v120-${user.id}`;
   const [metadata, setMetadata] = useState<Partial<Record<ReportViewId, ReportMeta>>>({});
   const [loading, setLoading] = useState(true);
-  const [favorites, setFavorites] = useState<ReportViewId[]>(() => parseFavoriteReports(localStorage.getItem(FAVORITES_KEY)));
-  const [recents, setRecents] = useState<RecentReport[]>(() => parseRecentReports(localStorage.getItem(RECENTS_KEY)));
+  const [favorites, setFavorites] = useState<ReportViewId[]>(() => parseFavoriteReports(localStorage.getItem(favoritesKey)));
+  const [recents, setRecents] = useState<RecentReport[]>(() => parseRecentReports(localStorage.getItem(recentsKey)));
+  const [preferencesReady, setPreferencesReady] = useState(false);
   const [sheetLookup, setSheetLookup] = useState('');
   const sortedSheets = useMemo(() => [...data.logistics.sheets].sort((left, right) => right.id - left.id), [data.logistics.sheets]);
 
@@ -228,14 +230,35 @@ export function ReportsHubView({
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-  }, [favorites]);
+    fetch('/api/account/preferences')
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (payload?.preferences) {
+          setFavorites(parseFavoriteReports(JSON.stringify(payload.preferences.favoriteReports ?? [])));
+          setRecents(parseRecentReports(JSON.stringify(payload.preferences.recentReports ?? [])));
+        }
+      })
+      .finally(() => setPreferencesReady(true));
+  }, [user.id]);
 
   useEffect(() => {
-    const refresh = () => setRecents(parseRecentReports(localStorage.getItem(RECENTS_KEY)));
+    localStorage.setItem(favoritesKey, JSON.stringify(favorites));
+    if (preferencesReady) void fetch('/api/account/preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ favoriteReports: favorites }),
+    });
+  }, [favorites, favoritesKey, preferencesReady]);
+
+  useEffect(() => {
+    const refresh = () => {
+      setRecents(parseRecentReports(localStorage.getItem(recentsKey)));
+      fetch('/api/account/preferences').then((response) => response.ok ? response.json() : null)
+        .then((payload) => { if (payload?.preferences?.recentReports) setRecents(parseRecentReports(JSON.stringify(payload.preferences.recentReports))); });
+    };
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
-  }, []);
+  }, [recentsKey]);
 
   const favoriteReports = useMemo(() => REPORTS.filter((report) => favorites.includes(report.id)), [favorites]);
   const recentReports = useMemo(() => recents.flatMap((recent) => {
