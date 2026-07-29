@@ -35,7 +35,7 @@ export function DeliverySheetMap({ points, onOpenClient }: { points: DeliveryMap
     {points.map((point) => {
       const kiloSummary = summarizeReliableInvoiceKilos(point.invoices);
       return <Marker key={point.client.id} position={point.client.coordinates!} icon={icon(point)} eventHandlers={{ click: () => onOpenClient(point.client) }}>
-        <Tooltip direction="top" offset={[0, -28]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(point.client)}</strong><span>{point.invoices.length} comprobante(s) · {money(point.invoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</span><span>{kiloSummary.reliableInvoiceCount ? `${number(kiloSummary.kilos, 2)} kg confiables · ${kiloSummary.reliableInvoiceCount}/${kiloSummary.totalInvoiceCount} comprobantes` : 'Kilos sin cobertura confiable'}</span>{point.client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación aproximada de la localidad · no usar para optimizar rutas</span>}</div></Tooltip>
+        <Tooltip direction="top" offset={[0, -28]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(point.client)}</strong><span>{point.invoices.length} comprobante(s) · {money(point.invoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</span><span>{kiloSummary.reliableInvoiceCount ? `${number(kiloSummary.kilos, 2)} kg estimados · ${kiloSummary.reliableInvoiceCount}/${kiloSummary.totalInvoiceCount} comprobantes` : 'Kilos sin conversión disponible'}</span>{point.client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación aproximada de la localidad · no usar para optimizar rutas</span>}</div></Tooltip>
       </Marker>;
     })}
   </MapContainer>;

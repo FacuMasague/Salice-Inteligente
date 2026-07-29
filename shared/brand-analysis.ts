@@ -24,6 +24,7 @@ export interface BrandAnalysisPayload {
   sourceMaxDate: string;
   coverageFrom: string;
   unavailableDocumentCount: number;
+  productsWithoutKiloConversion: number;
   windowDays: 90;
   range: { from: string; through: string };
   totals: { netAmount: number; kilos: number; units: number; buyers: number };
@@ -32,5 +33,6 @@ export interface BrandAnalysisPayload {
     documents: string;
     missingBrand: string;
     coverage: string;
+    kilos: string;
   };
 }

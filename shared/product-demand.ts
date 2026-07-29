@@ -36,7 +36,7 @@ export interface ProductDemandRow {
   previousRotationPer30Days: number;
   kiloRotationPer30Days: number;
   previousKiloRotationPer30Days: number;
-  kiloDataStatus: 'available' | 'unavailable';
+  kiloDataStatus: 'available' | 'estimated' | 'unavailable';
   variationPercent: number | null;
   trend: DemandTrend;
   stability: DemandStability;

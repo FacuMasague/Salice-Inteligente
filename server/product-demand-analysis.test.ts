@@ -5,10 +5,10 @@ import { buildProductDemandAnalysisFromDatabase } from './product-demand-analysi
 describe('análisis de demanda y rotación', () => {
   let database: DatabaseSync;
   const products = [
-    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 10, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
-    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 0, masterStatus: 'active' as const, commercialStatus: 'not_commercializable' as const },
-    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 8, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
-    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 0, masterStatus: 'inactive' as const, commercialStatus: 'not_commercializable' as const },
+    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 10, contentKg: 2, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 0, contentKg: 2, masterStatus: 'active' as const, commercialStatus: 'not_commercializable' as const },
+    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 8, contentKg: null, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 0, contentKg: null, masterStatus: 'inactive' as const, commercialStatus: 'not_commercializable' as const },
   ];
 
   beforeEach(() => {
@@ -86,11 +86,17 @@ describe('análisis de demanda y rotación', () => {
     expect(result.filters).toMatchObject({ brand: 'Marca 1', availability: 'stock', trend: 'accelerating' });
   });
 
-  it('marca como incompleta una cobertura de kilos parcialmente informada', () => {
+  it('infiere kilos desde unidades aunque cantidadU2 no esté informada', () => {
     database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?, ?)')
       .run('2026-07-19', 'A', 'Marca 1', 'Alimentos', 'Perros', 'invoice', 1, 0, 100, 3);
     const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product', brand: 'Marca 1', availability: 'stock' });
-    expect(result.rows[0]).toMatchObject({ id: 'A', kiloDataStatus: 'unavailable' });
+    expect(result.rows[0]).toMatchObject({ id: 'A', kiloDataStatus: 'estimated', current: { units: 16, kilos: 32 } });
+    expect(result.summary).toMatchObject({ productsWithSales: 1, productsWithKilos: 1, productsWithoutKilos: 0 });
+  });
+
+  it('mantiene visible la falta de conversión cuando el producto no tiene peso por unidad', () => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product', brand: 'Marca 2' });
+    expect(result.rows.find((row) => row.id === 'C')).toMatchObject({ kiloDataStatus: 'unavailable', current: { units: 3, kilos: 0 } });
     expect(result.summary).toMatchObject({ productsWithSales: 1, productsWithKilos: 0, productsWithoutKilos: 1 });
   });
 

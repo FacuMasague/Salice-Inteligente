@@ -130,6 +130,8 @@ describe('vectorización de productos v2', () => {
     expect(positioned[11].pricePosition).toBe('premium');
     expect(positioned[11].vector.premium).toBeGreaterThanOrEqual(78);
     expect(positioned[11].vectorMeta.evidence.premium?.[0]).toContain('Precio relativo');
+    expect(positioned[0].competitorReferencePricePerKg).toBe(10_000);
+    expect(positioned[0].competitorPriceSampleSize).toBe(11);
   });
 
   it('separa similitud, taxonomía y confianza en una comparación auditable', () => {

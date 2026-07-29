@@ -190,8 +190,9 @@ app.get('/api/products/demand-analysis', async (req, res) => {
   return res.json(analysis);
 });
 
-app.get('/api/brands/analysis', (_req, res) => {
-  const analysis = buildBrandAnalysis();
+app.get('/api/brands/analysis', async (_req, res) => {
+  const data = await loadSnapshot();
+  const analysis = buildBrandAnalysis(data.products);
   if (!analysis) return res.status(503).json({ error: 'La base comercial para el análisis de marcas todavía no fue construida.', path: getBrandAnalysisPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(analysis);

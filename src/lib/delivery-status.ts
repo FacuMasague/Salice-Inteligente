@@ -14,7 +14,7 @@ export function deliveryAssignmentText(status: DeliveryAssignmentStatus, sheetId
 }
 
 export function summarizeReliableInvoiceKilos(invoices: DeliveryInvoice[]) {
-  const reliableInvoices = invoices.filter((invoice) => invoice.kiloDataStatus === 'available');
+  const reliableInvoices = invoices.filter((invoice) => invoice.kiloDataStatus === 'available' || invoice.kiloDataStatus === 'estimated');
   return {
     kilos: reliableInvoices.reduce((sum, invoice) => sum + (invoice.kilos ?? 0), 0),
     reliableInvoiceCount: reliableInvoices.length,

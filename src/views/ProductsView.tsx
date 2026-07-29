@@ -124,7 +124,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (sort === 'stock') return b.stock - a.stock || b.monthlyUnits - a.monthlyUnits;
       if (sort === 'price') return b.price - a.price || a.name.localeCompare(b.name, 'es');
       if (sort === 'sales') return b.sales90d - a.sales90d || b.monthlyUnits - a.monthlyUnits;
-      if (sort === 'kilos') return (b.kiloDataStatus === 'available' ? b.kilos90d ?? 0 : -1) - (a.kiloDataStatus === 'available' ? a.kilos90d ?? 0 : -1) || b.sales90d - a.sales90d;
+      if (sort === 'kilos') return (b.kiloDataStatus !== 'unavailable' ? b.kilos90d ?? 0 : -1) - (a.kiloDataStatus !== 'unavailable' ? a.kilos90d ?? 0 : -1) || b.sales90d - a.sales90d;
       if (sort === 'buyers') return b.clients90d - a.clients90d || b.sales90d - a.sales90d;
       if (sort === 'lastSale') return b.lastSaleAt.localeCompare(a.lastSaleAt) || b.sales90d - a.sales90d;
       if (sort === 'name') return a.name.localeCompare(b.name, 'es');
@@ -258,8 +258,8 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
         <div className="product-list">
           {visible.map((product) => <article key={product.id} role="button" tabIndex={0} className={`product-list-row ${product.id === selected.id ? 'active' : ''}`} onClick={() => setSelectedId(product.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(product.id); }}>
             <div className="product-thumb">{product.family === 'Higiene' ? 'HI' : product.family === 'Accesorios' ? 'AC' : product.vector.gatos > product.vector.perros ? 'GA' : 'PE'}</div>
-            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {product.kiloDataStatus === 'available' ? `${number(product.kilos90d ?? 0, 2)} kg/90d` : 'kilos no informados'} · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
-            <div className="product-list-numbers"><strong title="Precio de referencia">{product.price > 0 ? money(product.price) : 'Precio no informado'}</strong><span className={product.inventory?.status === 'negative' || product.stock < 30 ? 'negative' : ''}>{product.inventory?.status === 'unavailable' ? 'Stock no informado' : product.inventory?.status === 'negative' ? 'Stock de origen inválido' : `Stock disponible ${number(product.stock)}`}</span><small>{money(product.sales90d, true)} · 90d</small></div>
+            <div><strong>{product.name}</strong><span><button className="entity-link inline-entity" onClick={(event) => { event.stopPropagation(); onOpenBrand(product.brand); }}>{product.brand}</button> · {product.sku} · {productPresentationLabel(product)}</span><small>{number(product.monthlyUnits)} u./mes · {product.kiloDataStatus !== 'unavailable' ? `${number(product.kilos90d ?? 0, 2)} kg estimados/90d` : 'sin conversión a kilos'} · {number(product.clients90d)} compradores · última {product.lastSaleAt ? shortDate(product.lastSaleAt) : 'sin detalle'}</small></div>
+            <div className="product-list-numbers"><strong title="Precio del producto">{product.price > 0 ? money(product.price) : 'Precio no informado'}</strong><span>{product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg propio` : 'Precio/kg no calculable'}</span><small>{product.competitorReferencePricePerKg ? `${money(product.competitorReferencePricePerKg)}/kg competencia` : 'Sin referencia competitiva'} · {money(product.sales90d, true)} / 90d</small></div>
             <ChevronRight size={17} />
           </article>)}
         </div>

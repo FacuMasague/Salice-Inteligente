@@ -7,6 +7,7 @@ import { applyAiProductVectors } from './ai-artifacts.js';
 import { importSnapshotNotes, mergeOperationalData } from './operational-store.js';
 import { applyClientLocationQuality } from '../shared/client-location.js';
 import { applyReceivablesPolicyToClients } from '../shared/receivables-policy.js';
+import { applyCatalogPricePositioning, resolveProductContentKg } from '../shared/product-vectors.js';
 
 const legacySnapshotPath = resolve(process.cwd(), 'data/snapshot.json');
 const backupDirectory = resolve(process.cwd(), 'data/backups');
@@ -71,10 +72,26 @@ export async function loadSnapshot(): Promise<DashboardData> {
   // La capa de IA sólo puede afectar productos con un artefacto validado. Las
   // correcciones humanas se aplican después y, por lo tanto, siempre prevalecen.
   const merged = mergeOperationalData(applyAiProductVectors(cachedSnapshot));
+  const products = applyCatalogPricePositioning(merged.products.map((product) => {
+    const contentKg = product.contentKg ?? resolveProductContentKg({
+      unit1: product.unit,
+      unit2: product.inventory?.unit2,
+      unit2PerUnit1: product.inventory?.unit2PerUnit1,
+      descriptions: [product.name, product.description, product.pack],
+    });
+    return {
+      ...product,
+      contentKg,
+      referencePricePerKg: product.price > 0 && contentKg ? Math.round(product.price / contentKg * 100) / 100 : null,
+      kilos90d: contentKg ? Math.round(product.units90d * contentKg * 100) / 100 : 0,
+      kiloDataStatus: product.units90d <= 0 || contentKg ? 'estimated' as const : 'unavailable' as const,
+    };
+  }));
   const policyClients = applyReceivablesPolicyToClients(merged.clients, merged.meta.generatedAt.slice(0, 10));
   const locations = applyClientLocationQuality(policyClients);
   return {
     ...merged,
+    products,
     clients: locations.clients,
     meta: {
       ...merged.meta,

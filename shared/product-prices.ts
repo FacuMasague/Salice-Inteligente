@@ -52,6 +52,8 @@ export interface ProductPriceRow {
   effective: PriceComparison;
   referencePricePerKg: number | null;
   effectivePricePerKg: number | null;
+  competitorReferencePricePerKg: number | null;
+  competitorPriceSampleSize: number;
   pricePerKgStatus: PricePerKgStatus;
   pricePerKgExplanation: string;
   currentEffective: EffectivePriceObservation;

@@ -71,7 +71,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
   const sorted = useMemo(() => sortItems(payload?.rows ?? [], sort, (row, key) => {
     if (key === 'label') return row.label;
     if (key === 'current') return row.current.units;
-    if (key === 'kilos') return row.kiloDataStatus === 'available' ? row.current.kilos : null;
+    if (key === 'kilos') return row.kiloDataStatus !== 'unavailable' ? row.current.kilos : null;
     if (key === 'previous') return row.previous.units;
     if (key === 'variation') return row.variationPercent;
     if (key === 'buyers') return row.current.buyers;
@@ -101,7 +101,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
     {payload && <>
       <section className="demand-kpis">
         <article><Gauge size={18} /><span>Unidades · {windowDays} días</span><strong>{number(payload.summary.current.units, 2)}</strong><small>{number(payload.summary.previous.units, 2)} en el período anterior</small></article>
-        <article><PackageSearch size={18} /><span>Kilos informados · {windowDays} días</span><strong>{number(payload.summary.current.kilos, 2)} kg</strong><small>{payload.summary.kiloVariationPercent == null ? 'Sin base comparable' : `${payload.summary.kiloVariationPercent > 0 ? '+' : ''}${number(payload.summary.kiloVariationPercent, 1)}% frente al período anterior`}</small></article>
+        <article><PackageSearch size={18} /><span>Kilos estimados · {windowDays} días</span><strong>{number(payload.summary.current.kilos, 2)} kg</strong><small>{payload.summary.kiloVariationPercent == null ? 'Sin base comparable' : `${payload.summary.kiloVariationPercent > 0 ? '+' : ''}${number(payload.summary.kiloVariationPercent, 1)}% frente al período anterior`}</small></article>
         <article className={(payload.summary.variationPercent ?? 0) < 0 ? 'negative' : ''}>{(payload.summary.variationPercent ?? 0) < 0 ? <TrendingDown size={18} /> : <TrendingUp size={18} />}<span>Variación equivalente</span><strong>{payload.summary.variationPercent == null ? 'Sin base' : `${payload.summary.variationPercent > 0 ? '+' : ''}${payload.summary.variationPercent.toLocaleString('es-AR')}%`}</strong><small>{compactDate(payload.previousRange.from)} → {compactDate(payload.previousRange.through)}</small></article>
         <article><Users size={18} /><span>Compradores únicos</span><strong>{number(payload.summary.current.buyers)}</strong><small>No se suman compradores repetidos</small></article>
         <article><Activity size={18} /><span>Aceleración / caída</span><strong>{number(payload.summary.accelerating)} / {number(payload.summary.declining)}</strong><small>Umbral reproducible de ±20%</small></article>
@@ -112,7 +112,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
         <CalendarClock size={17} /><div><strong>{payload.historyStatus === 'complete' ? 'Comparación histórica completa' : 'Cobertura histórica parcial'}</strong><span>Actual: {compactDate(payload.currentRange.from)} → {compactDate(payload.currentRange.through)} · Anterior: {compactDate(payload.previousRange.from)} → {compactDate(payload.previousRange.through)} · Base disponible desde {compactDate(payload.coverageFrom)}.</span></div>
       </section>
       {payload.summary.productsWithoutKilos > 0 && <section className="data-card demand-coverage-note attention">
-        <PackageSearch size={17} /><div><strong>Cobertura parcial de kilos</strong><span>{number(payload.summary.productsWithoutKilos)} productos con venta no informan kilos confiables en esta ventana. Unidades y ventas permanecen disponibles.</span></div>
+        <PackageSearch size={17} /><div><strong>Cobertura parcial de kilos</strong><span>{number(payload.summary.productsWithoutKilos)} productos con venta no tienen una presentación convertible. Unidades y ventas permanecen disponibles.</span></div>
       </section>}
     </>}
 
@@ -147,12 +147,12 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
       </tr></thead><tbody>{visible.map((row) => <tr key={row.id} className={`demand-row ${row.trend}`}>
         <td><button className="demand-entity" onClick={() => openEntity(row)}><strong>{row.label}</strong><small>{row.detail}</small></button></td>
         <td title={`${number(row.current.units, 2)} U1 · ${money(row.current.sales)}`}><strong>{number(row.current.units, 2)}</strong><small>{money(row.current.sales, true)}</small></td>
-        <td title={row.kiloDataStatus === 'available' ? `${number(row.current.kilos, 2)} kg` : 'GESI no informó kilos confiables'}><strong>{row.kiloDataStatus === 'available' ? number(row.current.kilos, 2) : '—'}</strong><small>{row.kiloDataStatus === 'available' ? 'kg observados' : 'Sin kilos confiables'}</small></td>
+        <td title={row.kiloDataStatus !== 'unavailable' ? `${number(row.current.kilos, 2)} kg estimados` : 'La presentación no permite inferir kilos'}><strong>{row.kiloDataStatus !== 'unavailable' ? number(row.current.kilos, 2) : '—'}</strong><small>{row.kiloDataStatus !== 'unavailable' ? 'kg estimados' : 'Sin conversión'}</small></td>
         <td title={`${number(row.previous.units, 2)} U1 · ${money(row.previous.sales)}`}><strong>{number(row.previous.units, 2)}</strong><small>{number(row.previous.buyers)} compradores</small></td>
         <td><span className={`demand-trend-chip ${row.trend}`}>{variationLabel(row)}</span><small>{trendLabels[row.trend]}</small></td>
         <td><strong>{number(row.current.buyers)}</strong><small>{row.current.activeDays} {row.current.activeDays === 1 ? 'día' : 'días'} con venta</small></td>
         <td title={`${number(row.rotationPer30Days, 2)} U1 cada 30 días`}><strong>{number(row.rotationPer30Days, 2)}</strong><small>U1 normalizadas</small></td>
-        <td title={row.kiloDataStatus === 'available' ? `${number(row.kiloRotationPer30Days, 2)} kg cada 30 días` : 'Sin kilos confiables'}><strong>{row.kiloDataStatus === 'available' ? number(row.kiloRotationPer30Days, 2) : '—'}</strong><small>{row.kiloDataStatus === 'available' ? 'kg normalizados' : 'Sin base'}</small></td>
+        <td title={row.kiloDataStatus !== 'unavailable' ? `${number(row.kiloRotationPer30Days, 2)} kg estimados cada 30 días` : 'Sin conversión a kilos'}><strong>{row.kiloDataStatus !== 'unavailable' ? number(row.kiloRotationPer30Days, 2) : '—'}</strong><small>{row.kiloDataStatus !== 'unavailable' ? 'kg estimados' : 'Sin base'}</small></td>
         <td><span className={`demand-stability-chip ${row.stability}`}>{stabilityLabels[row.stability]}</span><small>{row.stabilityCoefficient == null ? 'Sin coeficiente' : `CV ${(row.stabilityCoefficient * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}% · ${row.activeSubperiods}/3 tramos`}</small></td>
         <td><strong>{row.lastSaleAt ? shortDate(row.lastSaleAt) : 'Sin venta observable'}</strong><small>{row.daysSinceLastSale == null ? 'Sin fecha en la base' : row.daysSinceLastSale === 0 ? 'Hoy' : `Hace ${number(row.daysSinceLastSale)} días`}</small></td>
         <td><p>{row.explanation}</p></td><td><button className="icon-button" aria-label={`Abrir ${row.label}`} onClick={() => openEntity(row)}><ChevronRight size={15} /></button></td>

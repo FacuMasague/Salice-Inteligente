@@ -34,7 +34,12 @@ describe('participación comercial por marca', () => {
   afterEach(() => database.close());
 
   it('incluye notas de crédito y la marca ausente en ambos denominadores', () => {
-    const result = buildBrandAnalysisFromDatabase(database);
+    const result = buildBrandAnalysisFromDatabase(database, [
+      { id: 'A', contentKg: 2 },
+      { id: 'B', contentKg: 6 },
+      { id: 'X', contentKg: 4 },
+      { id: 'C', contentKg: 10 },
+    ]);
     const brandA = result.brands.find((brand) => brand.name === 'Marca A')!;
     expect(result.totals).toMatchObject({ netAmount: 1_500, kilos: 60, units: 15, buyers: 4 });
     expect(brandA).toMatchObject({ netAmount: 800, kilos: 16, salesSharePercent: 53.33, kiloSharePercent: 26.67 });
@@ -43,5 +48,6 @@ describe('participación comercial por marca', () => {
     expect(result.brands.some((brand) => brand.name === 'Marca excluida')).toBe(false);
     expect(result.brands.reduce((sum, brand) => sum + brand.salesSharePercent, 0)).toBeCloseTo(100, 1);
     expect(result.unavailableDocumentCount).toBe(2);
+    expect(result.productsWithoutKiloConversion).toBe(0);
   });
 });

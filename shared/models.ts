@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.1.1';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -138,14 +138,18 @@ export interface Product {
   contentKg: number | null;
   /** Precio de referencia normalizado; no se calcula si la unidad es ambigua. */
   referencePricePerKg: number | null;
+  /** Mediana por kilo de otros productos comparables del catálogo. */
+  competitorReferencePricePerKg?: number | null;
+  /** Cantidad de productos comparables usados para la referencia competitiva. */
+  competitorPriceSampleSize?: number;
   /** Posición relativa dentro de alimentos secos comparables. */
   pricePosition: ProductPricePosition;
   stock: number;
   units90d: number;
-  /** Kilos observados en renglones positivos de facturas durante 90 días. */
+  /** Kilos inferidos desde unidades vendidas y contenido neto por U1 durante 90 días. */
   kilos90d?: number;
-  /** Indica si GESI entregó kilos para las ventas observadas del producto. */
-  kiloDataStatus?: 'available' | 'unavailable';
+  /** Distingue datos heredados observados, inferencias por presentación y conversiones ausentes. */
+  kiloDataStatus?: 'available' | 'estimated' | 'unavailable';
   monthlyUnits: number;
   sales90d: number;
   clients90d: number;
@@ -357,7 +361,7 @@ export interface DeliveryInvoice {
   suggestedDeliveryAt: string;
   amount: number;
   kilos?: number;
-  kiloDataStatus?: 'available' | 'unavailable';
+  kiloDataStatus?: 'available' | 'estimated' | 'unavailable';
   deliveryAddress: string;
   locality: string;
   assignmentStatus: DeliveryAssignmentStatus;

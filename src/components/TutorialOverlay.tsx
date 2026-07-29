@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 
-export type TutorialView = 'map' | 'agenda' | 'clients' | 'sellers' | 'finance' | 'products' | 'brands' | 'routes' | 'sales-explorer' | 'receivables' | 'goals' | 'report-center' | 'reports' | 'spt' | 'commercial-sales' | 'mars' | 'nutripet' | 'baires' | 'non-buyers' | 'pending-balances' | 'settings';
+export type TutorialView = 'map' | 'agenda' | 'clients' | 'sellers' | 'finance' | 'products' | 'brands' | 'routes' | 'sales-explorer' | 'receivables' | 'report-center' | 'reports' | 'spt' | 'commercial-sales' | 'mars' | 'nutripet' | 'baires' | 'non-buyers' | 'pending-balances' | 'settings';
 
 export interface TutorialStep {
   view: TutorialView;
@@ -43,13 +43,12 @@ export const TUTORIALS: Record<TutorialSection, TutorialDefinition> = {
     id: 'administration',
     label: 'Administración',
     title: 'Ventas, cobranzas y seguimiento',
-    description: 'Explorador de ventas, cartera, cuentas por cobrar, bandeja y objetivos.',
+    description: 'Explorador de ventas, cartera, cuentas por cobrar y bandeja comercial.',
     steps: [
       { view: 'sales-explorer', target: 'sales-explorer-overview', eyebrow: 'Administración', title: 'Explorá cada venta hasta el comprobante', description: 'Fecha, vendedor, cliente, producto, marca, rubro, canal y zona recalculan el mismo universo comercial.', tip: 'Guardá combinaciones frecuentes y exportá solamente el detalle filtrado.' },
       { view: 'finance', target: 'finance-summary', eyebrow: 'Cartera', title: 'Priorizá la cobranza', description: 'Los resúmenes responden a los filtros y cada factura abre un detalle completo con su PDF.', tip: 'Combiná tiempo hasta el vencimiento y antigüedad de lo vencido según la tarea del día.' },
       { view: 'receivables', target: 'receivables-overview', eyebrow: 'Cuentas por cobrar', title: 'Registrá el seguimiento sin alterar el saldo', description: 'Responsable, estado, promesa, próximo seguimiento y comentarios se guardan por separado de los datos contables.', tip: 'El lápiz de cada fila abre la edición y conserva el historial de cambios.' },
       { view: 'agenda', target: 'agenda-workstation', eyebrow: 'Bandeja comercial', title: 'Reuní señales y notas de oficina', description: 'La bandeja combina cobranzas, oportunidades, compromisos y registros humanos para decidir qué revisar primero.', tip: 'Una nota documenta un hecho; no comunica ni completa automáticamente una gestión.' },
-      { view: 'goals', target: 'goals-overview', eyebrow: 'Objetivos', title: 'Separá plan y resultado real', description: 'Los objetivos se preparan en un borrador versionado y se comparan con resultados del mismo período.', tip: 'Sólo activar explícitamente una versión modifica el plan vigente.' },
       { view: 'settings', target: 'portfolio-rules', eyebrow: 'Criterios de trabajo', title: 'Consultá las reglas cuando tengas dudas', description: 'Configuración explica cobertura, cartera, cálculos financieros y calidad de datos sin alterar la operación.', tip: 'Los detalles más técnicos quedan agrupados para consulta administrativa.' },
     ],
   },

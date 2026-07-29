@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.1.0
+# Salice Inteligente · v1.1.1
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.1 amplía el análisis operativo con kilos reales de GESI, filtros de demanda y catálogo, participación por marca y un mapa de fojas de reparto.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.1.1 estima kilos desde unidades y presentación, separa precios propios y comparables por kilo y concentra los objetivos dentro del Reporte General.
 
 ## Abrir el programa
 
@@ -32,7 +32,7 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 - Cartera: saldos y vencimientos.
 - Cuentas por cobrar: seguimiento humano, responsables y promesas.
 - Bandeja comercial: señales y notas reunidas para revisión.
-- Objetivos comerciales: planes versionados y comparación con resultados.
+- Reporte General: objetivos y resultados sobre el mismo período, sin un módulo administrativo duplicado.
 
 ### Reportes
 
@@ -138,3 +138,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v0.10.9.md`
 - `docs/release-v0.11.0.md`
 - `docs/release-v1.1.0.md`
+- `docs/release-v1.1.1.md`
