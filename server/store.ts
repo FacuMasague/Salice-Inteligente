@@ -8,6 +8,7 @@ import { importSnapshotNotes, mergeOperationalData } from './operational-store.j
 import { applyClientLocationQuality } from '../shared/client-location.js';
 import { applyReceivablesPolicyToClients } from '../shared/receivables-policy.js';
 import { applyCatalogPricePositioning, resolveProductContentKg } from '../shared/product-vectors.js';
+import { referenceUnitPricePerKg } from '../shared/product-prices.js';
 
 const legacySnapshotPath = resolve(process.cwd(), 'data/snapshot.json');
 const backupDirectory = resolve(process.cwd(), 'data/backups');
@@ -82,7 +83,7 @@ export async function loadSnapshot(): Promise<DashboardData> {
     return {
       ...product,
       contentKg,
-      referencePricePerKg: product.price > 0 && contentKg ? Math.round(product.price / contentKg * 100) / 100 : null,
+      referencePricePerKg: referenceUnitPricePerKg(product.price, contentKg),
       kilos90d: contentKg ? Math.round(product.units90d * contentKg * 100) / 100 : 0,
       kiloDataStatus: product.units90d <= 0 || contentKg ? 'estimated' as const : 'unavailable' as const,
     };

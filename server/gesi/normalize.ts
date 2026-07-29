@@ -15,6 +15,7 @@ import {
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 import { applyClientLocationQuality } from '../../shared/client-location.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
+import { referenceUnitPricePerKg } from '../../shared/product-prices.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
 import {
   isActionableReceivableAmount,
@@ -396,9 +397,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   });
   const products = applyCatalogPricePositioning(baseProducts.map((product) => ({
     ...product,
-    referencePricePerKg: product.price > 0 && product.contentKg
-      ? Math.round(product.price / product.contentKg * 100) / 100
-      : null,
+    referencePricePerKg: referenceUnitPricePerKg(product.price, product.contentKg),
   })));
 
   const rawClients: Client[] = capture.clients
