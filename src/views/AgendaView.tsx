@@ -299,7 +299,7 @@ export function AgendaView({
             <section className="agenda-history-section">
               <div className="section-title-row"><div><span className="section-kicker"><MessageSquareText size={14} /> Notas de oficina</span><h3>Hechos registrados fuera del sistema</h3></div><span className="count-badge">{selectedEntry.notes.length}</span></div>
               {!selectedEntry.notes.length && <p className="section-description">Todavía no hay notas para este cliente. Una nota no completa ni modifica las sugerencias.</p>}
-              {selectedEntry.notes.map((note) => <article className="agenda-activity-row" key={note.id}><span>{noteTypeLabels[note.type]}</span><div><strong>{note.note}</strong><small>{longDate(note.occurredAt)}</small></div></article>)}
+              {selectedEntry.notes.map((note) => <article className="agenda-activity-row" key={note.id}><span>{noteTypeLabels[note.type]}</span><div><strong>{note.note}</strong><small>{longDate(note.occurredAt)} · {note.createdBy || 'Registro anterior'}</small></div></article>)}
             </section>
 
             <footer className="agenda-detail-actions">

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShoppingBasket, Store, Users, WalletCards, X } from 'lucide-react';
+import { AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, UserCircle, Users, WalletCards, X } from 'lucide-react';
 import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
 import type { DataHealthPayload } from '../shared/data-health';
@@ -14,6 +14,7 @@ import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportVi
 import { replaceViewInLocation, reportViewFromLocation } from './lib/report-links';
 import { PREFERENCES_CHANGED_EVENT, readPreferences, type AppPreferences } from './lib/preferences';
 import type { ClientVisibility } from './views/MapDashboard';
+import { useAuth } from './auth';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
 const ClientsView = lazy(() => import('./views/ClientsView').then((module) => ({ default: module.ClientsView })));
@@ -35,15 +36,16 @@ const PendingBalancesReportView = lazy(() => import('./views/PendingBalancesRepo
 const SellersView = lazy(() => import('./views/SellersView').then((module) => ({ default: module.SellersView })));
 const SalesExplorerView = lazy(() => import('./views/SalesExplorerView').then((module) => ({ default: module.SalesExplorerView })));
 const ReceivablesView = lazy(() => import('./views/ReceivablesView').then((module) => ({ default: module.ReceivablesView })));
+const UsersView = lazy(() => import('./views/UsersView').then((module) => ({ default: module.UsersView })));
 
-type View = TutorialView | 'report-center';
+type View = TutorialView | 'report-center' | 'users';
 type SidebarSection = 'operations' | 'administration' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
   map: 'operations', clients: 'operations', sellers: 'operations', products: 'operations', brands: 'operations', routes: 'operations',
   finance: 'administration', agenda: 'administration', 'sales-explorer': 'administration', receivables: 'administration',
   'report-center': 'reports', reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
-  settings: 'system',
+  settings: 'system', users: 'system',
 };
 
 const titles: Record<View, { title: string; subtitle: string }> = {
@@ -67,6 +69,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   'non-buyers': { title: 'Cuentas no compradoras', subtitle: 'Recuperación de cuentas y marcas sin compra reciente' },
   'pending-balances': { title: 'Saldos pendientes', subtitle: 'Cartera abierta, vencimientos y presión sobre ventas recientes' },
   settings: { title: 'Configuración', subtitle: 'Preferencias, IA, datos, ayuda y diagnóstico' },
+  users: { title: 'Usuarios', subtitle: 'Solicitudes, permisos y seguridad de acceso' },
 };
 
 const nav: { id: View; label: string; icon: typeof Map }[] = [
@@ -99,9 +102,11 @@ const contextualHelp: Record<View, { purpose: string; tips: string[] }> = {
   'non-buyers': { purpose: 'Detectá cuentas recuperables y marcas sin compra reciente.', tips: ['La ausencia se calcula sobre el período elegido.', 'Abrí el cliente antes de iniciar una gestión.'] },
   'pending-balances': { purpose: 'Dimensioná cartera abierta y presión sobre ventas recientes.', tips: ['Vencido y pendiente no significan lo mismo.', 'Podés continuar la gestión en Cuentas por cobrar.'] },
   settings: { purpose: 'Ajustá la experiencia y consultá datos, IA, ayuda y diagnóstico.', tips: ['La información técnica está separada del uso cotidiano.', 'Los cambios de apariencia se guardan en este navegador.'] },
+  users: { purpose: 'Revisá quién puede acceder a la información privada del negocio.', tips: ['Confirmá personalmente cada solicitud.', 'Deshabilitar una cuenta cierra sus sesiones activas.'] },
 };
 
 export default function App() {
+  const { user, logout } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState('');
   const [view, setView] = useState<View>(() => {
@@ -128,6 +133,7 @@ export default function App() {
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [preferences, setPreferences] = useState<AppPreferences>(() => readPreferences());
   const [productFocusId, setProductFocusId] = useState<string | null>(null);
@@ -271,7 +277,7 @@ export default function App() {
         setSearchOpen(true);
         requestAnimationFrame(() => searchInput.current?.focus());
       }
-      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setHelpOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
+      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setUserMenuOpen(false); setHelpOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
@@ -317,8 +323,14 @@ export default function App() {
   const openSheet = (sheetId: number) => { if (!data?.logistics.sheets.some((sheet) => sheet.id === sheetId)) return; setSheetFocusId(sheetId); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const selectView = (next: View) => {
     if (isReportViewId(next)) {
-      const recent = rememberRecentReport(parseRecentReports(localStorage.getItem('salice-report-recents-v080')), next);
-      localStorage.setItem('salice-report-recents-v080', JSON.stringify(recent));
+      const recentKey = `salice-report-recents-v120-${user.id}`;
+      const recent = rememberRecentReport(parseRecentReports(localStorage.getItem(recentKey)), next);
+      localStorage.setItem(recentKey, JSON.stringify(recent));
+      void fetch('/api/account/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recentReports: recent }),
+      });
     }
     setView(next);
     replaceViewInLocation(next);
@@ -408,7 +420,7 @@ export default function App() {
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.reports} aria-controls="sidebar-reports" onClick={() => toggleSidebarSection('reports')}><span>Reportes</span>{sidebarSections.reports ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={viewSection[view] === 'reports' ? 'active' : ''} onClick={() => selectView('report-center')}><LayoutDashboard size={19} /><span>Reportes</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          {sidebarSections.system && <nav className="main-nav muted-nav" id="sidebar-system"><button className={view === 'settings' ? 'active' : ''} onClick={() => selectView('settings')}><Settings2 size={19} /><span>Configuración</span></button></nav>}
+          {sidebarSections.system && <nav className="main-nav muted-nav" id="sidebar-system">{user.role === 'admin' && <button className={view === 'users' ? 'active' : ''} onClick={() => selectView('users')}><ShieldCheck size={19} /><span>Usuarios</span></button>}<button className={view === 'settings' ? 'active' : ''} onClick={() => selectView('settings')}><Settings2 size={19} /><span>Configuración</span></button></nav>}
         </div>
         <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>Datos disponibles</strong><small>{data.meta.source === 'demo' ? 'Información demostrativa' : `Actualizados · ${snapshotLabel}`}</small></div></div>
       </aside>
@@ -433,6 +445,7 @@ export default function App() {
             <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
             {preferences.contextualHelp && <div className="context-help-wrap"><button className="context-help-button" aria-label={`Ayuda sobre ${currentTitle.title}`} aria-expanded={helpOpen} onClick={() => { setHelpOpen((value) => !value); setSearchOpen(false); setNotificationsOpen(false); }}><HelpCircle size={18} /></button>{helpOpen && <aside className="context-help-panel"><header><span>Ayuda de esta pantalla</span><button aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={15} /></button></header><h3>{currentTitle.title}</h3><p>{contextualHelp[view].purpose}</p><ul>{contextualHelp[view].tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button className="button secondary" onClick={() => { selectView('settings'); setHelpOpen(false); }}>Abrir guías y preferencias</button></aside>}</div>}
             <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{number(notifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
+            <div className="user-menu-wrap"><button className="user-menu-button" aria-label="Menú de usuario" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((value) => !value); setNotificationsOpen(false); setSearchOpen(false); }}><UserCircle size={20} /><span>{user.displayName.split(' ')[0]}</span><ChevronDown size={13} /></button>{userMenuOpen && <aside className="user-menu-panel"><div><strong>{user.displayName}</strong><span>@{user.username} · {user.role === 'admin' ? 'Administrador' : 'Oficina'}</span></div>{user.role === 'admin' && <button onClick={() => { selectView('users'); setUserMenuOpen(false); }}><ShieldCheck size={15} /> Administrar usuarios</button>}<button className="logout" onClick={() => void logout()}><LogOut size={15} /> Cerrar sesión</button></aside>}</div>
           </div>
         </header>
 
@@ -461,6 +474,7 @@ export default function App() {
           {view === 'baires' && <BairesReportView onOpenBrand={openBrand} />}
           {view === 'non-buyers' && <NonBuyersReportView data={data} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} onOpenSalesExplorer={openSalesExplorer} />}
           {view === 'pending-balances' && <PendingBalancesReportView onOpenSeller={openSeller} onOpenReceivables={openReceivables} />}
+          {view === 'users' && user.role === 'admin' && <UsersView />}
           {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
         </Suspense></div>
       </main>

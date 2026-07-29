@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.2.0';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -1309,7 +1309,7 @@ export interface CommercialGoalVersion {
   coverageThrough: string;
   notes: string;
   createdAt: string;
-  createdBy: string;
+  createdBy?: string;
   activatedAt: string | null;
   rowCount: number;
 }
@@ -1604,6 +1604,7 @@ export interface CommercialActivity {
   amount: number | null;
   productIds: string[];
   nextActionAt: string | null;
+  createdBy?: string;
   createdAt: string;
 }
 

@@ -151,7 +151,8 @@ function db() {
     CREATE TABLE IF NOT EXISTS client_notes (
       client_id INTEGER PRIMARY KEY,
       note TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS sync_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,6 +191,7 @@ function db() {
       product_ids_json TEXT NOT NULL DEFAULT '[]',
       next_action_at TEXT,
       agenda_item_id TEXT,
+      created_by TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_activities_client_date ON commercial_activities(client_id, occurred_at DESC);
@@ -339,6 +341,7 @@ function db() {
       name TEXT NOT NULL,
       filters_json TEXT NOT NULL,
       favorite INTEGER NOT NULL DEFAULT 0,
+      user_id TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -434,6 +437,13 @@ function db() {
     database.exec("UPDATE saved_views SET purpose = 'client_recovery' WHERE view_key = 'non-buyers'");
     database.exec("UPDATE saved_views SET purpose = 'collections' WHERE view_key = 'receivables'");
   }
+  if (!savedViewColumns.has('user_id')) {
+    database.exec("ALTER TABLE saved_views ADD COLUMN user_id TEXT NOT NULL DEFAULT ''");
+  }
+  const clientNoteColumns = new Set(database.prepare('PRAGMA table_info(client_notes)').all().map((row) => String(row.name)));
+  if (!clientNoteColumns.has('updated_by')) database.exec("ALTER TABLE client_notes ADD COLUMN updated_by TEXT NOT NULL DEFAULT ''");
+  const activityColumns = new Set(database.prepare('PRAGMA table_info(commercial_activities)').all().map((row) => String(row.name)));
+  if (!activityColumns.has('created_by')) database.exec("ALTER TABLE commercial_activities ADD COLUMN created_by TEXT NOT NULL DEFAULT ''");
   const caseColumns = new Set(database.prepare('PRAGMA table_info(receivable_cases)').all().map((row) => String(row.name)));
   if (!caseColumns.has('promise_amount')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_amount REAL');
   if (!caseColumns.has('promise_due_at')) database.exec('ALTER TABLE receivable_cases ADD COLUMN promise_due_at TEXT');
@@ -480,6 +490,7 @@ function activityFromRow(row: Record<string, unknown>): CommercialActivity {
     amount: row.amount == null ? null : Number(row.amount),
     productIds: parseProductIds(row.product_ids_json),
     nextActionAt: nullableText(row.next_action_at),
+    createdBy: textValue(row.created_by) || 'Registro anterior',
     createdAt: textValue(row.created_at),
   };
 }
@@ -734,11 +745,11 @@ export function mergeOperationalData(snapshot: DashboardData): DashboardData {
   };
 }
 
-export function saveClientNote(clientId: number, note: string) {
+export function saveClientNote(clientId: number, note: string, updatedBy: string) {
   db().prepare(`
-    INSERT INTO client_notes (client_id, note, updated_at) VALUES (?, ?, ?)
-    ON CONFLICT(client_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at
-  `).run(clientId, note, new Date().toISOString());
+    INSERT INTO client_notes (client_id, note, updated_at, updated_by) VALUES (?, ?, ?, ?)
+    ON CONFLICT(client_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+  `).run(clientId, note, new Date().toISOString(), updatedBy.trim().slice(0, 120));
 }
 
 interface CreateActivityInput {
@@ -753,6 +764,7 @@ interface CreateActivityInput {
   nextActionAt: string | null;
   agendaItemId: string | null;
   promise: { dueAt: string; amount: number; note: string } | null;
+  createdBy?: string;
 }
 
 export function createCommercialActivity(input: CreateActivityInput) {
@@ -769,6 +781,7 @@ export function createCommercialActivity(input: CreateActivityInput) {
     amount: input.amount,
     productIds: input.productIds,
     nextActionAt: input.nextActionAt,
+    createdBy: (input.createdBy ?? 'Registro anterior').trim().slice(0, 120),
     createdAt,
   };
   let promise: PaymentPromise | null = null;
@@ -778,12 +791,12 @@ export function createCommercialActivity(input: CreateActivityInput) {
     store.prepare(`
       INSERT INTO commercial_activities (
         id, client_id, seller, activity_type, outcome, occurred_at, note, amount,
-        product_ids_json, next_action_at, agenda_item_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        product_ids_json, next_action_at, agenda_item_id, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       activity.id, activity.clientId, activity.seller, activity.type, activity.outcome,
       activity.occurredAt, activity.note, activity.amount, JSON.stringify(activity.productIds),
-      activity.nextActionAt, input.agendaItemId, activity.createdAt,
+      activity.nextActionAt, input.agendaItemId, activity.createdBy ?? 'Registro anterior', activity.createdAt,
     );
     if (input.agendaItemId) {
       store.prepare(`
@@ -848,6 +861,7 @@ export function createCommercialNote(input: {
   occurredAt: string;
   note: string;
   productIds?: string[];
+  createdBy?: string;
 }) {
   return createCommercialActivity({
     clientId: input.clientId,
@@ -861,6 +875,7 @@ export function createCommercialNote(input: {
     nextActionAt: null,
     agendaItemId: null,
     promise: null,
+    createdBy: input.createdBy ?? 'Registro anterior',
   });
 }
 
@@ -1460,18 +1475,19 @@ export function deleteReceivableCaseEvent(clientId: number, eventId: string, act
   return true;
 }
 
-export function listSavedViews(viewKey?: SavedView['viewKey'], purpose?: SavedViewPurpose) {
+export function listSavedViews(userId: string, viewKey?: SavedView['viewKey'], purpose?: SavedViewPurpose) {
   const rows = viewKey && purpose
-    ? db().prepare('SELECT * FROM saved_views WHERE view_key = ? AND purpose = ? ORDER BY favorite DESC, updated_at DESC').all(viewKey, purpose)
+    ? db().prepare('SELECT * FROM saved_views WHERE user_id = ? AND view_key = ? AND purpose = ? ORDER BY favorite DESC, updated_at DESC').all(userId, viewKey, purpose)
     : viewKey
-    ? db().prepare('SELECT * FROM saved_views WHERE view_key = ? ORDER BY favorite DESC, updated_at DESC').all(viewKey)
+    ? db().prepare('SELECT * FROM saved_views WHERE user_id = ? AND view_key = ? ORDER BY favorite DESC, updated_at DESC').all(userId, viewKey)
     : purpose
-    ? db().prepare('SELECT * FROM saved_views WHERE purpose = ? ORDER BY view_key, favorite DESC, updated_at DESC').all(purpose)
-    : db().prepare('SELECT * FROM saved_views ORDER BY view_key, favorite DESC, updated_at DESC').all();
+    ? db().prepare('SELECT * FROM saved_views WHERE user_id = ? AND purpose = ? ORDER BY view_key, favorite DESC, updated_at DESC').all(userId, purpose)
+    : db().prepare('SELECT * FROM saved_views WHERE user_id = ? ORDER BY view_key, favorite DESC, updated_at DESC').all(userId);
   return rows.map((row) => savedViewFromRow(row));
 }
 
 export function createSavedView(input: {
+  userId: string;
   viewKey: SavedView['viewKey'];
   name: string;
   filters: Record<string, string>;
@@ -1490,14 +1506,14 @@ export function createSavedView(input: {
     updatedAt: now,
   };
   db().prepare(`
-    INSERT INTO saved_views (id, view_key, purpose, name, filters_json, favorite, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(view.id, view.viewKey, view.purpose, view.name, JSON.stringify(view.filters), Number(view.favorite), view.createdAt, view.updatedAt);
+    INSERT INTO saved_views (id, view_key, purpose, name, filters_json, favorite, user_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(view.id, view.viewKey, view.purpose, view.name, JSON.stringify(view.filters), Number(view.favorite), input.userId, view.createdAt, view.updatedAt);
   return view;
 }
 
-export function updateSavedView(id: string, input: { name?: string; filters?: Record<string, string>; favorite?: boolean }) {
-  const currentRow = db().prepare('SELECT * FROM saved_views WHERE id = ?').get(id);
+export function updateSavedView(userId: string, id: string, input: { name?: string; filters?: Record<string, string>; favorite?: boolean }) {
+  const currentRow = db().prepare('SELECT * FROM saved_views WHERE id = ? AND user_id = ?').get(id, userId);
   if (!currentRow) return null;
   const current = savedViewFromRow(currentRow);
   const updated: SavedView = {
@@ -1507,17 +1523,17 @@ export function updateSavedView(id: string, input: { name?: string; filters?: Re
     favorite: input.favorite ?? current.favorite,
     updatedAt: new Date().toISOString(),
   };
-  db().prepare('UPDATE saved_views SET name = ?, filters_json = ?, favorite = ?, updated_at = ? WHERE id = ?')
-    .run(updated.name, JSON.stringify(updated.filters), Number(updated.favorite), updated.updatedAt, id);
+  db().prepare('UPDATE saved_views SET name = ?, filters_json = ?, favorite = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+    .run(updated.name, JSON.stringify(updated.filters), Number(updated.favorite), updated.updatedAt, id, userId);
   return updated;
 }
 
-export function deleteSavedView(id: string) {
-  return Number(db().prepare('DELETE FROM saved_views WHERE id = ?').run(id).changes) > 0;
+export function deleteSavedView(userId: string, id: string) {
+  return Number(db().prepare('DELETE FROM saved_views WHERE id = ? AND user_id = ?').run(id, userId).changes) > 0;
 }
 
-export function getSavedView(id: string) {
-  const row = db().prepare('SELECT * FROM saved_views WHERE id = ?').get(id);
+export function getSavedView(userId: string, id: string) {
+  const row = db().prepare('SELECT * FROM saved_views WHERE id = ? AND user_id = ?').get(id, userId);
   return row ? savedViewFromRow(row) : null;
 }
 

@@ -209,6 +209,7 @@ export interface AiSystemStatus {
   };
   limits: AiLimits;
   pricing: AiPricing;
+  pricingByModel: AiPricing[];
   usage: {
     currentMonth: AiUsagePeriodSummary;
     allTime: AiUsagePeriodSummary;

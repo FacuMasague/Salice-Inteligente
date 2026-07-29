@@ -1,19 +1,37 @@
-# Salice Inteligente · v1.1.1
+# Salice Inteligente · v1.2.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.1.1 estima kilos desde unidades y presentación, separa precios propios y comparables por kilo y concentra los objetivos dentro del Reporte General.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.0 protege toda la información privada mediante usuarios aprobados, sesiones seguras y autorización en el servidor; además optimiza y amplía la asistencia con IA.
 
 ## Abrir el programa
 
 En el entorno local actual:
 
 ```bash
+export SALICE_INITIAL_ADMIN_USERNAME="administrador"
+export SALICE_INITIAL_ADMIN_PASSWORD="una contraseña inicial segura"
+export SALICE_INITIAL_ADMIN_NAME="Nombre del administrador"
 pnpm install
 pnpm run dev
 ```
 
-La aplicación queda disponible en la dirección informada por la terminal. Por seguridad operativa, la automatización está desactivada de forma predeterminada fuera de Render.
+Las variables del administrador inicial son secretas y no deben guardarse en Git. Sólo se utilizan para crear o recuperar el primer administrador cuando todavía no existe otro administrador activo.
 
-Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRESH_ENABLED=true`. En Render ya queda activada por el Blueprint. La guía de publicación, variables y verificación está en `docs/deployment-render-v0.11.md`.
+La aplicación queda disponible en la dirección informada por la terminal. Sin una cuenta activa no se entrega ningún snapshot, reporte, exportación ni dato operativo. Por seguridad operativa, la automatización está desactivada de forma predeterminada fuera de Render.
+
+Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRESH_ENABLED=true`. En Render ya queda activada por el Blueprint. La guía de publicación, variables y verificación está en `docs/deployment-render-v1.2.md`.
+
+## Acceso y usuarios
+
+- Toda la API de negocio exige una sesión activa y aprobada.
+- El health check público informa únicamente disponibilidad y versión.
+- Una persona sin cuenta puede solicitar acceso, pero permanece pendiente y no puede ingresar.
+- Un administrador aprueba, rechaza o deshabilita cuentas desde **Sistema → Usuarios**.
+- Los roles disponibles son Administrador y Oficina.
+- Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.
+- Deshabilitar una cuenta invalida inmediatamente sus sesiones.
+- Vistas guardadas, favoritos y reportes recientes pertenecen al usuario.
+- Las notas, correcciones y gestiones registran la persona autenticada; el navegador no puede elegir otro autor.
+- Las contraseñas y tokens de sesión se almacenan derivados o hasheados, nunca en texto legible.
 
 ## Recorrido principal
 
@@ -81,6 +99,10 @@ La IA es complementaria:
 - No publica narrativas rechazadas por control de calidad.
 - Acepta feedback útil, poco útil, incorrecto o incompleto y correcciones breves versionadas.
 - No ajusta prompts automáticamente y no realiza aprendizaje autónomo ni fine-tuning automático.
+- Usa Terra para narrativas y lectura ejecutiva; Luna para clasificación y tareas estructuradas de mayor volumen.
+- Calcula el costo con la tarifa del modelo utilizado en cada intento.
+- Presenta enteros con separador de miles y porcentajes con hasta dos decimales.
+- Reutiliza en la ficha del cliente la explicación vigente de Bandeja sin llamar a OpenAI al abrir la pantalla.
 
 Configuración muestra contenido disponible, último intento, calidad, feedback, consumo por función y actualización, resultados reutilizados, reintentos y presupuesto. El límite recomendado continúa siendo USD 1 por actualización; una actualización sin evidencia nueva no vuelve a consumir IA.
 
@@ -95,7 +117,7 @@ Configuración se divide en:
 5. Diagnóstico avanzado.
 6. Acerca del programa.
 
-Las preferencias de densidad y ayuda contextual se guardan en el navegador. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
+Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
 ## Datos y recuperación
 
@@ -116,7 +138,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v1.1
+## Alcance deliberadamente fuera de v1.2
 
 - Empaquetado instalable.
 - Rediseño móvil completo.
@@ -139,3 +161,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v0.11.0.md`
 - `docs/release-v1.1.0.md`
 - `docs/release-v1.1.1.md`
+- `docs/release-v1.2.0.md`

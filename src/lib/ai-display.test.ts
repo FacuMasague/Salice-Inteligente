@@ -17,6 +17,8 @@ describe('presentación de cifras generadas por IA', () => {
   it('preserva enteros, fechas, versiones y separadores de miles', () => {
     expect(formatAiDisplayText('Al 25-07-2026 hubo 30 clientes, 1.234 casos y versión 0.9.5.'))
       .toBe('Al 25-07-2026 hubo 30 clientes, 1.234 casos y versión 0.9.5.');
+    expect(formatAiDisplayText('Se revisaron 12500 clientes y 808 documentos.'))
+      .toBe('Se revisaron 12.500 clientes y 808 documentos.');
   });
 
   it('elimina referencias internas sin afectar el formateo', () => {

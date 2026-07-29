@@ -49,12 +49,21 @@ import { countOperationalBackups } from './operations-backup.js';
 import { auditStoredAiArtifacts, getAiSystemStatus } from './ai-enrichment.js';
 import {
   attachCommercialExplanations,
+  getCommercialExplanation,
   getExecutiveBrief,
   getReportNarrative,
   getSellerSummaries,
 } from './ai-artifacts.js';
 import type { AiReportId } from './ai-functions.js';
 import { AiStore, prepareAiSchema } from './ai-store.js';
+import {
+  currentAuth,
+  installPrivateAuthRoutes,
+  installPublicAuthRoutes,
+  installSecurityHeaders,
+  requireAdmin,
+  requireAuthenticatedApi,
+} from './auth-http.js';
 import {
   activateCommercialGoalVersion,
   addReceivableComment,
@@ -159,19 +168,18 @@ async function withReportNarrative<T extends object>(reportId: AiReportId, repor
   };
 }
 
-app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'] }));
+installSecurityHeaders(app);
+app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'], credentials: true }));
 app.use(express.json({ limit: '1mb' }));
+installPublicAuthRoutes(app);
+app.use('/api', requireAuthenticatedApi);
+installPrivateAuthRoutes(app);
 for (const [path, metricIds] of Object.entries(REPORT_ENDPOINT_METRICS)) {
   app.use(path, (_req, res, next) => {
     res.setHeader('X-Salice-Metrics', metricIds.join(','));
     next();
   });
 }
-
-app.get('/api/health', async (_req, res) => {
-  const data = await loadSnapshot();
-  res.json({ ok: true, version: data.meta.version, source: data.meta.source, generatedAt: data.meta.generatedAt });
-});
 
 app.get('/api/dashboard', async (_req, res) => {
   const data = await loadSnapshot();
@@ -437,7 +445,7 @@ app.put('/api/inventory-alert-reviews/:productId', async (req, res) => {
     status,
     exceptionType,
     note: String(req.body?.note ?? ''),
-    actor: 'Oficina Salice',
+    actor: currentAuth(res).user.displayName,
     decisionStatus: classifyInventoryProduct(product, null).status,
     snapshotAt: data.meta.generatedAt,
   });
@@ -464,7 +472,7 @@ app.put('/api/product-vector-corrections/:productId/:key', async (req, res) => {
   if (!data.products.some((product) => product.id === productId)) return res.status(404).json({ error: 'Producto no encontrado.' });
   if (!vectorKeys.has(key) || !Number.isFinite(value) || value < 0 || value > 100) return res.status(400).json({ error: 'Vector o valor inválido.' });
   if (reason.length < 5) return res.status(400).json({ error: 'Indicá un motivo de al menos 5 caracteres.' });
-  const correction = saveProductVectorCorrection(productId, { key, value: Math.round(value), reason, actor: 'Oficina Salice' });
+  const correction = saveProductVectorCorrection(productId, { key, value: Math.round(value), reason, actor: currentAuth(res).user.displayName });
   return res.json({ correction });
 });
 
@@ -474,7 +482,7 @@ app.delete('/api/product-vector-corrections/:productId/:key', async (req, res) =
   const reason = String(req.body?.reason ?? '').trim();
   if (!vectorKeys.has(key)) return res.status(400).json({ error: 'Vector inválido.' });
   if (reason.length < 5) return res.status(400).json({ error: 'Indicá el motivo de la reversión.' });
-  const event = removeProductVectorCorrection(productId, key, reason, 'Oficina Salice');
+  const event = removeProductVectorCorrection(productId, key, reason, currentAuth(res).user.displayName);
   if (!event) return res.status(404).json({ error: 'No existe una corrección activa para esa dimensión.' });
   return res.json({ event });
 });
@@ -521,7 +529,7 @@ app.patch('/api/admin/receivables/:clientId', async (req, res) => {
     nextFollowUpAt,
     promiseAmount,
     promiseDueAt,
-    actor: 'Oficina Salice',
+    actor: currentAuth(res).user.displayName,
     comment: String(req.body?.comment ?? '').slice(0, 2000),
   });
   syncReceivablePaymentPromise(clientId, client.seller);
@@ -533,7 +541,7 @@ app.delete('/api/admin/receivables/:clientId/events/:eventId', async (req, res) 
   const data = await loadSnapshot();
   const client = data.clients.find((value) => value.id === clientId);
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' });
-  const deleted = deleteReceivableCaseEvent(clientId, String(req.params.eventId), 'Oficina Salice');
+  const deleted = deleteReceivableCaseEvent(clientId, String(req.params.eventId), currentAuth(res).user.displayName);
   if (deleted) syncReceivablePaymentPromise(clientId, client.seller);
   return deleted ? res.json(getReceivableCaseDetail(clientId)) : res.status(404).json({ error: 'Seguimiento no encontrado o ya eliminado.' });
 });
@@ -544,7 +552,7 @@ app.post('/api/admin/receivables/:clientId/comments', async (req, res) => {
   if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
   const comment = String(req.body?.comment ?? '').trim().slice(0, 2000);
   if (!comment) return res.status(400).json({ error: 'Escribí un comentario antes de guardar.' });
-  addReceivableComment(clientId, comment, 'Oficina Salice');
+  addReceivableComment(clientId, comment, currentAuth(res).user.displayName);
   return res.status(201).json(getReceivableCaseDetail(clientId));
 });
 
@@ -637,7 +645,7 @@ app.post('/api/admin/goals/versions', (req, res) => {
       name,
       notes: String(req.body?.notes ?? '').slice(0, 1000),
       cloneFromId: String(req.body?.cloneFromId ?? '') || undefined,
-      actor: 'Oficina Salice',
+      actor: currentAuth(res).user.displayName,
     });
     return res.status(201).json({ version });
   } catch (error) {
@@ -661,7 +669,7 @@ app.post('/api/admin/goals/versions/:versionId/rows', (req, res) => {
       kilos,
       accounts,
       invoicing,
-      actor: 'Oficina Salice',
+      actor: currentAuth(res).user.displayName,
       comment: String(req.body?.comment ?? '').slice(0, 1000),
     });
     return res.status(201).json({ row });
@@ -686,7 +694,7 @@ app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
       kilos,
       accounts,
       invoicing,
-      actor: 'Oficina Salice',
+      actor: currentAuth(res).user.displayName,
       comment: String(req.body?.comment ?? '').slice(0, 1000),
     });
     return row ? res.json({ row }) : res.status(404).json({ error: 'Objetivo no encontrado.' });
@@ -697,7 +705,7 @@ app.patch('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
 
 app.delete('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
   try {
-    const deleted = deleteCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), 'Oficina Salice');
+    const deleted = deleteCommercialGoalRow(String(req.params.versionId), String(req.params.rowId), currentAuth(res).user.displayName);
     return deleted ? res.status(204).end() : res.status(404).json({ error: 'Objetivo no encontrado.' });
   } catch (error) {
     return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
@@ -707,7 +715,7 @@ app.delete('/api/admin/goals/versions/:versionId/rows/:rowId', (req, res) => {
 app.post('/api/admin/goals/versions/:versionId/activate', (req, res) => {
   try {
     const version = activateCommercialGoalVersion(
-      String(req.params.versionId), 'Oficina Salice', String(req.body?.comment ?? '').slice(0, 1000),
+      String(req.params.versionId), currentAuth(res).user.displayName, String(req.body?.comment ?? '').slice(0, 1000),
     );
     return res.json({ version });
   } catch (error) {
@@ -721,7 +729,7 @@ app.get('/api/saved-views', (req, res) => {
   const normalizedViewKey = viewKey ? viewKey as SavedViewKey : undefined;
   const purpose = String(req.query.purpose ?? '');
   if (purpose && !savedViewPurposes.has(purpose as SavedViewPurpose)) return res.status(400).json({ error: 'Propósito de lista inválido.' });
-  return res.json({ views: listSavedViews(normalizedViewKey, purpose ? purpose as SavedViewPurpose : undefined) });
+  return res.json({ views: listSavedViews(currentAuth(res).user.id, normalizedViewKey, purpose ? purpose as SavedViewPurpose : undefined) });
 });
 
 app.post('/api/saved-views', (req, res) => {
@@ -730,7 +738,7 @@ app.post('/api/saved-views', (req, res) => {
   const filters = stringRecord(req.body?.filters);
   const purpose = String(req.body?.purpose ?? 'general') as SavedViewPurpose;
   if (!savedViewKeys.has(viewKey) || !savedViewPurposes.has(purpose) || !name || !filters) return res.status(400).json({ error: 'Nombre, vista, propósito o filtros inválidos.' });
-  return res.status(201).json({ view: createSavedView({ viewKey, purpose, name, filters, favorite: Boolean(req.body?.favorite) }) });
+  return res.status(201).json({ view: createSavedView({ userId: currentAuth(res).user.id, viewKey, purpose, name, filters, favorite: Boolean(req.body?.favorite) }) });
 });
 
 app.patch('/api/saved-views/:id', (req, res) => {
@@ -738,7 +746,7 @@ app.patch('/api/saved-views/:id', (req, res) => {
   if (req.body?.filters != null && !filters) return res.status(400).json({ error: 'Filtros inválidos.' });
   const name = req.body?.name == null ? undefined : String(req.body.name).trim().slice(0, 80);
   if (req.body?.name != null && !name) return res.status(400).json({ error: 'El nombre de la vista no puede quedar vacío.' });
-  const view = updateSavedView(String(req.params.id), {
+  const view = updateSavedView(currentAuth(res).user.id, String(req.params.id), {
     name,
     filters: filters ?? undefined,
     favorite: req.body?.favorite == null ? undefined : Boolean(req.body.favorite),
@@ -747,7 +755,7 @@ app.patch('/api/saved-views/:id', (req, res) => {
 });
 
 app.delete('/api/saved-views/:id', (req, res) => (
-  deleteSavedView(String(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Vista guardada no encontrada.' })
+  deleteSavedView(currentAuth(res).user.id, String(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Vista guardada no encontrada.' })
 ));
 
 app.get('/api/system/status', async (_req, res) => {
@@ -801,7 +809,7 @@ app.post('/api/ai/artifacts/:artifactId/feedback', (req, res) => {
       correction,
       subjectEntityType: String(req.body?.entityType ?? artifact.entity_type),
       subjectEntityId: String(req.body?.entityId ?? artifact.entity_id),
-      actor: 'Oficina Salice',
+      actor: currentAuth(res).user.displayName,
     });
     return res.status(201).json({ feedback });
   } finally {
@@ -828,7 +836,7 @@ app.get('/api/system/refresh', (_req, res) => {
   res.json({ ...manualRefreshProcessStatus(), schedule: automaticRefreshStatus() });
 });
 
-app.post('/api/system/refresh', (_req, res) => {
+app.post('/api/system/refresh', requireAdmin, (_req, res) => {
   const operational = operationalStatus();
   if (operational.refresh.current || manualRefreshProcessStatus().running) {
     return res.status(409).json({
@@ -861,6 +869,13 @@ app.get('/api/ai/seller-summaries', async (_req, res) => {
     snapshotAt: data.meta.generatedAt,
     summaries: getSellerSummaries(data.meta.generatedAt),
   });
+});
+
+app.get('/api/ai/clients/:clientId/explanation', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const data = await loadSnapshot();
+  if (!data.clients.some((client) => client.id === clientId)) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  return res.json({ artifact: getCommercialExplanation(clientId) });
 });
 
 app.get('/api/notifications', async (_req, res) => {
@@ -900,6 +915,7 @@ app.post('/api/commercial-notes', async (req, res) => {
     type,
     occurredAt,
     note,
+    createdBy: currentAuth(res).user.displayName,
   });
   return res.status(201).json(result);
 });
@@ -943,7 +959,7 @@ app.post('/api/commercial-opportunity-links', async (req, res) => {
   const note = String(req.body?.note ?? '').trim().slice(0, 1000);
   if (!savedViewId && !note) return res.status(400).json({ error: 'Elegí una lista o escribí una nota.' });
   if (savedViewId) {
-    const view = getSavedView(savedViewId);
+    const view = getSavedView(currentAuth(res).user.id, savedViewId);
     if (!view || view.purpose !== 'product_opportunities') return res.status(400).json({ error: 'La lista de oportunidades no es válida.' });
   }
   const noteResult = note ? createCommercialNote({
@@ -953,6 +969,7 @@ app.post('/api/commercial-opportunity-links', async (req, res) => {
     occurredAt: new Date().toISOString(),
     note,
     productIds: [productId],
+    createdBy: currentAuth(res).user.displayName,
   }) : null;
   try {
     const link = createCommercialOpportunityLink({
@@ -1020,7 +1037,7 @@ app.patch('/api/clients/:id/note', async (req, res) => {
   const data = await loadSnapshot();
   const client = data.clients.find((item) => item.id === Number(req.params.id));
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  saveClientNote(client.id, note);
+  saveClientNote(client.id, note, currentAuth(res).user.displayName);
   return res.json({ ok: true, note });
 });
 
