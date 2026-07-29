@@ -1,6 +1,6 @@
-# Salice Inteligente · v0.11.0
+# Salice Inteligente · v1.1.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v0.11 incorpora el despliegue persistente en Render y dos actualizaciones automáticas diarias, a las 03:00 y a las 15:00 de Argentina.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.1 amplía el análisis operativo con kilos reales de GESI, filtros de demanda y catálogo, participación por marca y un mapa de fojas de reparto.
 
 ## Abrir el programa
 
@@ -116,7 +116,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v0.11
+## Alcance deliberadamente fuera de v1.1
 
 - Empaquetado instalable.
 - Rediseño móvil completo.
@@ -137,3 +137,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v0.10.8.md`
 - `docs/release-v0.10.9.md`
 - `docs/release-v0.11.0.md`
+- `docs/release-v1.1.0.md`

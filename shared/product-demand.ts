@@ -6,9 +6,22 @@ export type DemandHistoryStatus = 'complete' | 'partial_comparison' | 'partial_c
 
 export interface DemandPeriodMetrics {
   units: number;
+  kilos: number;
   sales: number;
   buyers: number;
   activeDays: number;
+}
+
+export interface ProductDemandFilters {
+  search: string;
+  brand: string;
+  family: string;
+  group: string;
+  line: string;
+  availability: 'all' | 'stock' | 'commercial';
+  masterStatus: string;
+  trend: string;
+  stability: string;
 }
 
 export interface ProductDemandRow {
@@ -21,6 +34,9 @@ export interface ProductDemandRow {
   previous: DemandPeriodMetrics;
   rotationPer30Days: number;
   previousRotationPer30Days: number;
+  kiloRotationPer30Days: number;
+  previousKiloRotationPer30Days: number;
+  kiloDataStatus: 'available' | 'unavailable';
   variationPercent: number | null;
   trend: DemandTrend;
   stability: DemandStability;
@@ -40,6 +56,13 @@ export interface ProductDemandPayload {
   sourceMaxDate: string;
   windowDays: DemandWindowDays;
   dimension: DemandDimension;
+  filters: ProductDemandFilters;
+  options: {
+    brands: string[];
+    families: string[];
+    groups: string[];
+    lines: string[];
+  };
   currentRange: { from: string; through: string };
   previousRange: { from: string; through: string };
   historyStatus: DemandHistoryStatus;
@@ -47,6 +70,10 @@ export interface ProductDemandPayload {
     current: DemandPeriodMetrics;
     previous: DemandPeriodMetrics;
     variationPercent: number | null;
+    kiloVariationPercent: number | null;
+    productsWithSales: number;
+    productsWithKilos: number;
+    productsWithoutKilos: number;
     accelerating: number;
     declining: number;
     newObserved: number;

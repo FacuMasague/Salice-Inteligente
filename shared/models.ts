@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '0.11.0';
+export const APP_VERSION = '1.1.0';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -142,6 +142,10 @@ export interface Product {
   pricePosition: ProductPricePosition;
   stock: number;
   units90d: number;
+  /** Kilos observados en renglones positivos de facturas durante 90 días. */
+  kilos90d?: number;
+  /** Indica si GESI entregó kilos para las ventas observadas del producto. */
+  kiloDataStatus?: 'available' | 'unavailable';
   monthlyUnits: number;
   sales90d: number;
   clients90d: number;
@@ -352,6 +356,8 @@ export interface DeliveryInvoice {
   issuedAt: string;
   suggestedDeliveryAt: string;
   amount: number;
+  kilos?: number;
+  kiloDataStatus?: 'available' | 'unavailable';
   deliveryAddress: string;
   locality: string;
   assignmentStatus: DeliveryAssignmentStatus;

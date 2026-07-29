@@ -220,6 +220,7 @@ export function ProductPanel({
             <div><span>Rotación mensual</span><strong>{number(product.monthlyUnits)} u.</strong><small>{number(product.units90d)} u. en 90 días</small></div>
             <div><span>Clientes compradores</span><strong>{number(product.clients90d)}</strong><small>únicos en los últimos 90 días</small></div>
             <div><span>Venta atribuida · 90 d</span><strong>{money(product.sales90d, true)}</strong><small>renglones positivos con detalle</small></div>
+            <div><span>Kilos vendidos · 90 d</span><strong>{product.kiloDataStatus === 'available' ? `${number(product.kilos90d ?? 0, 2)} kg` : 'Sin dato confiable'}</strong><small>{product.kiloDataStatus === 'available' ? 'cantidad U2 informada por GESI' : 'no se infieren kilos desde unidades'}</small></div>
             <div><span>Última venta observada</span><strong>{product.lastSaleAt ? shortDate(product.lastSaleAt) : 'Sin detalle'}</strong><small>dentro del historial capturado</small></div>
           </div>
           <div className={`product-stock-callout ${inventoryTone(inventoryDecision.status)}`}><TrendingUp size={17} /><div><strong>{inventoryDecision.label}</strong><span>{inventoryDecision.explanation}</span></div></div>

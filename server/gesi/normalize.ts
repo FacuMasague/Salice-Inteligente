@@ -225,6 +225,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
 
   const purchaseGroups = new Map<string, Purchase & { clientID: number }>();
   const productUnits90d = new Map<string, number>();
+  const productKilos90d = new Map<string, number>();
   const productSales90d = new Map<string, number>();
   const productClients90d = new Map<string, Set<number>>();
   const productLastSaleAt = new Map<string, string>();
@@ -259,6 +260,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       current.total = roundMoney(current.total + itemTotal);
       purchaseGroups.set(key, current);
       productUnits90d.set(productId, (productUnits90d.get(productId) ?? 0) + quantity);
+      productKilos90d.set(productId, (productKilos90d.get(productId) ?? 0) + Math.max(0, number(item.cantidadU2)));
       productSales90d.set(productId, roundMoney((productSales90d.get(productId) ?? 0) + itemTotal));
       const purchasingClients = productClients90d.get(productId) ?? new Set<number>();
       purchasingClients.add(clientID);
@@ -366,6 +368,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       pricePosition: 'unknown',
       stock: Math.round(inventory.operationalStock * 100) / 100,
       units90d: Math.round(units90d * 100) / 100,
+      kilos90d: Math.round(Math.max(0, productKilos90d.get(id) ?? 0) * 100) / 100,
+      kiloDataStatus: units90d <= 0 || (productKilos90d.get(id) ?? 0) > 0 ? 'available' : 'unavailable',
       monthlyUnits: Math.round(inventory.monthlyRotation * 100) / 100,
       sales90d: productSales90d.get(id) ?? 0,
       clients90d: productClients90d.get(id)?.size ?? 0,
@@ -619,6 +623,13 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         issuedAt: date(row.fechaDeEmision),
         suggestedDeliveryAt: suggestedDeliveryDate(date(row.fechaDeEmision)),
         amount: roundMoney(number(row.importeTotal)),
+        kilos: Math.round((Array.isArray(row.detalleItems) ? (row.detalleItems as GesiRow[]) : [])
+          .filter((item) => text(item.tipoDeItem) === 'P')
+          .reduce((sum, item) => sum + Math.max(0, number(item.cantidadU2)), 0) * 100) / 100,
+        kiloDataStatus: (Array.isArray(row.detalleItems)
+          && (row.detalleItems as GesiRow[]).some((item) => text(item.tipoDeItem) === 'P' && number(item.cantidadU2) > 0)
+          ? 'available'
+          : 'unavailable') as 'available' | 'unavailable',
         deliveryAddress: text(row.domicilioEntrega) || text(row.domicilio),
         locality: text(row.localidad) || 'Sin localidad',
         assignmentStatus,

@@ -5,10 +5,10 @@ import { buildProductDemandAnalysisFromDatabase } from './product-demand-analysi
 describe('análisis de demanda y rotación', () => {
   let database: DatabaseSync;
   const products = [
-    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros' },
-    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros' },
-    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene' },
-    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene' },
+    { id: 'A', sku: 'A', name: 'Producto A', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 10, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'B', sku: 'B', name: 'Producto B', brand: 'Marca 1', family: 'Alimentos', group: 'Perros', line: 'Secos', stock: 0, masterStatus: 'active' as const, commercialStatus: 'not_commercializable' as const },
+    { id: 'C', sku: 'C', name: 'Producto C', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 8, masterStatus: 'active' as const, commercialStatus: 'commercializable' as const },
+    { id: 'D', sku: 'D', name: 'Sin movimientos', brand: 'Marca 2', family: 'Higiene', group: 'Higiene', line: 'Limpieza', stock: 0, masterStatus: 'inactive' as const, commercialStatus: 'not_commercializable' as const },
   ];
 
   beforeEach(() => {
@@ -18,11 +18,11 @@ describe('análisis de demanda y rotación', () => {
       INSERT INTO report_meta VALUES ('max_date', '2026-07-22'), ('coverage_from', '2025-01-01'), ('source_system', 'GESI prueba');
       CREATE TABLE movements (
         sale_date TEXT, product_id TEXT, brand TEXT, category TEXT, product_group TEXT,
-        company_id INTEGER, branch_id INTEGER, source_kind TEXT, units REAL, net_amount REAL, client_id INTEGER
+        company_id INTEGER, branch_id INTEGER, source_kind TEXT, units REAL, kilos REAL, net_amount REAL, client_id INTEGER
       );
     `);
-    const insert = database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?)');
-    const add = (date: string, product: string, units: number, client: number, kind = 'invoice') => insert.run(date, product, product === 'C' ? 'Marca 2' : 'Marca 1', product === 'C' ? 'Higiene' : 'Alimentos', product === 'C' ? 'Higiene' : 'Perros', kind, units, units * 100, client);
+    const insert = database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?, ?)');
+    const add = (date: string, product: string, units: number, client: number, kind = 'invoice') => insert.run(date, product, product === 'C' ? 'Marca 2' : 'Marca 1', product === 'C' ? 'Higiene' : 'Alimentos', product === 'C' ? 'Higiene' : 'Perros', kind, units, units * 2, units * 100, client);
     add('2026-06-01', 'A', 10, 1);
     add('2026-06-01', 'B', 10, 1);
     add('2026-06-25', 'A', 4, 1);

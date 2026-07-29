@@ -5,6 +5,9 @@ import { isCommercialOpportunityEligible } from '../../shared/commercial-opportu
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number } from '../lib/format';
 import { SavedViewsBar } from './SavedViewsBar';
+import { MultiSelectFilter } from './MultiSelectFilter';
+import { SingleSelectFilter } from './SingleSelectFilter';
+import { matchesMultiFilter } from '../../shared/multi-filter';
 
 const kindLabels: Record<RecommendationKind, string> = {
   mix_gap: 'Falta en el mix reciente',
@@ -29,6 +32,10 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
     .sort((a, b) => b.commercialOpportunity - a.commercialOpportunity || b.sales90d - a.sales90d), [clients]);
   const [selectedId, setSelectedId] = useState(() => initialClientId && activeClients.some((client) => client.id === initialClientId) ? initialClientId : activeClients[0]?.id ?? null);
   const [query, setQuery] = useState('');
+  const [clientType, setClientType] = useState('');
+  const [seller, setSeller] = useState('');
+  const [locality, setLocality] = useState('');
+  const [opportunity, setOpportunity] = useState('all');
   const [kind, setKind] = useState<RecommendationKind | 'all'>('all');
   const [confidence, setConfidence] = useState<RecommendationConfidence | 'all'>('all');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -40,7 +47,21 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
   const [linkNote, setLinkNote] = useState('');
   const [linkError, setLinkError] = useState('');
   const [linking, setLinking] = useState(false);
-  const selected = activeClients.find((client) => client.id === selectedId) ?? activeClients[0];
+  const clientTypes = useMemo(() => [...new Set(activeClients.map((client) => client.segment).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
+  const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
+  const localities = useMemo(() => [...new Set(activeClients.map((client) => client.locality).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
+  const normalized = query.trim().toLocaleLowerCase('es');
+  const filteredClients = activeClients.filter((client) => (
+    matchesMultiFilter(client.segment, clientType)
+    && matchesMultiFilter(client.seller, seller)
+    && matchesMultiFilter(client.locality, locality)
+    && (opportunity === 'all'
+      || (opportunity === 'high' ? client.commercialOpportunity >= 70
+        : opportunity === 'medium' ? client.commercialOpportunity >= 40 && client.commercialOpportunity < 70
+          : client.commercialOpportunity < 40))
+    && `${clientPrimaryName(client)} ${clientSecondaryName(client)} ${client.seller} ${client.locality} ${client.segment}`.toLocaleLowerCase('es').includes(normalized)
+  ));
+  const selected = filteredClients.find((client) => client.id === selectedId) ?? filteredClients[0];
 
   useEffect(() => {
     if (!selected) return;
@@ -54,14 +75,17 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
     return () => controller.abort();
   }, [selected?.id]);
 
-  const normalized = query.trim().toLocaleLowerCase('es');
-  const visibleClients = activeClients.filter((client) => `${clientPrimaryName(client)} ${clientSecondaryName(client)} ${client.seller} ${client.locality}`.toLocaleLowerCase('es').includes(normalized)).slice(0, 120);
+  const visibleClients = filteredClients.slice(0, 120);
   const visibleRecommendations = recommendations.filter((item) => (kind === 'all' || item.kinds.includes(kind)) && (confidence === 'all' || item.confidence === confidence));
-  const savedFilters = { clientId: String(selected?.id ?? ''), query, kind, confidence };
+  const savedFilters = { clientId: String(selected?.id ?? ''), query, clientType, seller, locality, opportunity, kind, confidence };
   const applySaved = (saved: Record<string, string>) => {
     const requestedClient = Number(saved.clientId);
     if (activeClients.some((client) => client.id === requestedClient)) setSelectedId(requestedClient);
     setQuery(saved.query ?? '');
+    setClientType(saved.clientType ?? '');
+    setSeller(saved.seller ?? '');
+    setLocality(saved.locality ?? '');
+    setOpportunity(saved.opportunity ?? 'all');
     setKind((saved.kind && (saved.kind === 'all' || saved.kind in kindLabels) ? saved.kind : 'all') as typeof kind);
     setConfidence((saved.confidence && (saved.confidence === 'all' || saved.confidence in confidenceLabels) ? saved.confidence : 'all') as typeof confidence);
   };
@@ -84,8 +108,14 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
       <header><span className="section-kicker"><Users size={14} /> Cliente objetivo</span><h2>Elegir una cuenta</h2><p>Orden inicial por señal O y ventas recientes.</p></header>
       <SavedViewsBar viewKey="products" purpose="product_opportunities" filters={savedFilters} onApply={applySaved} onViewsChange={setOpportunityLists} />
       <label className="inline-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, vendedor o localidad…" /></label>
+      <div className="opportunity-client-filters">
+        <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} />
+        <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} />
+        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
+        <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
+      </div>
       <div className="opportunity-client-list">{visibleClients.map((client) => <button key={client.id} className={client.id === selected.id ? 'active' : ''} onClick={() => setSelectedId(client.id)}><span><strong>{clientPrimaryName(client)}</strong><small>{client.seller} · {client.locality}</small></span><b>{client.commercialOpportunity}</b></button>)}</div>
-      <footer>{number(visibleClients.length)} de {number(activeClients.length)} clientes activos, sin bloqueo y con mix reciente</footer>
+      <footer>{number(filteredClients.length)} de {number(activeClients.length)} clientes activos, sin bloqueo y con mix reciente</footer>
     </aside>
     <section className="opportunity-workspace-main">
       <header className="data-card opportunity-hero">

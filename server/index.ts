@@ -23,6 +23,7 @@ import { metricCatalogSummary } from '../shared/metrics.js';
 import { classifyInventoryProduct, type InventoryExceptionType, type InventoryReviewStatus } from '../shared/inventory-decisions.js';
 import { buildCommercialInbox, buildNotifications } from './agenda.js';
 import { buildBairesReport, getBairesReportMeta, getBairesReportPath } from './baires-report.js';
+import { buildBrandAnalysis, getBrandAnalysisPath } from './brand-analysis.js';
 import { buildCommercialSalesReport, getCommercialSalesReportMeta, getCommercialSalesReportPath } from './commercial-sales-report.js';
 import { buildDataHealth, loadPlatformAuditSummary } from './data-health.js';
 import { loadExecutiveSummary } from './executive-summary.js';
@@ -185,6 +186,13 @@ app.get('/api/products/demand-analysis', async (req, res) => {
   const data = await loadSnapshot();
   const analysis = buildProductDemandAnalysis(data.products, req.query as Record<string, unknown>);
   if (!analysis) return res.status(503).json({ error: 'La base comercial para demanda y rotación todavía no fue construida.', path: getProductDemandAnalysisPath() });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(analysis);
+});
+
+app.get('/api/brands/analysis', (_req, res) => {
+  const analysis = buildBrandAnalysis();
+  if (!analysis) return res.status(503).json({ error: 'La base comercial para el análisis de marcas todavía no fue construida.', path: getBrandAnalysisPath() });
   res.setHeader('Cache-Control', 'no-store');
   return res.json(analysis);
 });
