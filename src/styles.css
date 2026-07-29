@@ -3420,6 +3420,10 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 .auth-card label { display:grid; gap:6px; color:#536b61; font-size:11px; font-weight:750; }
 .auth-card input { height:43px; padding:0 12px; color:#23483a; background:#fbfcfa; border:1px solid #d8e0da; border-radius:9px; outline:none; font:500 13px inherit; }
 .auth-card input:focus { background:#fff; border-color:#5d8a77; box-shadow:0 0 0 3px rgba(67,120,96,.12); }
+.password-field { position:relative; }
+.password-field input { width:100%; padding-right:43px; }
+.password-field button { position:absolute; top:50%; right:7px; display:grid; width:31px; height:31px; place-items:center; padding:0; color:#657a70; background:transparent; border:0; border-radius:7px; cursor:pointer; transform:translateY(-50%); }
+.password-field button:hover,.password-field button:focus-visible { color:#285c48; background:#edf3ee; outline:none; }
 .auth-submit { width:100%; height:44px; justify-content:center; margin-top:5px; }
 .auth-mode-toggle { width:100%; margin-top:19px; padding:8px; color:#386854; background:transparent; border:0; cursor:pointer; font-size:11.5px; font-weight:750; }
 .auth-message { padding:10px 11px; border-radius:8px; font-size:11px; line-height:1.45; }

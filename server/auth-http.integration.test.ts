@@ -23,11 +23,14 @@ async function freePort() {
   });
 }
 
-function cookies(response: Response) {
-  const values = typeof response.headers.getSetCookie === 'function'
+function setCookieValues(response: Response) {
+  return typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('set-cookie') ?? ''];
-  return values.map((value) => value.split(';')[0]).filter(Boolean).join('; ');
+}
+
+function cookies(response: Response) {
+  return setCookieValues(response).map((value) => value.split(';')[0]).filter(Boolean).join('; ');
 }
 
 function csrfFromCookie(value: string) {
@@ -128,6 +131,15 @@ describe('protección HTTP de los datos privados', () => {
       body: JSON.stringify({ username: 'adminintegracion', password: 'ClaveIntegracion2026' }),
     });
     expect(localLogin.status).toBe(200);
+    expect(setCookieValues(localLogin).every((value) => !/;\s*Secure/i.test(value))).toBe(true);
+
+    const secureLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+      body: JSON.stringify({ username: 'adminintegracion', password: 'ClaveIntegracion2026' }),
+    });
+    expect(secureLogin.status).toBe(200);
+    expect(setCookieValues(secureLogin).filter(Boolean).every((value) => /;\s*Secure/i.test(value))).toBe(true);
 
     const foreignLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',

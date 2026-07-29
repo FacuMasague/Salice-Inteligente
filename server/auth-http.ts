@@ -28,25 +28,26 @@ function parseCookies(header: string | undefined) {
   return values;
 }
 
-function secureCookie() {
-  return process.env.NODE_ENV === 'production' || Boolean(process.env.RENDER);
+function secureCookie(req: express.Request) {
+  const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0]?.trim().toLocaleLowerCase('en-US');
+  return req.secure || forwardedProtocol === 'https';
 }
 
-function cookieValue(name: string, value: string, options: { httpOnly?: boolean; maxAge?: number } = {}) {
+function cookieValue(req: express.Request, name: string, value: string, options: { httpOnly?: boolean; maxAge?: number } = {}) {
   const attributes = [
     `${name}=${encodeURIComponent(value)}`,
     'Path=/',
     'SameSite=Strict',
     options.httpOnly ? 'HttpOnly' : '',
-    secureCookie() ? 'Secure' : '',
+    secureCookie(req) ? 'Secure' : '',
     options.maxAge == null ? '' : `Max-Age=${Math.max(0, Math.floor(options.maxAge))}`,
   ].filter(Boolean);
   return attributes.join('; ');
 }
 
-function clearAuthCookies(res: express.Response) {
-  res.append('Set-Cookie', cookieValue(SESSION_COOKIE, '', { httpOnly: true, maxAge: 0 }));
-  res.append('Set-Cookie', cookieValue(CSRF_COOKIE, '', { maxAge: 0 }));
+function clearAuthCookies(req: express.Request, res: express.Response) {
+  res.append('Set-Cookie', cookieValue(req, SESSION_COOKIE, '', { httpOnly: true, maxAge: 0 }));
+  res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, '', { maxAge: 0 }));
 }
 
 function requestKey(req: express.Request, username = '') {
@@ -68,7 +69,7 @@ function validRequestOrigin(req: express.Request) {
   if (SAFE_METHODS.has(req.method)) return true;
   const origin = req.get('origin');
   if (!origin) return true;
-  if (!secureCookie() && LOCAL_DEVELOPMENT_ORIGINS.has(origin)) return true;
+  if (!process.env.RENDER && LOCAL_DEVELOPMENT_ORIGINS.has(origin)) return true;
   const host = req.get('x-forwarded-host') || req.get('host');
   const protocol = req.get('x-forwarded-proto') || req.protocol;
   return Boolean(host && origin === `${protocol}://${host}`);
@@ -111,12 +112,12 @@ export function installPublicAuthRoutes(app: express.Express) {
     const token = parseCookies(req.get('cookie'))[SESSION_COOKIE] ?? '';
     const session = store.getSession(token);
     if (!session) {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return res.status(401).json({ authenticated: false, user: null });
     }
     const csrfToken = store.rotateCsrf(session.id);
     const maxAge = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000));
-    res.append('Set-Cookie', cookieValue(CSRF_COOKIE, csrfToken, { maxAge }));
+    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, csrfToken, { maxAge }));
     return res.json({ authenticated: true, user: session.user });
   });
 
@@ -158,8 +159,8 @@ export function installPublicAuthRoutes(app: express.Express) {
     loginAttempts.delete(key);
     const session = store.createSession(result.user.id, { userAgent: req.get('user-agent'), ipAddress: req.ip });
     const maxAge = Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000);
-    res.append('Set-Cookie', cookieValue(SESSION_COOKIE, session.token, { httpOnly: true, maxAge }));
-    res.append('Set-Cookie', cookieValue(CSRF_COOKIE, session.csrfToken, { maxAge }));
+    res.append('Set-Cookie', cookieValue(req, SESSION_COOKIE, session.token, { httpOnly: true, maxAge }));
+    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, session.csrfToken, { maxAge }));
     return res.json({ authenticated: true, user: result.user });
   });
 }
@@ -169,7 +170,7 @@ export function requireAuthenticatedApi(req: express.Request, res: express.Respo
   const token = cookies[SESSION_COOKIE] ?? '';
   const session = authStore().getSession(token);
   if (!session) {
-    clearAuthCookies(res);
+    clearAuthCookies(req, res);
     return res.status(401).json({ error: 'Necesitás iniciar sesión para acceder a Salice Inteligente.' });
   }
   if (!validRequestOrigin(req)) return res.status(403).json({ error: 'Origen de solicitud no permitido.' });
@@ -197,7 +198,7 @@ export function installPrivateAuthRoutes(app: express.Express) {
   app.post('/api/auth/logout', (req, res) => {
     const token = parseCookies(req.get('cookie'))[SESSION_COOKIE] ?? '';
     store.deleteSession(token);
-    clearAuthCookies(res);
+    clearAuthCookies(req, res);
     return res.status(204).end();
   });
   app.get('/api/account/preferences', (_req, res) => res.json({ preferences: store.getPreferences(currentAuth(res).user.id) }));

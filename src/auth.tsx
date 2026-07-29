@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { KeyRound, LockKeyhole, ShieldCheck, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck, UserPlus } from 'lucide-react';
 import type { AuthUser } from '../shared/auth';
 import { AUTH_REQUIRED_EVENT } from './lib/auth-fetch';
 
@@ -15,6 +15,8 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmationVisible, setConfirmationVisible] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,13 +68,13 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
       <p>{mode === 'login' ? 'Usá el usuario aprobado por administración.' : 'Un administrador revisará la solicitud antes de habilitar el acceso.'}</p>
       <form onSubmit={submit}>
         <label><span>Usuario</span><input autoComplete="username" minLength={3} maxLength={80} value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
-        <label><span>Contraseña</span><input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} maxLength={200} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {mode === 'register' && <label><span>Repetir contraseña</span><input type="password" autoComplete="new-password" minLength={8} maxLength={200} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>}
+        <label><span>Contraseña</span><div className="password-field"><input type={passwordVisible ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} maxLength={200} value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" aria-label={passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'} title={passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'} onClick={() => setPasswordVisible((visible) => !visible)}>{passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
+        {mode === 'register' && <label><span>Repetir contraseña</span><div className="password-field"><input type={confirmationVisible ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={200} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /><button type="button" aria-label={confirmationVisible ? 'Ocultar contraseña repetida' : 'Mostrar contraseña repetida'} title={confirmationVisible ? 'Ocultar contraseña repetida' : 'Mostrar contraseña repetida'} onClick={() => setConfirmationVisible((visible) => !visible)}>{confirmationVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>}
         {error && <div className="auth-message error">{error}</div>}
         {message && <div className="auth-message success">{message}</div>}
         <button className="button primary auth-submit" disabled={busy}>{busy ? 'Procesando…' : mode === 'login' ? <><KeyRound size={16} /> Ingresar</> : <><UserPlus size={16} /> Enviar solicitud</>}</button>
       </form>
-      <button className="auth-mode-toggle" onClick={() => { setMode((current) => current === 'login' ? 'register' : 'login'); setError(''); setMessage(''); }}>
+      <button className="auth-mode-toggle" onClick={() => { setMode((current) => current === 'login' ? 'register' : 'login'); setPasswordVisible(false); setConfirmationVisible(false); setError(''); setMessage(''); }}>
         {mode === 'login' ? '¿No tenés usuario? Solicitar acceso' : 'Ya tengo una cuenta aprobada'}
       </button>
     </section>

@@ -16,6 +16,7 @@
 - Las contraseñas se derivan con `scrypt`, sal individual y comparación en tiempo constante.
 - Los tokens de sesión y CSRF se generan aleatoriamente y se guardan sólo como hash.
 - La sesión usa cookie `HttpOnly`, `Secure` en producción, `SameSite=Strict` y vencimiento de 30 días.
+- La marca `Secure` sigue el protocolo real: HTTPS en Render conserva la protección y el arranque local por HTTP puede mantener la sesión.
 - Toda escritura autenticada exige un token CSRF asociado a la sesión.
 - Las solicitudes con origen ajeno se rechazan.
 - Se aplican límites a intentos de ingreso y solicitudes de registro.
@@ -26,6 +27,7 @@
 
 - **Sistema → Usuarios** está disponible únicamente para Administradores.
 - El menú de usuario se encuentra junto a Notificaciones y permite cerrar sesión.
+- Los campos de contraseña permiten mostrar u ocultar temporalmente lo ingresado.
 - Vistas guardadas, favoritos y reportes recientes quedan asociados al usuario.
 - Notas comerciales, notas de oportunidades, seguimiento de cobranzas, correcciones, feedback de IA y cambios de objetivos toman el nombre de la sesión autenticada.
 - Las notas comerciales muestran quién las registró. Los registros anteriores permanecen identificados como tales.
