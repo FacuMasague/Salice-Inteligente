@@ -71,7 +71,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
   const sorted = useMemo(() => sortItems(payload?.rows ?? [], sort, (row, key) => {
     if (key === 'label') return row.label;
     if (key === 'current') return row.current.units;
-    if (key === 'kilos') return row.current.kilos;
+    if (key === 'kilos') return row.kiloDataStatus === 'available' ? row.current.kilos : null;
     if (key === 'previous') return row.previous.units;
     if (key === 'variation') return row.variationPercent;
     if (key === 'buyers') return row.current.buyers;
@@ -101,7 +101,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
     {payload && <>
       <section className="demand-kpis">
         <article><Gauge size={18} /><span>Unidades · {windowDays} días</span><strong>{number(payload.summary.current.units, 2)}</strong><small>{number(payload.summary.previous.units, 2)} en el período anterior</small></article>
-        <article><PackageSearch size={18} /><span>Kilos · {windowDays} días</span><strong>{number(payload.summary.current.kilos, 2)} kg</strong><small>{payload.summary.kiloVariationPercent == null ? 'Sin base comparable' : `${payload.summary.kiloVariationPercent > 0 ? '+' : ''}${number(payload.summary.kiloVariationPercent, 1)}% frente al período anterior`}</small></article>
+        <article><PackageSearch size={18} /><span>Kilos informados · {windowDays} días</span><strong>{number(payload.summary.current.kilos, 2)} kg</strong><small>{payload.summary.kiloVariationPercent == null ? 'Sin base comparable' : `${payload.summary.kiloVariationPercent > 0 ? '+' : ''}${number(payload.summary.kiloVariationPercent, 1)}% frente al período anterior`}</small></article>
         <article className={(payload.summary.variationPercent ?? 0) < 0 ? 'negative' : ''}>{(payload.summary.variationPercent ?? 0) < 0 ? <TrendingDown size={18} /> : <TrendingUp size={18} />}<span>Variación equivalente</span><strong>{payload.summary.variationPercent == null ? 'Sin base' : `${payload.summary.variationPercent > 0 ? '+' : ''}${payload.summary.variationPercent.toLocaleString('es-AR')}%`}</strong><small>{compactDate(payload.previousRange.from)} → {compactDate(payload.previousRange.through)}</small></article>
         <article><Users size={18} /><span>Compradores únicos</span><strong>{number(payload.summary.current.buyers)}</strong><small>No se suman compradores repetidos</small></article>
         <article><Activity size={18} /><span>Aceleración / caída</span><strong>{number(payload.summary.accelerating)} / {number(payload.summary.declining)}</strong><small>Umbral reproducible de ±20%</small></article>

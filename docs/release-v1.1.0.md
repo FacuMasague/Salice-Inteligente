@@ -15,14 +15,14 @@ Esta versión amplía Productos, Marcas, Bandeja comercial y Rutas sin cambiar l
 ### Marcas
 
 - Cada marca muestra su participación en la venta neta y en los kilos netos de los últimos 90 días.
-- El universo incluye facturas y notas de crédito de empresa 3, sucursal 3.
+- El universo reutiliza la definición central de Ventas Comercial, incluidos emisores, sucursales y clientes excluidos, sobre facturas y notas de crédito.
 - “Sin marca informada” permanece en ambos denominadores.
 - Los comprobantes sin detalle generan una advertencia de cobertura.
 - El detalle de productos admite grupo, rubro, línea, disponibilidad, estado, búsqueda y orden por dinero, kilos, unidades, compradores o stock.
 
 ### Bandeja comercial
 
-- La lista de clientes puede filtrarse por el tipo de cliente informado por GESI, vendedor, localidad y nivel de oportunidad.
+- La lista de clientes puede filtrarse por el tipo de cliente informado por el maestro `TiposDeCliente` de GESI, vendedor, localidad y nivel de oportunidad. Canal permanece como una dimensión separada.
 - Las vistas guardadas conservan esos filtros junto con la búsqueda y los filtros de recomendación.
 
 ### Mapa de fojas

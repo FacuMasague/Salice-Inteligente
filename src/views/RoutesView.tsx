@@ -7,7 +7,7 @@ import { groupDeliveryInvoices } from '../../shared/algorithms';
 import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
-import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText } from '../lib/delivery-status';
+import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText, summarizeReliableInvoiceKilos } from '../lib/delivery-status';
 import { compactDate, minutesAsTime, money, number } from '../lib/format';
 import { clientPrimaryName } from '../lib/client-name';
 import { DeliverySheetMap, type DeliveryMapPoint } from '../components/DeliverySheetMap';
@@ -106,6 +106,7 @@ export function RoutesView({
     return [...grouped.values()];
   }, [clientById, mapInvoices]);
   const unmappedInvoices = useMemo(() => mapInvoices.filter((invoice) => !clientById.get(invoice.clientId)?.coordinates), [clientById, mapInvoices]);
+  const reliableKiloSummary = useMemo(() => summarizeReliableInvoiceKilos(mapInvoices), [mapInvoices]);
   const selectedSheet = selectedSheetId !== 'all' && selectedSheetId !== 'unassigned' ? sheetById.get(Number(selectedSheetId)) : null;
 
   useEffect(() => {
@@ -229,7 +230,7 @@ export function RoutesView({
             <DeliverySheetMap points={mapPoints} onOpenClient={onOpenClient} />
           </article>
           <article className="data-card delivery-sheet-detail">
-            <header><div><span className="section-kicker"><Truck size={14} /> Comprobantes de la selección</span><h2>{number(mapInvoices.length)} facturas · {money(mapInvoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</h2><p>{number(mapInvoices.reduce((sum, invoice) => sum + (invoice.kilos ?? 0), 0), 2)} kg informados{selectedSheet ? ` · ${selectedSheet.driver || 'sin chofer'} · ${selectedSheet.zone || 'sin zona'}` : ''}</p></div></header>
+            <header><div><span className="section-kicker"><Truck size={14} /> Comprobantes de la selección</span><h2>{number(mapInvoices.length)} facturas · {money(mapInvoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</h2><p>{reliableKiloSummary.reliableInvoiceCount ? `${number(reliableKiloSummary.kilos, 2)} kg confiables en ${number(reliableKiloSummary.reliableInvoiceCount)} de ${number(reliableKiloSummary.totalInvoiceCount)} facturas` : 'Kilos sin cobertura confiable'}{selectedSheet ? ` · ${selectedSheet.driver || 'sin chofer'} · ${selectedSheet.zone || 'sin zona'}` : ''}</p></div></header>
             {mapInvoices.some((invoice) => invoice.kiloDataStatus !== 'available') && <p className="delivery-data-warning"><AlertTriangle size={13} /> Hay comprobantes sin kilos confiables; el monto continúa disponible.</p>}
             <div className="delivery-sheet-invoices">{mapInvoices.map((invoice) => {
               const client = clientById.get(invoice.clientId);

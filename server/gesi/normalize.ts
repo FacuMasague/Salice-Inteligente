@@ -226,6 +226,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const purchaseGroups = new Map<string, Purchase & { clientID: number }>();
   const productUnits90d = new Map<string, number>();
   const productKilos90d = new Map<string, number>();
+  const productsWithMissingKilos90d = new Set<string>();
   const productSales90d = new Map<string, number>();
   const productClients90d = new Map<string, Set<number>>();
   const productLastSaleAt = new Map<string, string>();
@@ -261,6 +262,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       purchaseGroups.set(key, current);
       productUnits90d.set(productId, (productUnits90d.get(productId) ?? 0) + quantity);
       productKilos90d.set(productId, (productKilos90d.get(productId) ?? 0) + Math.max(0, number(item.cantidadU2)));
+      if (quantity > 0 && number(item.cantidadU2) <= 0) productsWithMissingKilos90d.add(productId);
       productSales90d.set(productId, roundMoney((productSales90d.get(productId) ?? 0) + itemTotal));
       const purchasingClients = productClients90d.get(productId) ?? new Set<number>();
       purchasingClients.add(clientID);
@@ -369,7 +371,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       stock: Math.round(inventory.operationalStock * 100) / 100,
       units90d: Math.round(units90d * 100) / 100,
       kilos90d: Math.round(Math.max(0, productKilos90d.get(id) ?? 0) * 100) / 100,
-      kiloDataStatus: units90d <= 0 || (productKilos90d.get(id) ?? 0) > 0 ? 'available' : 'unavailable',
+      kiloDataStatus: units90d <= 0 || !productsWithMissingKilos90d.has(id) ? 'available' : 'unavailable',
       monthlyUnits: Math.round(inventory.monthlyRotation * 100) / 100,
       sales90d: productSales90d.get(id) ?? 0,
       clients90d: productClients90d.get(id)?.size ?? 0,
@@ -616,6 +618,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const assignmentStatus: DeliveryInvoice['assignmentStatus'] = sheet
         ? sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'
         : explicitlyUnassigned.has(id) ? 'unassigned' : 'unknown';
+      const deliveryProductItems = (Array.isArray(row.detalleItems) ? (row.detalleItems as GesiRow[]) : [])
+        .filter((item) => text(item.tipoDeItem) === 'P' && number(item.cantidadU1) > 0);
       return {
         id,
         clientId: number(row.clienteID),
@@ -623,11 +627,10 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         issuedAt: date(row.fechaDeEmision),
         suggestedDeliveryAt: suggestedDeliveryDate(date(row.fechaDeEmision)),
         amount: roundMoney(number(row.importeTotal)),
-        kilos: Math.round((Array.isArray(row.detalleItems) ? (row.detalleItems as GesiRow[]) : [])
-          .filter((item) => text(item.tipoDeItem) === 'P')
+        kilos: Math.round(deliveryProductItems
           .reduce((sum, item) => sum + Math.max(0, number(item.cantidadU2)), 0) * 100) / 100,
-        kiloDataStatus: (Array.isArray(row.detalleItems)
-          && (row.detalleItems as GesiRow[]).some((item) => text(item.tipoDeItem) === 'P' && number(item.cantidadU2) > 0)
+        kiloDataStatus: (deliveryProductItems.length > 0
+          && deliveryProductItems.every((item) => number(item.cantidadU2) > 0)
           ? 'available'
           : 'unavailable') as 'available' | 'unavailable',
         deliveryAddress: text(row.domicilioEntrega) || text(row.domicilio),

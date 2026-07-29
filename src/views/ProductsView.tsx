@@ -124,7 +124,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (sort === 'stock') return b.stock - a.stock || b.monthlyUnits - a.monthlyUnits;
       if (sort === 'price') return b.price - a.price || a.name.localeCompare(b.name, 'es');
       if (sort === 'sales') return b.sales90d - a.sales90d || b.monthlyUnits - a.monthlyUnits;
-      if (sort === 'kilos') return (b.kilos90d ?? 0) - (a.kilos90d ?? 0) || b.sales90d - a.sales90d;
+      if (sort === 'kilos') return (b.kiloDataStatus === 'available' ? b.kilos90d ?? 0 : -1) - (a.kiloDataStatus === 'available' ? a.kilos90d ?? 0 : -1) || b.sales90d - a.sales90d;
       if (sort === 'buyers') return b.clients90d - a.clients90d || b.sales90d - a.sales90d;
       if (sort === 'lastSale') return b.lastSaleAt.localeCompare(a.lastSaleAt) || b.sales90d - a.sales90d;
       if (sort === 'name') return a.name.localeCompare(b.name, 'es');

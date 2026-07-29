@@ -28,6 +28,7 @@ interface RawDemandRow {
   previousUnits: number;
   currentKilos: number;
   previousKilos: number;
+  currentMissingKiloProducts: number;
   currentSales: number;
   previousSales: number;
   currentBuyers: number;
@@ -130,12 +131,16 @@ function kiloCoverage(database: DatabaseSync, from: string, through: string, pro
   if (!productIds.length) return { productsWithSales: 0, productsWithKilos: 0, productsWithoutKilos: 0 };
   const placeholders = productIds.map(() => '?').join(',');
   const row = database.prepare(`
-    SELECT
-      COUNT(DISTINCT CASE WHEN units > 0 THEN product_id END) productsWithSales,
-      COUNT(DISTINCT CASE WHEN units > 0 AND kilos > 0 THEN product_id END) productsWithKilos
-    FROM movements
-    WHERE company_id = 3 AND branch_id = 3 AND source_kind = 'invoice'
-      AND sale_date BETWEEN ? AND ? AND product_id IN (${placeholders})
+    SELECT COUNT(*) productsWithSales,
+      COALESCE(SUM(CASE WHEN missingKiloLines = 0 THEN 1 ELSE 0 END), 0) productsWithKilos
+    FROM (
+      SELECT product_id,
+        SUM(CASE WHEN units > 0 AND kilos <= 0 THEN 1 ELSE 0 END) missingKiloLines
+      FROM movements
+      WHERE company_id = 3 AND branch_id = 3 AND source_kind = 'invoice' AND units > 0
+        AND sale_date BETWEEN ? AND ? AND product_id IN (${placeholders})
+      GROUP BY product_id
+    )
   `).get(from, through, ...productIds) as { productsWithSales?: number; productsWithKilos?: number };
   const productsWithSales = Number(row.productsWithSales ?? 0);
   const productsWithKilos = Number(row.productsWithKilos ?? 0);
@@ -177,6 +182,7 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN units ELSE 0 END), 0) previousUnits,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN kilos ELSE 0 END), 0) currentKilos,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN kilos ELSE 0 END), 0) previousKilos,
+      COUNT(DISTINCT CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? AND kilos <= 0 THEN product_id END) currentMissingKiloProducts,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN net_amount ELSE 0 END), 0) currentSales,
       COALESCE(SUM(CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN net_amount ELSE 0 END), 0) previousSales,
       COUNT(DISTINCT CASE WHEN ${positive} AND sale_date BETWEEN ? AND ? THEN client_id END) currentBuyers,
@@ -196,6 +202,7 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
     ranges.previous.from, ranges.previous.through,
     ranges.current.from, ranges.current.through,
     ranges.previous.from, ranges.previous.through,
+    ranges.current.from, ranges.current.through,
     ranges.current.from, ranges.current.through,
     ranges.previous.from, ranges.previous.through,
     ranges.current.from, ranges.current.through,
@@ -225,7 +232,7 @@ export function buildProductDemandAnalysisFromDatabase(database: DatabaseSync, p
       previousRotationPer30Days: round(previous.units / windowDays * 30),
       kiloRotationPer30Days: round(current.kilos / windowDays * 30),
       previousKiloRotationPer30Days: round(previous.kilos / windowDays * 30),
-      kiloDataStatus: current.units <= 0 || current.kilos > 0 ? 'available' : 'unavailable',
+      kiloDataStatus: current.units <= 0 || Number(raw?.currentMissingKiloProducts ?? 0) === 0 ? 'available' : 'unavailable',
       variationPercent: variationPercent == null ? null : round(variationPercent, 1),
       trend,
       stability: stabilityResult.status,

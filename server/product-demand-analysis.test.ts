@@ -66,4 +66,37 @@ describe('análisis de demanda y rotación', () => {
     expect(result.historyStatus).toBe('partial_current');
     expect(result.rows.every((row) => row.trend === 'insufficient_history')).toBe(true);
   });
+
+  it('aplica dimensiones comerciales y disponibilidad antes de recalcular filas y totales', () => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, {
+      window: '30',
+      dimension: 'product',
+      brand: 'Marca 1',
+      family: 'Alimentos',
+      group: 'Perros',
+      line: 'Secos',
+      availability: 'stock',
+      masterStatus: 'active',
+      trend: 'accelerating',
+      stability: 'stable',
+      search: 'Producto A',
+    });
+    expect(result.rows.map((row) => row.id)).toEqual(['A']);
+    expect(result.summary.current).toMatchObject({ units: 15, kilos: 30, buyers: 2 });
+    expect(result.filters).toMatchObject({ brand: 'Marca 1', availability: 'stock', trend: 'accelerating' });
+  });
+
+  it('marca como incompleta una cobertura de kilos parcialmente informada', () => {
+    database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?, ?, ?, ?)')
+      .run('2026-07-19', 'A', 'Marca 1', 'Alimentos', 'Perros', 'invoice', 1, 0, 100, 3);
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window: '30', dimension: 'product', brand: 'Marca 1', availability: 'stock' });
+    expect(result.rows[0]).toMatchObject({ id: 'A', kiloDataStatus: 'unavailable' });
+    expect(result.summary).toMatchObject({ productsWithSales: 1, productsWithKilos: 0, productsWithoutKilos: 1 });
+  });
+
+  it.each([30, 90, 180] as const)('resuelve una ventana temporal de %i días', (window) => {
+    const result = buildProductDemandAnalysisFromDatabase(database, products, { window, dimension: 'product' });
+    expect(result.windowDays).toBe(window);
+    expect(result.currentRange.through).toBe('2026-07-22');
+  });
 });

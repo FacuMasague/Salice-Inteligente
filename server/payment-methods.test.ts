@@ -132,6 +132,53 @@ describe('forma de pago documental', () => {
     });
   });
 
+  it('toma los kilos de cantidadU2 sin inferirlos desde unidades ni desde el maestro', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    raw.products = [{
+      productoID: 'SKU-1', estado: 'A', descripcion: 'Producto pesado',
+      unidad1: 'UN', unidad2: 'KG', unidad2XUnidad1: 20,
+    }];
+    raw.invoices[0].detalleItems = [{
+      tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 2, cantidadU2: 0, importeTotalNeto: 25_000,
+    }];
+    const incomplete = normalizeCapture(raw);
+    expect(incomplete.products[0]).toMatchObject({ id: 'SKU-1', units90d: 2, kilos90d: 0, kiloDataStatus: 'unavailable' });
+    expect(incomplete.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 0, kiloDataStatus: 'unavailable' });
+
+    (raw.invoices[0].detalleItems as Array<Record<string, unknown>>)[0].cantidadU2 = 12.5;
+    const complete = normalizeCapture(raw);
+    expect(complete.products[0]).toMatchObject({ id: 'SKU-1', units90d: 2, kilos90d: 12.5, kiloDataStatus: 'available' });
+    expect(complete.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 12.5, kiloDataStatus: 'available' });
+  });
+
+  it('considera incompleta una factura si sólo algunos renglones vendidos informan kilos', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    raw.products = [{ productoID: 'SKU-1', estado: 'A', descripcion: 'Producto pesado', unidad1: 'UN', unidad2: 'KG' }];
+    raw.invoices[0].detalleItems = [
+      { tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 1, cantidadU2: 6, importeTotalNeto: 15_000 },
+      { tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 1, cantidadU2: 0, importeTotalNeto: 10_000 },
+    ];
+    const normalized = normalizeCapture(raw);
+    expect(normalized.products[0]).toMatchObject({ kilos90d: 6, kiloDataStatus: 'unavailable' });
+    expect(normalized.logistics.invoices.find((invoice) => invoice.number.includes('00000123')))
+      .toMatchObject({ kilos: 6, kiloDataStatus: 'unavailable' });
+  });
+
+  it('usa como tipo de cliente el maestro TiposDeCliente de GESI', () => {
+    const raw = capture();
+    raw.clients[0].tipoDeClienteID = 4;
+    raw.clients[0].canalDeVentaID = 8;
+    raw.masters.clientTypes = [{ tipoDeClienteID: 4, descripcion: 'Veterinaria' }];
+    raw.masters.channels = [{ canalDeVentaID: 8, descripcion: 'Minorista' }];
+    const client = normalizeCapture(raw).clients[0];
+    expect(client.segment).toBe('Veterinaria');
+    expect(client.channel).toBe('Minorista');
+  });
+
   it('sugiere lunes para una factura del viernes sin convertirlo en compromiso', () => {
     expect(suggestedDeliveryDate('2026-07-24')).toBe('2026-07-27');
     expect(suggestedDeliveryDate('2026-07-23')).toBe('2026-07-24');
