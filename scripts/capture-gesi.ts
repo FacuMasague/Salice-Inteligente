@@ -9,6 +9,7 @@ import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import { resolveSptFetchFrom } from '../server/gesi/capture-window.js';
 import { GesiClient } from '../server/gesi/client.js';
+import { priceProductIdBatches } from '../server/gesi/price-query.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 
 const required = ['GESI_BASE_URL', 'GESI_USERNAME', 'GESI_PASSWORD', 'GESI_EMPRESA_ID', 'GESI_SUCURSAL_ID'] as const;
@@ -216,7 +217,7 @@ async function fetchDocumentDetails(
 }
 
 async function fetchPrices(productIDs: string[]) {
-  const batches = chunks(productIDs, 100);
+  const batches = priceProductIdBatches(productIDs);
   const prices: GesiRow[] = [];
   for (let index = 0; index < batches.length; index += 1) {
     const codes = encodeURIComponent(batches[index].join(','));
