@@ -129,9 +129,9 @@ export default function App() {
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
   const [tutorial, setTutorial] = useState<{ section: TutorialSection; stepIndex: number } | null>(null);
   const [tutorialCompleted, setTutorialCompleted] = useState<Record<TutorialSection, boolean>>(() => ({
-    operations: localStorage.getItem('salice-tutorial-v010-operations') === 'completed',
-    administration: localStorage.getItem('salice-tutorial-v010-administration') === 'completed',
-    reports: localStorage.getItem('salice-tutorial-v010-reports') === 'completed',
+    operations: localStorage.getItem('salice-tutorial-v121-operations') === 'completed',
+    administration: localStorage.getItem('salice-tutorial-v121-administration') === 'completed',
+    reports: localStorage.getItem('salice-tutorial-v121-reports') === 'completed',
   }));
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -371,7 +371,7 @@ export default function App() {
   const startTutorial = (section: TutorialSection) => setTutorial({ section, stepIndex: 0 });
   const finishTutorial = () => {
     if (!tutorial) return;
-    localStorage.setItem(`salice-tutorial-v010-${tutorial.section}`, 'completed');
+    localStorage.setItem(`salice-tutorial-v121-${tutorial.section}`, 'completed');
     setTutorialCompleted((current) => ({ ...current, [tutorial.section]: true }));
     setTutorial(null);
     setSelectedId(null);

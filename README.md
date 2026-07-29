@@ -119,7 +119,7 @@ Configuración se divide en:
 5. Diagnóstico avanzado.
 6. Acerca del programa.
 
-Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
+Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los tutoriales independientes de Centro operativo, Administración y Reportes explican qué mirar, cómo trabajar y qué salvedades respetar en cada módulo. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
 ## Datos y recuperación
 

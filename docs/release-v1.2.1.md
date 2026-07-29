@@ -23,6 +23,20 @@
 
 La política de seguridad impedía cargar las imágenes de fondo de Leaflet. La CSP ahora autoriza exclusivamente `https://*.tile.openstreetmap.org`, que es la fuente ya declarada por los dos mapas. Scripts, conexiones y el resto de las imágenes externas continúan bloqueados.
 
+## Tutoriales ampliados
+
+- Los recorridos de Centro operativo, Administración y Reportes pasan a tener 10, 9 y 11 pasos respectivamente.
+- Cada paso explica qué información muestra la pantalla, dos acciones concretas para aprovecharla y una salvedad de interpretación.
+- Se incorporan los módulos y criterios agregados hasta v1.2.1: kilos inferidos, precios por kilo, demanda, rotación, participación de marcas, bandeja diaria, notas atribuidas, vistas personales e IA determinística.
+- La nueva edición utiliza una marca de finalización propia para que quienes completaron el tutorial anterior puedan descubrir la guía ampliada.
+
+## Protección de Developer
+
+- Un Administrador puede seguir aprobando y gestionando cuentas de Oficina o Administrador.
+- No puede cambiar el rol, deshabilitar, rechazar ni volver a habilitar una cuenta Developer.
+- La interfaz bloquea esos controles y el servidor vuelve a validar la regla aunque se intente llamar directamente a la API.
+- Sólo otro Developer puede modificar una cuenta Developer.
+
 ## Persistencia
 
 La migración amplía la restricción del rol en `users` y agrega:

@@ -109,7 +109,9 @@ describe('seguridad de usuarios y sesiones', () => {
     const admin = store.register({ username: 'Administrador', password: 'ClaveAdmin2026' });
     store.reviewUser(admin.id, { status: 'active', role: 'admin', reviewerId: developer.id });
     expect(() => store.reviewUser(developer.id, { status: 'active', role: 'admin', reviewerId: admin.id })).toThrow(/Developer/);
+    expect(() => store.reviewUser(developer.id, { status: 'disabled', role: 'developer', reviewerId: admin.id })).toThrow(/Developer/);
     expect(store.getUser(developer.id)?.role).toBe('developer');
+    expect(store.getUser(developer.id)?.status).toBe('active');
     store.close();
   });
 

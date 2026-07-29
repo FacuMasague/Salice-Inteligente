@@ -87,17 +87,21 @@ export function UsersView() {
       <div className="data-card-header"><div><span className="section-kicker"><Users size={15} /> Accesos registrados</span><h2>Todos los usuarios</h2><p>Los cambios de estado invalidan inmediatamente las sesiones de una cuenta bloqueada.</p></div><button className="button ghost compact" onClick={reload}><RefreshCw className={loading ? 'spin' : ''} size={14} /> Actualizar</button></div>
       <div className="users-table">
         <header><span>Persona</span><span>Rol</span><span>Estado</span><span>Último ingreso</span><span>Acceso</span></header>
-        {users.map((user) => <article key={user.id}>
-          <div><strong>{user.displayName}</strong><small>@{user.username}{user.id === currentUser.id ? ' · tu cuenta' : ''}</small></div>
-          <select value={user.role} aria-label={`Rol actual: ${roleLabel[user.role]}`} disabled={user.id === currentUser.id || busyId === user.id || (user.role === 'developer' && currentUser.role !== 'developer')} onChange={(event) => void update(user, user.status === 'pending' ? 'active' : user.status, event.target.value as UserRole)}><option value="office">Oficina</option><option value="admin">Administrador</option>{(currentUser.role === 'developer' || user.role === 'developer') && <option value="developer">Developer</option>}</select>
-          <span className={`user-status ${user.status}`}>{statusLabel[user.status]}</span>
-          <span>{date(user.lastLoginAt)}</span>
-          <div className="user-actions">
-            {user.status === 'active'
-              ? <button className="button ghost compact danger" disabled={user.id === currentUser.id || busyId === user.id} onClick={() => void update(user, 'disabled')}><UserRoundX size={14} /> Deshabilitar</button>
-              : <button className="button ghost compact" disabled={busyId === user.id} onClick={() => void update(user, 'active')}><UserRoundCheck size={14} /> Habilitar</button>}
-          </div>
-        </article>)}
+        {users.map((user) => {
+          const protectedDeveloper = user.role === 'developer' && currentUser.role !== 'developer';
+          const protectedTitle = protectedDeveloper ? 'Sólo otro Developer puede modificar esta cuenta.' : undefined;
+          return <article key={user.id}>
+            <div><strong>{user.displayName}</strong><small>@{user.username}{user.id === currentUser.id ? ' · tu cuenta' : protectedDeveloper ? ' · cuenta protegida' : ''}</small></div>
+            <select value={user.role} aria-label={`Rol actual: ${roleLabel[user.role]}`} title={protectedTitle} disabled={user.id === currentUser.id || busyId === user.id || protectedDeveloper} onChange={(event) => void update(user, user.status === 'pending' ? 'active' : user.status, event.target.value as UserRole)}><option value="office">Oficina</option><option value="admin">Administrador</option>{(currentUser.role === 'developer' || user.role === 'developer') && <option value="developer">Developer</option>}</select>
+            <span className={`user-status ${user.status}`}>{statusLabel[user.status]}</span>
+            <span>{date(user.lastLoginAt)}</span>
+            <div className="user-actions">
+              {user.status === 'active'
+                ? <button className="button ghost compact danger" title={protectedTitle} disabled={user.id === currentUser.id || busyId === user.id || protectedDeveloper} onClick={() => void update(user, 'disabled')}><UserRoundX size={14} /> Deshabilitar</button>
+                : <button className="button ghost compact" title={protectedTitle} disabled={busyId === user.id || protectedDeveloper} onClick={() => void update(user, 'active')}><UserRoundCheck size={14} /> Habilitar</button>}
+            </div>
+          </article>;
+        })}
         {!loading && !users.length && <div className="users-empty">No hay usuarios registrados.</div>}
       </div>
       {error && <div className="auth-message error users-error">{error}</div>}
