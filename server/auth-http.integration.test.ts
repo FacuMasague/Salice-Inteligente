@@ -63,7 +63,6 @@ beforeAll(async () => {
       SALICE_OPERATIONS_DB_PATH: join(directory, 'operations.sqlite'),
       SALICE_INITIAL_ADMIN_USERNAME: 'adminintegracion',
       SALICE_INITIAL_ADMIN_PASSWORD: 'ClaveIntegracion2026',
-      SALICE_INITIAL_ADMIN_NAME: 'Admin Integración',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -142,7 +141,7 @@ describe('protección HTTP de los datos privados', () => {
     const registration = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'oficinaprueba', displayName: 'Oficina Prueba', password: 'ClaveOficina2026' }),
+      body: JSON.stringify({ username: 'Oficina Prueba', password: 'ClaveOficina2026' }),
     });
     expect(registration.status).toBe(201);
     const registered = await registration.json() as { user: { id: string } };
@@ -150,7 +149,7 @@ describe('protección HTTP de los datos privados', () => {
     const pendingLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'oficinaprueba', password: 'ClaveOficina2026' }),
+      body: JSON.stringify({ username: 'Oficina Prueba', password: 'ClaveOficina2026' }),
     });
     expect(pendingLogin.status).toBe(403);
 
@@ -164,7 +163,7 @@ describe('protección HTTP de los datos privados', () => {
     const officeLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'oficinaprueba', password: 'ClaveOficina2026' }),
+      body: JSON.stringify({ username: 'Oficina Prueba', password: 'ClaveOficina2026' }),
     });
     const officeCookie = cookies(officeLogin);
     expect(officeLogin.status).toBe(200);

@@ -13,7 +13,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
@@ -33,7 +32,7 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
       const response = await fetch(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, displayName, password }),
+        body: JSON.stringify({ username, password }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? 'No se pudo completar la solicitud.');
@@ -57,8 +56,8 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
       <img src="/salice-logo.png" alt="Salice" />
       <div>
         <span><ShieldCheck size={17} /> Acceso privado</span>
-        <h1>La información del negocio queda protegida.</h1>
-        <p>Salice Inteligente requiere una cuenta aprobada. La sesión se mantiene en esta computadora hasta que cierres sesión.</p>
+        <h1>Toda la operación de Salice, en un solo lugar.</h1>
+        <p>Consultá ventas, clientes, productos, stock, cobranzas, rutas y reportes comerciales con información actualizada de GESI.</p>
       </div>
     </section>
     <section className="auth-card">
@@ -66,10 +65,9 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
       <h2>{mode === 'login' ? 'Ingresar a Salice Inteligente' : 'Solicitar una cuenta'}</h2>
       <p>{mode === 'login' ? 'Usá el usuario aprobado por administración.' : 'Un administrador revisará la solicitud antes de habilitar el acceso.'}</p>
       <form onSubmit={submit}>
-        {mode === 'register' && <label><span>Nombre y apellido</span><input autoComplete="name" maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>}
-        <label><span>Usuario</span><input autoComplete="username" minLength={3} maxLength={40} value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
-        <label><span>Contraseña</span><input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={12} maxLength={200} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {mode === 'register' && <label><span>Repetir contraseña</span><input type="password" autoComplete="new-password" minLength={12} maxLength={200} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>}
+        <label><span>Usuario</span><input autoComplete="username" minLength={3} maxLength={80} value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+        <label><span>Contraseña</span><input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} maxLength={200} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {mode === 'register' && <label><span>Repetir contraseña</span><input type="password" autoComplete="new-password" minLength={8} maxLength={200} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>}
         {error && <div className="auth-message error">{error}</div>}
         {message && <div className="auth-message success">{message}</div>}
         <button className="button primary auth-submit" disabled={busy}>{busy ? 'Procesando…' : mode === 'login' ? <><KeyRound size={16} /> Ingresar</> : <><UserPlus size={16} /> Enviar solicitud</>}</button>

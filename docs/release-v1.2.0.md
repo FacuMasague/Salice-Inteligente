@@ -6,6 +6,7 @@
 - `/api/health` permanece público para Render, pero sólo informa disponibilidad y versión.
 - Registro, inicio de sesión y estado de sesión son las únicas rutas públicas de autenticación.
 - Las cuentas nuevas nacen como Oficina pendiente y no acceden hasta ser aprobadas.
+- La solicitud requiere únicamente un usuario y una contraseña; ese usuario identifica también a la persona en notas y gestiones.
 - Los administradores pueden aprobar, rechazar, habilitar, deshabilitar y asignar roles.
 - El último administrador activo no puede deshabilitarse ni degradarse.
 - Deshabilitar una cuenta revoca todas sus sesiones.
@@ -45,8 +46,7 @@ La selección por roles sigue la guía oficial de modelos: [GPT-5.6 Terra](https
 Antes de publicar deben configurarse en Render, como secretos:
 
 - `SALICE_INITIAL_ADMIN_USERNAME`;
-- `SALICE_INITIAL_ADMIN_PASSWORD`;
-- `SALICE_INITIAL_ADMIN_NAME`.
+- `SALICE_INITIAL_ADMIN_PASSWORD`.
 
 No existe un usuario ni una contraseña predeterminados. Si no hay un administrador activo y esas variables no están configuradas, la información permanece bloqueada.
 

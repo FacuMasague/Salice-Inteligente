@@ -4,13 +4,13 @@ import type { AuthUser, UserRole, UserStatus } from '../shared/auth.js';
 import { getOperationalDatabasePath } from './operational-store.js';
 
 const SESSION_DAYS = 30;
-const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = 8;
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 type Row = Record<string, unknown>;
 
 function normalizedUsername(value: string) {
-  return value.trim().toLocaleLowerCase('es-AR');
+  return value.trim().replace(/\s+/g, ' ');
 }
 
 function tokenHash(value: string) {
@@ -33,15 +33,10 @@ function userFromRow(row: Row): AuthUser {
 
 export function validateUsername(value: string) {
   const username = normalizedUsername(value);
-  if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username)) {
-    return 'El usuario debe tener entre 3 y 40 caracteres y usar solamente letras, números, punto, guion o guion bajo.';
+  if (username.length < 3 || username.length > 80 || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(username)) {
+    return 'El usuario debe tener entre 3 y 80 caracteres y usar solamente letras, números, espacios, punto, guion o guion bajo.';
   }
   return null;
-}
-
-export function validateDisplayName(value: string) {
-  const name = value.trim();
-  return name.length >= 3 && name.length <= 80 ? null : 'Ingresá tu nombre y apellido.';
 }
 
 export function validatePassword(value: string) {
@@ -106,7 +101,7 @@ export class AuthStore {
     this.database.close();
   }
 
-  bootstrapAdmin(usernameValue?: string, password?: string, displayNameValue?: string) {
+  bootstrapAdmin(usernameValue?: string, password?: string) {
     const username = normalizedUsername(usernameValue ?? '');
     if (!username || !password) return null;
     const validation = validateUsername(username) || validatePassword(password);
@@ -122,7 +117,7 @@ export class AuthStore {
           password_hash = ?, password_salt = ?, password_changed_at = ?, reviewed_at = ?
         WHERE id = ?
       `).run(
-        (displayNameValue || 'Administrador Salice').trim().slice(0, 80),
+        username,
         passwordHash(password, salt), salt, now, now, String(existing.id),
       );
       this.database.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(String(existing.id));
@@ -135,20 +130,20 @@ export class AuthStore {
         id, username, display_name, role, status, password_hash, password_salt,
         password_changed_at, created_at, reviewed_at
       ) VALUES (?, ?, ?, 'admin', 'active', ?, ?, ?, ?, ?)
-    `).run(id, username, (displayNameValue || 'Administrador Salice').trim().slice(0, 80), passwordHash(password, salt), salt, now, now, now);
+    `).run(id, username, username, passwordHash(password, salt), salt, now, now, now);
     return this.getUser(id);
   }
 
-  register(input: { username: string; displayName: string; password: string }) {
+  register(input: { username: string; password: string }) {
     const username = normalizedUsername(input.username);
-    const validation = validateUsername(username) || validateDisplayName(input.displayName) || validatePassword(input.password);
+    const validation = validateUsername(username) || validatePassword(input.password);
     if (validation) throw new Error(validation);
     const salt = randomBytes(16).toString('hex');
     const now = new Date().toISOString();
     const user: AuthUser = {
       id: randomUUID(),
       username,
-      displayName: input.displayName.trim().replace(/\s+/g, ' ').slice(0, 80),
+      displayName: username,
       role: 'office',
       status: 'pending',
       createdAt: now,

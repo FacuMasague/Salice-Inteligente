@@ -9,7 +9,6 @@ En el entorno local actual:
 ```bash
 export SALICE_INITIAL_ADMIN_USERNAME="administrador"
 export SALICE_INITIAL_ADMIN_PASSWORD="una contraseña inicial segura"
-export SALICE_INITIAL_ADMIN_NAME="Nombre del administrador"
 pnpm install
 pnpm run dev
 ```
@@ -24,7 +23,7 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 
 - Toda la API de negocio exige una sesión activa y aprobada.
 - El health check público informa únicamente disponibilidad y versión.
-- Una persona sin cuenta puede solicitar acceso, pero permanece pendiente y no puede ingresar.
+- Una persona sin cuenta puede solicitar acceso sólo con usuario y contraseña, pero permanece pendiente y no puede ingresar.
 - Un administrador aprueba, rechaza o deshabilita cuentas desde **Sistema → Usuarios**.
 - Los roles disponibles son Administrador y Oficina.
 - Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.

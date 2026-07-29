@@ -96,7 +96,6 @@ export function installPublicAuthRoutes(app: express.Express) {
   const bootstrap = store.bootstrapAdmin(
     process.env.SALICE_INITIAL_ADMIN_USERNAME,
     process.env.SALICE_INITIAL_ADMIN_PASSWORD,
-    process.env.SALICE_INITIAL_ADMIN_NAME,
   );
   if (bootstrap) store.assignLegacySavedViews(bootstrap.id);
   if (!store.hasActiveAdmin()) {
@@ -129,7 +128,6 @@ export function installPublicAuthRoutes(app: express.Express) {
     try {
       const user = store.register({
         username: String(req.body?.username ?? ''),
-        displayName: String(req.body?.displayName ?? ''),
         password: String(req.body?.password ?? ''),
       });
       return res.status(201).json({

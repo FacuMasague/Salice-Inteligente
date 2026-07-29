@@ -22,11 +22,10 @@ No se crea un Cron Job separado. Render no permite adjuntar discos persistentes 
    - `GESI_PASSWORD`;
    - `OPENAI_API_KEY`;
    - `SALICE_INITIAL_ADMIN_USERNAME`;
-   - `SALICE_INITIAL_ADMIN_PASSWORD`;
-   - `SALICE_INITIAL_ADMIN_NAME`.
+   - `SALICE_INITIAL_ADMIN_PASSWORD`.
 5. Aplicar el Blueprint y esperar a que el Web Service quede `Live`.
 
-El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria y presupuestos de IA. Las credenciales no se guardan en Git. La contraseña inicial debe tener al menos 12 caracteres y combinar letras y números.
+El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria y presupuestos de IA. Las credenciales no se guardan en Git. La contraseña inicial debe tener al menos 8 caracteres y combinar letras y números.
 También fija el inicio del histórico comercial SPT de bootstrap en `2025-01-01`: la auditoría requiere los doce meses de 2025 y una instalación nueva no puede depender de un archivo histórico preexistente. Una vez creada la captura persistente, las actualizaciones ordinarias descargan sólo la ventana móvil y conservan el histórico anterior.
 
 ## Capacidad y costo
