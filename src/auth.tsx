@@ -94,6 +94,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { active = false; window.removeEventListener(AUTH_REQUIRED_EVENT, invalidate); };
   }, []);
 
+  useEffect(() => {
+    if (!state.user) return undefined;
+    const idleLimitMs = 5 * 60_000;
+    const heartbeatMs = 30_000;
+    let lastInteractionAt = Date.now();
+    let lastHeartbeatAt = Date.now();
+    const markInteraction = () => { lastInteractionAt = Date.now(); };
+    const sendHeartbeat = () => {
+      const now = Date.now();
+      const activeSeconds = Math.min(60, Math.max(0, Math.round((now - lastHeartbeatAt) / 1000)));
+      lastHeartbeatAt = now;
+      if (document.visibilityState !== 'visible' || now - lastInteractionAt > idleLimitMs || !activeSeconds) return;
+      void fetch('/api/account/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeSeconds }),
+      });
+    };
+    const interactionEvents: Array<keyof WindowEventMap> = ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart'];
+    interactionEvents.forEach((eventName) => window.addEventListener(eventName, markInteraction, { passive: true }));
+    document.addEventListener('visibilitychange', markInteraction);
+    const interval = window.setInterval(sendHeartbeat, heartbeatMs);
+    return () => {
+      window.clearInterval(interval);
+      interactionEvents.forEach((eventName) => window.removeEventListener(eventName, markInteraction));
+      document.removeEventListener('visibilitychange', markInteraction);
+    };
+  }, [state.user]);
+
   const value = useMemo<AuthContextValue | null>(() => state.user ? ({
     user: state.user,
     logout: async () => {

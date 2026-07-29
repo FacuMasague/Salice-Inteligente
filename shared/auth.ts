@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'office';
+export type UserRole = 'developer' | 'admin' | 'office';
 export type UserStatus = 'pending' | 'active' | 'rejected' | 'disabled';
 
 export interface AuthUser {
@@ -11,6 +11,40 @@ export interface AuthUser {
   reviewedAt: string | null;
   reviewedBy: string | null;
   lastLoginAt: string | null;
+}
+
+export interface UserAccessRecord {
+  id: string;
+  userId: string;
+  occurredAt: string;
+  ipAddress: string;
+  userAgent: string;
+}
+
+export interface UserChangeRecord {
+  id: string;
+  userId: string;
+  method: string;
+  path: string;
+  action: string;
+  occurredAt: string;
+}
+
+export interface UserActivitySummary {
+  user: AuthUser;
+  accessCount: number;
+  activeSeconds: number;
+  activeSecondsToday: number;
+  lastActiveAt: string | null;
+  changeCount: number;
+}
+
+export interface DeveloperActivityPayload {
+  generatedAt: string;
+  antiAfkMinutes: number;
+  users: UserActivitySummary[];
+  accesses: UserAccessRecord[];
+  changes: UserChangeRecord[];
 }
 
 export interface AuthSessionPayload {

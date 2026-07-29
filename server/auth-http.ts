@@ -75,6 +75,27 @@ function validRequestOrigin(req: express.Request) {
   return Boolean(host && origin === `${protocol}://${host}`);
 }
 
+function changeAction(method: string, path: string) {
+  const routes: Array<[RegExp, string]> = [
+    [/^\/api\/system\/users\//, 'Cambió el acceso o rol de un usuario'],
+    [/^\/api\/system\/refresh/, 'Solicitó una actualización de datos'],
+    [/^\/api\/saved-views/, 'Modificó una vista guardada'],
+    [/^\/api\/commercial-notes/, 'Registró una nota comercial'],
+    [/^\/api\/clients\/[^/]+\/note/, 'Actualizó la nota de un cliente'],
+    [/^\/api\/clients\/[^/]+\/opportunity-notes/, 'Modificó una nota de oportunidad'],
+    [/^\/api\/admin\/receivables/, 'Actualizó una gestión de cobranza'],
+    [/^\/api\/admin\/goals/, 'Modificó objetivos comerciales'],
+    [/^\/api\/inventory-alert-reviews/, 'Actualizó una revisión de inventario'],
+    [/^\/api\/product-vector-corrections/, 'Modificó una corrección de producto'],
+    [/^\/api\/ai\/artifacts/, 'Registró feedback de IA'],
+    [/^\/api\/promises/, 'Actualizó una promesa comercial'],
+    [/^\/api\/commercial-opportunity-links/, 'Modificó una oportunidad comercial'],
+    [/^\/api\/account\/preferences/, 'Actualizó preferencias personales'],
+    [/^\/api\/auth\/logout/, 'Cerró sesión'],
+  ];
+  return routes.find(([pattern]) => pattern.test(path))?.[1] ?? `${method} ${path}`;
+}
+
 export function currentAuth(res: express.Response) {
   return res.locals.auth as RequestAuth;
 }
@@ -87,7 +108,7 @@ export function installSecurityHeaders(app: express.Express) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     next();
   });
 }
@@ -97,6 +118,7 @@ export function installPublicAuthRoutes(app: express.Express) {
   const bootstrap = store.bootstrapAdmin(
     process.env.SALICE_INITIAL_ADMIN_USERNAME,
     process.env.SALICE_INITIAL_ADMIN_PASSWORD,
+    process.env.SALICE_INITIAL_ADMIN_ROLE === 'developer' ? 'developer' : 'admin',
   );
   if (bootstrap) store.assignLegacySavedViews(bootstrap.id);
   if (!store.hasActiveAdmin()) {
@@ -105,7 +127,7 @@ export function installPublicAuthRoutes(app: express.Express) {
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, version: process.env.npm_package_version ?? '1.2.0' });
+    res.json({ ok: true, version: process.env.npm_package_version ?? '1.2.1' });
   });
 
   app.get('/api/auth/session', (req, res) => {
@@ -182,15 +204,37 @@ export function requireAuthenticatedApi(req: express.Request, res: express.Respo
     }
   }
   res.locals.auth = { sessionId: session.id, user: session.user } satisfies RequestAuth;
+  if (!SAFE_METHODS.has(req.method) && req.path !== '/account/activity') {
+    res.once('finish', () => {
+      if (res.statusCode < 200 || res.statusCode >= 400) return;
+      try {
+        authStore().recordChange({
+          userId: session.user.id,
+          sessionId: session.id,
+          method: req.method,
+          path: req.originalUrl.split('?')[0],
+          action: changeAction(req.method, req.originalUrl.split('?')[0]),
+        });
+      } catch (error) {
+        console.warn(`No se pudo registrar una acción de usuario: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+  }
   res.setHeader('Cache-Control', 'private, no-store');
   return next();
 }
 
 export function requireAdmin(_req: express.Request, res: express.Response, next: express.NextFunction) {
   const auth = currentAuth(res);
-  return auth.user.role === 'admin'
+  return auth.user.role === 'admin' || auth.user.role === 'developer'
     ? next()
     : res.status(403).json({ error: 'Esta función está reservada para administradores.' });
+}
+
+export function requireDeveloper(_req: express.Request, res: express.Response, next: express.NextFunction) {
+  return currentAuth(res).user.role === 'developer'
+    ? next()
+    : res.status(403).json({ error: 'Esta función está reservada para Developer.' });
 }
 
 export function installPrivateAuthRoutes(app: express.Express) {
@@ -202,6 +246,11 @@ export function installPrivateAuthRoutes(app: express.Express) {
     return res.status(204).end();
   });
   app.get('/api/account/preferences', (_req, res) => res.json({ preferences: store.getPreferences(currentAuth(res).user.id) }));
+  app.post('/api/account/activity', (req, res) => {
+    const auth = currentAuth(res);
+    const acceptedSeconds = store.recordActivity(auth.sessionId, auth.user.id, Number(req.body?.activeSeconds));
+    return res.json({ acceptedSeconds });
+  });
   app.patch('/api/account/preferences', (req, res) => {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) return res.status(400).json({ error: 'Preferencias inválidas.' });
     try {
@@ -215,11 +264,12 @@ export function installPrivateAuthRoutes(app: express.Express) {
     }
   });
   app.get('/api/system/users', requireAdmin, (_req, res) => res.json({ users: store.listUsers() }));
+  app.get('/api/system/user-activity', requireDeveloper, (_req, res) => res.json(store.developerActivity()));
   app.patch('/api/system/users/:id', requireAdmin, (req, res) => {
     const status = String(req.body?.status ?? '') as UserStatus;
     const role = String(req.body?.role ?? '') as UserRole;
     if (!['active', 'rejected', 'disabled'].includes(status)) return res.status(400).json({ error: 'Estado de usuario inválido.' });
-    if (role && !['admin', 'office'].includes(role)) return res.status(400).json({ error: 'Rol de usuario inválido.' });
+    if (role && !['developer', 'admin', 'office'].includes(role)) return res.status(400).json({ error: 'Rol de usuario inválido.' });
     try {
       const user = store.reviewUser(String(req.params.id), {
         status: status as Exclude<UserStatus, 'pending'>,

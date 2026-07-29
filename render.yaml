@@ -33,6 +33,8 @@ services:
         sync: false
       - key: SALICE_INITIAL_ADMIN_PASSWORD
         sync: false
+      - key: SALICE_INITIAL_ADMIN_ROLE
+        value: "developer"
       - key: SALICE_AUTO_REFRESH_ENABLED
         value: "true"
       - key: SALICE_AUTO_REFRESH_TIMES

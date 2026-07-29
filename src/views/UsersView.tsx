@@ -9,6 +9,11 @@ const statusLabel: Record<UserStatus, string> = {
   rejected: 'Rechazado',
   disabled: 'Deshabilitado',
 };
+const roleLabel: Record<UserRole, string> = {
+  developer: 'Developer',
+  admin: 'Administrador',
+  office: 'Oficina',
+};
 
 function date(value: string | null) {
   if (!value) return 'Sin ingresos';
@@ -67,7 +72,7 @@ export function UsersView() {
       <div className="users-list pending">{pending.map((user) => <article key={user.id}>
         <div className="user-avatar">{user.displayName.slice(0, 1).toUpperCase()}</div>
         <div><strong>{user.displayName}</strong><span>@{user.username} · solicitó el {date(user.createdAt)}</span></div>
-        <select aria-label={`Rol de ${user.displayName}`} defaultValue="office" id={`role-${user.id}`}><option value="office">Oficina</option><option value="admin">Administrador</option></select>
+        <select aria-label={`Rol de ${user.displayName}`} defaultValue="office" id={`role-${user.id}`}><option value="office">Oficina</option><option value="admin">Administrador</option>{currentUser.role === 'developer' && <option value="developer">Developer</option>}</select>
         <div className="user-actions">
           <button className="button primary compact" disabled={busyId === user.id} onClick={() => {
             const role = (document.getElementById(`role-${user.id}`) as HTMLSelectElement)?.value as UserRole;
@@ -84,7 +89,7 @@ export function UsersView() {
         <header><span>Persona</span><span>Rol</span><span>Estado</span><span>Último ingreso</span><span>Acceso</span></header>
         {users.map((user) => <article key={user.id}>
           <div><strong>{user.displayName}</strong><small>@{user.username}{user.id === currentUser.id ? ' · tu cuenta' : ''}</small></div>
-          <select value={user.role} disabled={user.id === currentUser.id || busyId === user.id} onChange={(event) => void update(user, user.status === 'pending' ? 'active' : user.status, event.target.value as UserRole)}><option value="office">Oficina</option><option value="admin">Administrador</option></select>
+          <select value={user.role} aria-label={`Rol actual: ${roleLabel[user.role]}`} disabled={user.id === currentUser.id || busyId === user.id || (user.role === 'developer' && currentUser.role !== 'developer')} onChange={(event) => void update(user, user.status === 'pending' ? 'active' : user.status, event.target.value as UserRole)}><option value="office">Oficina</option><option value="admin">Administrador</option>{(currentUser.role === 'developer' || user.role === 'developer') && <option value="developer">Developer</option>}</select>
           <span className={`user-status ${user.status}`}>{statusLabel[user.status]}</span>
           <span>{date(user.lastLoginAt)}</span>
           <div className="user-actions">

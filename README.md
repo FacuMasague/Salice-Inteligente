@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.2.0
+# Salice Inteligente · v1.2.1
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.0 protege toda la información privada mediante usuarios aprobados, sesiones seguras y autorización en el servidor; además optimiza y amplía la asistencia con IA.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.1 incorpora el rol Developer con auditoría de uso real y recupera los mapas base de OpenStreetMap sin ampliar el acceso a otros recursos externos.
 
 ## Abrir el programa
 
@@ -9,6 +9,7 @@ En el entorno local actual:
 ```bash
 export SALICE_INITIAL_ADMIN_USERNAME="administrador"
 export SALICE_INITIAL_ADMIN_PASSWORD="una contraseña inicial segura"
+export SALICE_INITIAL_ADMIN_ROLE="developer"
 pnpm install
 pnpm run dev
 ```
@@ -26,6 +27,8 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 - Una persona sin cuenta puede solicitar acceso sólo con usuario y contraseña, pero permanece pendiente y no puede ingresar.
 - Un administrador aprueba, rechaza o deshabilita cuentas desde **Sistema → Usuarios**.
 - Los roles disponibles son Administrador y Oficina.
+- Developer conserva las funciones administrativas y agrega una vista privada de accesos, tiempo activo y cambios.
+- El tiempo de uso deja de acumularse después de cinco minutos sin interacción.
 - Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.
 - Deshabilitar una cuenta invalida inmediatamente sus sesiones.
 - Vistas guardadas, favoritos y reportes recientes pertenecen al usuario.
@@ -161,3 +164,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.1.0.md`
 - `docs/release-v1.1.1.md`
 - `docs/release-v1.2.0.md`
+- `docs/release-v1.2.1.md`
