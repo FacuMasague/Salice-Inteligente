@@ -1,6 +1,7 @@
 import type {
   AiCommercialExplanation,
   AiExecutiveBrief,
+  AiOperationalBrief,
   AiReportNarrative,
   AiSellerSummary,
   AiStoredArtifact,
@@ -167,4 +168,14 @@ export function getSellerSummaries(snapshotAt: string) {
     }));
     return [...bySeller.values()].sort((left, right) => left.entityId.localeCompare(right.entityId, 'es'));
   });
+}
+
+export function getOperationalBrief(
+  functionKey: 'commercial_daily_brief' | 'product_demand_brief',
+  snapshotAt: string,
+) {
+  return withStore((store) => store.listArtifacts<AiOperationalBrief>({
+    functionKey,
+    snapshotAt,
+  })[0] ?? null);
 }

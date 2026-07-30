@@ -9,6 +9,7 @@ import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import { resolveSptFetchFrom } from '../server/gesi/capture-window.js';
 import { GesiClient } from '../server/gesi/client.js';
+import { normalizeInventoryRows } from '../server/gesi/inventory-capture.js';
 import { priceProductIdBatches } from '../server/gesi/price-query.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 
@@ -105,19 +106,6 @@ const documentIdentity = (row: GesiRow) => [
   Number(row.numero),
 ].join(':');
 const optionalEndpointWarnings: string[] = [];
-
-function uniqueInventoryRows(rows: GesiRow[]) {
-  const byProduct = new Map<string, GesiRow>();
-  let duplicateRows = 0;
-  let invalidRows = 0;
-  for (const row of rows) {
-    const id = String(row.productoID ?? '').trim();
-    if (!id) { invalidRows += 1; continue; }
-    if (byProduct.has(id)) duplicateRows += 1;
-    else byProduct.set(id, row);
-  }
-  return { rows: [...byProduct.values()], duplicateRows, invalidRows };
-}
 
 const chunks = <T>(items: T[], size: number) => {
   const result: T[][] = [];
@@ -284,9 +272,14 @@ const productGroups = await tracked('Grupos de producto', client.getAll<GesiRow>
 const clientTypes = await tracked('Tipos de cliente', safeMaster('/api/Maestros/TiposDeCliente/GetList', 'tiposDeCliente', 'Tipos de cliente no disponibles'));
 const zones = await tracked('Zonas', safeMaster('/api/Maestros/Zonas/GetList', 'zonas', 'Zonas no disponibles'));
 
-const inventory = uniqueInventoryRows(stocks);
+const inventory = normalizeInventoryRows(stocks, {
+  empresaID,
+  sucursalID,
+  almacenID: almacenPrincipalID,
+});
 if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y depósito; se conservó una por producto.`);
 if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.invalidRows} fila(s) sin productoID; se excluyeron del universo de productos y quedaron contabilizadas.`);
+if (inventory.repairedScopeRows) optionalEndpointWarnings.push(`Existencias: ${inventory.repairedScopeRows} fila(s) sin alcance específico o con el marcador global 65535 y stock cero se asociaron al alcance solicitado explícitamente al endpoint (empresa 3, sucursal 3, depósito 2).`);
 const normalizedStocks = inventory.rows;
 
 await client.login();
@@ -407,6 +400,7 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   inventoryIncludesZeroStock: true,
   inventoryDuplicateRows: inventory.duplicateRows,
   inventoryInvalidRows: inventory.invalidRows,
+  inventoryScopeRepairedRows: inventory.repairedScopeRows,
   historyFrom,
   salesHistoryFrom: sptCoverageFrom,
   sptFetchFrom: salesHistoryFrom,

@@ -4,6 +4,7 @@ import type {
   AiCommercialExplanation,
   AiExecutiveBrief,
   AiFunctionDefinition,
+  AiOperationalBrief,
   AiReportNarrative,
   AiSellerSummary,
 } from '../shared/ai.js';
@@ -24,6 +25,7 @@ import { canonicalJson, sha256 } from './ai-evidence.js';
 import {
   COMMERCIAL_EXPLANATION_SCHEMA,
   EXECUTIVE_BRIEF_SCHEMA,
+  OPERATIONAL_BRIEF_SCHEMA,
   PRODUCT_VECTOR_SCHEMA,
   REPORT_NARRATIVE_SCHEMA,
   SELLER_SUMMARY_SCHEMA,
@@ -40,6 +42,7 @@ import {
   listReceivableCases,
 } from './operational-store.js';
 import { buildPendingBalancesReport } from './pending-balances-report.js';
+import { buildProductDemandAnalysis } from './product-demand-analysis.js';
 import { buildSptReport } from './spt-report.js';
 
 export type AiReportId =
@@ -658,6 +661,99 @@ Conservá toda señal determinística fuerte. Cada dimensión positiva debe tene
 Si la evidencia es insuficiente, usá valores conservadores y explicalo en warnings.
 Las combinaciones de especie, etapa o porte sólo se declaran cuando la entrada las expresa explícitamente.`;
 
+const COMMERCIAL_DAILY_BRIEF_PROMPT = `Redactá una lectura breve de la bandeja comercial usando sólo los agregados recibidos.
+No identifiques clientes ni vendedores, no inventes causas y no conviertas señales en tareas o visitas planificadas.
+Riesgo de cobranza, oportunidad comercial y prioridad de revisión son señales distintas.
+Citá evidenceIds exactos en cada hallazgo y aspecto a revisar. No devuelvas elementos sin respaldo.
+No calcules porcentajes nuevos: usá solamente los porcentajes explícitos recibidos en la evidencia.
+Los porcentajes llevan exactamente dos decimales y los valores absolutos se presentan como enteros con separador de miles.`;
+
+const PRODUCT_DEMAND_BRIEF_PROMPT = `Interpretá la demanda y rotación de productos usando sólo la evidencia determinística recibida.
+No pronostiques, no recomiendes compras ni confundas unidades, kilos estimados, venta en pesos o compradores.
+Una aceleración o caída compara ventanas equivalentes y no demuestra una tendencia futura.
+Mencioná la cobertura parcial cuando corresponda. Citá evidenceIds exactos en cada hallazgo y aspecto a revisar.
+Los porcentajes llevan exactamente dos decimales y los valores absolutos se presentan como enteros con separador de miles.`;
+
+function commercialDailyBriefEvidence(data: DashboardData, snapshotAt: string) {
+  const { inbox } = inboxEvidence(data, snapshotAt);
+  const percentage = (value: number, total: number) => total > 0
+    ? Math.round(value / total * 10_000) / 100
+    : null;
+  const clients = inbox.stats.clients;
+  const systemSignals = inbox.stats.systemSignals;
+  const metrics = [
+    { id: 'commercial-daily:clients', label: 'Clientes para revisar', value: clients },
+    { id: 'commercial-daily:system-signals', label: 'Señales del sistema', value: systemSignals },
+    { id: 'commercial-daily:due-items', label: 'Compromisos y recordatorios', value: inbox.stats.dueItems },
+    { id: 'commercial-daily:notes', label: 'Notas de la semana', value: inbox.stats.notes },
+    ...[
+      { id: 'commercial-daily:sales-blocked', label: 'Clientes con bloqueo de ventas', value: inbox.entries.filter((entry) => entry.salesBlocked).length },
+      { id: 'commercial-daily:high-collection', label: 'Clientes con riesgo de cobranza desde 70', value: inbox.entries.filter((entry) => entry.collectionRisk >= 70).length },
+      { id: 'commercial-daily:high-priority', label: 'Clientes con prioridad de revisión desde 70', value: inbox.entries.filter((entry) => entry.visitPriority >= 70).length },
+      { id: 'commercial-daily:high-opportunity', label: 'Clientes elegibles con oportunidad desde 70', value: inbox.entries.filter((entry) => !entry.salesBlocked && entry.sales90d > 0 && entry.commercialOpportunity >= 70).length },
+    ].map((item) => ({ ...item, percentOfClients: percentage(item.value, clients) })),
+  ];
+  const signalCounts = Object.entries(inbox.entries.flatMap((entry) => entry.signals).reduce<Record<string, number>>((counts, signal) => {
+    counts[signal.kind] = (counts[signal.kind] ?? 0) + 1;
+    return counts;
+  }, {})).map(([kind, value]) => ({
+    id: `commercial-daily:signal:${kind}`,
+    kind,
+    value,
+    percentOfSystemSignals: percentage(value, systemSignals),
+  }));
+  return {
+    period: { from: inbox.weekStart, through: inbox.weekEnd },
+    metrics,
+    signalCounts,
+    rules: [
+      'La bandeja orienta la revisión; no planifica visitas.',
+      'Las notas se incluyen sólo como cantidad, sin interpretar su contenido.',
+    ],
+  };
+}
+
+function productDemandBriefEvidence(data: DashboardData) {
+  const demand = buildProductDemandAnalysis(data.products, {
+    window: 90,
+    dimension: 'product',
+    availability: 'all',
+  });
+  if (!demand) return null;
+  const summary = [
+    { id: 'product-demand:units', label: 'Unidades actuales', value: demand.summary.current.units },
+    { id: 'product-demand:kilos', label: 'Kilos estimados actuales', value: demand.summary.current.kilos },
+    { id: 'product-demand:sales', label: 'Venta actual', value: demand.summary.current.sales },
+    { id: 'product-demand:buyers', label: 'Compradores únicos actuales', value: demand.summary.current.buyers },
+    { id: 'product-demand:variation', label: 'Variación de unidades', value: demand.summary.variationPercent },
+    { id: 'product-demand:kilo-variation', label: 'Variación de kilos estimados', value: demand.summary.kiloVariationPercent },
+    { id: 'product-demand:accelerating', label: 'Productos en aceleración', value: demand.summary.accelerating },
+    { id: 'product-demand:declining', label: 'Productos en caída', value: demand.summary.declining },
+    { id: 'product-demand:without-kilos', label: 'Productos vendidos sin conversión a kilos', value: demand.summary.productsWithoutKilos },
+  ];
+  const relevantRows = demand.rows
+    .filter((row) => row.trend === 'declining' || row.trend === 'accelerating' || row.trend === 'new_observed')
+    .slice(0, 12)
+    .map((row) => ({
+      id: `product-demand:row:${row.id}`,
+      product: row.label,
+      trend: row.trend,
+      units: row.current.units,
+      kilos: row.kiloDataStatus === 'unavailable' ? null : row.current.kilos,
+      buyers: row.current.buyers,
+      variationPercent: row.variationPercent,
+      stability: row.stability,
+    }));
+  return {
+    period: demand.currentRange,
+    comparison: demand.previousRange,
+    historyStatus: demand.historyStatus,
+    summary,
+    relevantRows,
+    methodology: demand.rules,
+  };
+}
+
 export function createAiFunctionDefinitions(input: {
   store: AiStore;
   snapshotAt: string;
@@ -665,10 +761,10 @@ export function createAiFunctionDefinitions(input: {
   return [
     {
       key: 'product_vectorization',
-      model: 'gpt-5.6-luna',
-      effort: 'high',
+      model: 'gpt-5.6-terra',
+      effort: 'medium',
       prompt: PRODUCT_PROMPT,
-      promptVersion: 1,
+      promptVersion: 2,
       schemaVersion: 1,
       schemaName: 'salice_product_vector_v1',
       schema: PRODUCT_VECTOR_SCHEMA as unknown as Record<string, unknown>,
@@ -705,9 +801,9 @@ export function createAiFunctionDefinitions(input: {
     {
       key: 'report_narrative',
       model: 'gpt-5.6-terra',
-      effort: 'medium',
+      effort: 'low',
       prompt: REPORT_PROMPT,
-      promptVersion: 3,
+      promptVersion: 4,
       schemaVersion: 2,
       schemaName: 'salice_report_narrative_v2',
       schema: REPORT_NARRATIVE_SCHEMA as unknown as Record<string, unknown>,
@@ -727,10 +823,10 @@ export function createAiFunctionDefinitions(input: {
     },
     {
       key: 'executive_summary',
-      model: 'gpt-5.6-terra',
-      effort: 'medium',
+      model: 'gpt-5.6-sol',
+      effort: 'low',
       prompt: EXECUTIVE_PROMPT,
-      promptVersion: 3,
+      promptVersion: 4,
       schemaVersion: 2,
       schemaName: 'salice_executive_brief_v1',
       schema: EXECUTIVE_BRIEF_SCHEMA as unknown as Record<string, unknown>,
@@ -763,7 +859,7 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-luna',
       effort: 'low',
       prompt: COMMERCIAL_PROMPT,
-      promptVersion: 4,
+      promptVersion: 5,
       schemaVersion: 3,
       schemaName: 'salice_commercial_explanations_v2',
       schema: COMMERCIAL_EXPLANATION_SCHEMA as unknown as Record<string, unknown>,
@@ -822,7 +918,7 @@ export function createAiFunctionDefinitions(input: {
       model: 'gpt-5.6-luna',
       effort: 'low',
       prompt: SELLER_PROMPT,
-      promptVersion: 5,
+      promptVersion: 6,
       schemaVersion: 2,
       schemaName: 'salice_seller_summaries_v1',
       schema: SELLER_SUMMARY_SCHEMA as unknown as Record<string, unknown>,
@@ -844,6 +940,57 @@ export function createAiFunctionDefinitions(input: {
         }
         return validateReferences(output as { items: AiSellerSummary[] }, job.evidenceRefs);
       },
+    },
+    {
+      key: 'commercial_daily_brief',
+      model: 'gpt-5.6-terra',
+      effort: 'low',
+      prompt: COMMERCIAL_DAILY_BRIEF_PROMPT,
+      promptVersion: 2,
+      schemaVersion: 1,
+      schemaName: 'salice_commercial_daily_brief_v1',
+      schema: OPERATIONAL_BRIEF_SCHEMA as unknown as Record<string, unknown>,
+      maxOutputTokens: 1_200,
+      buildJobs: (snapshot) => {
+        const evidence = commercialDailyBriefEvidence(snapshot as DashboardData, input.snapshotAt);
+        const evidenceRefs = [
+          ...evidence.metrics.map((item) => item.id),
+          ...evidence.signalCounts.map((item) => item.id),
+        ];
+        return [{
+          entityType: 'commercial_daily',
+          entityId: `${evidence.period.from}:${evidence.period.through}`,
+          evidence,
+          evidenceRefs,
+        }];
+      },
+      validateOutput: (output, job) => validateReferences(output as AiOperationalBrief, job.evidenceRefs),
+    },
+    {
+      key: 'product_demand_brief',
+      model: 'gpt-5.6-terra',
+      effort: 'low',
+      prompt: PRODUCT_DEMAND_BRIEF_PROMPT,
+      promptVersion: 1,
+      schemaVersion: 1,
+      schemaName: 'salice_product_demand_brief_v1',
+      schema: OPERATIONAL_BRIEF_SCHEMA as unknown as Record<string, unknown>,
+      maxOutputTokens: 1_200,
+      buildJobs: (snapshot) => {
+        const evidence = productDemandBriefEvidence(snapshot as DashboardData);
+        if (!evidence) return [];
+        const evidenceRefs = [
+          ...evidence.summary.map((item) => item.id),
+          ...evidence.relevantRows.map((item) => item.id),
+        ];
+        return [{
+          entityType: 'product_demand',
+          entityId: '90-days',
+          evidence,
+          evidenceRefs,
+        }];
+      },
+      validateOutput: (output, job) => validateReferences(output as AiOperationalBrief, job.evidenceRefs),
     },
   ];
 }

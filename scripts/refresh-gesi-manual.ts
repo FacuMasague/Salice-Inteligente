@@ -26,6 +26,7 @@ const workspace = process.cwd();
 const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
 const rawCapturePath = resolve(workspace, 'data/raw/gesi-salice-latest.json');
 const resumeRequested = process.argv.includes('--resume');
+const reuseCatalogRequested = process.argv.includes('--reuse-catalog');
 
 await prepareAiSchema();
 
@@ -89,6 +90,7 @@ async function execute(stage: (typeof MANUAL_REFRESH_STAGES)[number]) {
       `--max-old-space-size=${heapMb}`,
       tsxCli,
       resolve(workspace, stage.script),
+      ...(stage.id === 'capture' && reuseCatalogRequested ? ['--reuse-catalog'] : []),
     ], {
       cwd: workspace,
       env: candidateEnvironment,

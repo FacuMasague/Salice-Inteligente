@@ -123,6 +123,19 @@ export const SELLER_SUMMARY_SCHEMA = {
   required: ['items'],
 } as const;
 
+export const OPERATIONAL_BRIEF_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    title: text(140),
+    summary: text(560),
+    highlights: { type: 'array', items: statement, minItems: 1, maxItems: 5 },
+    reviewItems: { type: 'array', items: statement, minItems: 1, maxItems: 5 },
+    limitations: { type: 'array', items: text(360), minItems: 1, maxItems: 5 },
+  },
+  required: ['title', 'summary', 'highlights', 'reviewItems', 'limitations'],
+} as const;
+
 export const PRODUCT_VECTOR_SCHEMA = {
   type: 'object',
   additionalProperties: false,

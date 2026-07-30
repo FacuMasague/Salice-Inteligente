@@ -57,6 +57,8 @@ services:
         value: "1024"
       - key: SALICE_AI_MAX_COST_USD_PER_RUN
         value: "1"
+      - key: SALICE_AI_DAILY_BUDGET_USD
+        value: "1"
       - key: SALICE_AI_MONTHLY_BUDGET_USD
         value: "30"
       - key: SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT

@@ -300,6 +300,7 @@ require(
 require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
 if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);
+if ((capture.captureMeta.inventoryScopeRepairedRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryScopeRepairedRows} fila(s) de existencias sin alcance específico o con marcador global 65535 y stock cero se asociaron a empresa 3, sucursal 3 y depósito 2 solicitados al endpoint.`);
 if (capture.products.some((row) => !text(row.unidad1))) qualityWarnings.push(`${capture.products.filter((row) => !text(row.unidad1)).length} maestro(s) no informan unidad primaria.`);
 if (capture.products.some((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0)) qualityWarnings.push(`${capture.products.filter((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0).length} maestro(s) informan U2 sin una relación positiva U2/U1.`);
 

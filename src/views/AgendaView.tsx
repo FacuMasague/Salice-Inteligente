@@ -27,12 +27,13 @@ import type {
   Product,
   Recommendation,
 } from '../../shared/models';
+import type { AiOperationalBrief, AiStoredArtifact } from '../../shared/ai';
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import { matchesMultiFilter, multiFilterLabel } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
-import { AiCommercialExplanationCard } from '../components/AiInsights';
+import { AiCommercialExplanationCard, AiOperationalBriefCard } from '../components/AiInsights';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { compactDate, longDate, money, shortDate } from '../lib/format';
 
@@ -134,6 +135,7 @@ export function AgendaView({
   const [opportunity, setOpportunity] = useState('all');
   const [query, setQuery] = useState('');
   const [data, setData] = useState<CommercialInboxPayload | null>(null);
+  const [dailyBrief, setDailyBrief] = useState<AiStoredArtifact<AiOperationalBrief> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -163,6 +165,17 @@ export function AgendaView({
       });
     return () => controller.abort();
   }, [date, seller, refreshToken]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/ai/commercial-daily-brief', { cache: 'no-store', signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => setDailyBrief(payload?.artifact ?? null))
+      .catch((cause) => {
+        if (!(cause instanceof DOMException && cause.name === 'AbortError')) setDailyBrief(null);
+      });
+    return () => controller.abort();
+  }, [refreshToken]);
 
   const reload = () => setRefreshToken((value) => value + 1);
   const normalizedQuery = query.trim().toLocaleLowerCase('es');
@@ -217,6 +230,11 @@ export function AgendaView({
       </section>
 
       <SavedViewsBar viewKey="agenda" filters={savedFilters} onApply={applySaved} />
+
+      <AiOperationalBriefCard
+        artifact={dailyBrief?.entityId === `${data?.weekStart}:${data?.weekEnd}` ? dailyBrief : null}
+        eyebrow="Lectura comercial de la semana"
+      />
 
       <div className="agenda-kpis" data-tour="agenda-kpis">
         <article><span className="agenda-kpi-icon green"><UserRound size={19} /></span><div><span>Clientes visibles</span><strong>{data ? visibleEntries.length : '—'}</strong><small>sobre {data?.stats.clients ?? '—'} de la semana</small></div></article>

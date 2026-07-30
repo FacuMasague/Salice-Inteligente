@@ -71,6 +71,34 @@ describe('GesiClient.request', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('reintenta un HTTP 500 transitorio de precios y conserva la respuesta recuperada', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'token-ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        precios: [{ productoID: 'producto-1', precio: 100 }],
+        paginacion: { totalPaginas: 1, totalElementos: 1 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GesiClient(credentials);
+    await client.login();
+    const prices = await client.getAll<{ productoID: string; precio: number }>(
+      '/api/Maestros/Productos/GetPrecios?codigos=producto-1',
+      'precios',
+      40,
+    );
+
+    expect(prices).toEqual([{ productoID: 'producto-1', precio: 100 }]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('informa el número real de intentos cuando la respuesta no es reintentable', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'token-ok' }), {

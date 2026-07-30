@@ -1,7 +1,7 @@
 {
   "name": "salice-inteligente",
   "private": true,
-  "version": "1.2.3",
+  "version": "1.3.0",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24.14.0 <25"
@@ -39,7 +39,7 @@
     "audit:spt-gesi": "tsx scripts/audit-spt-gesi.ts",
     "reconcile:spt": "tsx scripts/reconcile-spt-sources.ts",
     "import:spt-pbix": "python3 scripts/import-spt-pbix.py",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers 2 --testTimeout 30000",
     "test:reconciliation": "vitest run server/historical-report-reconciliation.test.ts"
   },
   "dependencies": {

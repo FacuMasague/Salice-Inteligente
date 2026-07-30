@@ -22,6 +22,15 @@ export const TERRA_PRICING: AiPricing = {
   outputPerMillion: 15,
 };
 
+export const SOL_PRICING: AiPricing = {
+  version: 'gpt-5.6-sol-2026-07-30',
+  currency: 'USD',
+  inputPerMillion: 5,
+  cachedInputPerMillion: 0.5,
+  cacheWritePerMillion: 6.25,
+  outputPerMillion: 30,
+};
+
 export const LUNA_PRICING: AiPricing = {
   version: 'gpt-5.6-luna-2026-07-29',
   currency: 'USD',
@@ -32,7 +41,10 @@ export const LUNA_PRICING: AiPricing = {
 };
 
 export function pricingForModel(model: string) {
-  return model === 'gpt-5.6-luna' ? LUNA_PRICING : TERRA_PRICING;
+  if (model === 'gpt-5.6-sol') return SOL_PRICING;
+  if (model === 'gpt-5.6-terra') return TERRA_PRICING;
+  if (model === 'gpt-5.6-luna') return LUNA_PRICING;
+  throw new Error(`No hay una tarifa de IA registrada para el modelo ${model}.`);
 }
 
 export function aiLimits(environment: NodeJS.ProcessEnv = process.env): AiLimits {
@@ -43,13 +55,14 @@ export function aiLimits(environment: NodeJS.ProcessEnv = process.env): AiLimits
     maxEstimatedInputTokensPerRun: positiveInteger(environment.SALICE_AI_MAX_INPUT_TOKENS_PER_RUN, 120_000, 1_000, 5_000_000),
     maxOutputTokensPerRequest: positiveInteger(environment.SALICE_AI_MAX_OUTPUT_TOKENS_PER_REQUEST, 2_500, 64, 32_000),
     maxEstimatedCostUsdPerRun: positiveNumber(environment.SALICE_AI_MAX_COST_USD_PER_RUN, 1, 0.01, 1_000),
+    maxEstimatedCostUsdPerDay: positiveNumber(environment.SALICE_AI_DAILY_BUDGET_USD, 1, 0.01, 1_000),
     maxAttempts: positiveInteger(environment.SALICE_AI_MAX_ATTEMPTS, 2, 1, 2) as 1 | 2,
   };
 }
 
 export function aiBudget(environment: NodeJS.ProcessEnv = process.env) {
   return {
-    recommendedPerRunUsd: 1,
+    dailyLimitUsd: positiveNumber(environment.SALICE_AI_DAILY_BUDGET_USD, 1, 0.01, 1_000),
     monthlyLimitUsd: positiveNumber(environment.SALICE_AI_MONTHLY_BUDGET_USD, 30, 1, 100_000),
     warningPercent: positiveInteger(environment.SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT, 80, 1, 100),
   };

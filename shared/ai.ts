@@ -13,6 +13,8 @@ export type AiFunctionKey =
   | 'executive_summary'
   | 'commercial_inbox_explanation'
   | 'seller_summary'
+  | 'commercial_daily_brief'
+  | 'product_demand_brief'
   | 'report_coherence';
 
 export interface AiUsage {
@@ -91,6 +93,7 @@ export interface AiLimits {
   maxEstimatedInputTokensPerRun: number;
   maxOutputTokensPerRequest: number;
   maxEstimatedCostUsdPerRun: number;
+  maxEstimatedCostUsdPerDay: number;
   maxAttempts: 1 | 2;
 }
 
@@ -138,6 +141,14 @@ export interface AiSellerSummary {
   seller: string;
   summary: string;
   portfolioSignals: AiEvidenceStatement[];
+  reviewItems: AiEvidenceStatement[];
+  limitations: string[];
+}
+
+export interface AiOperationalBrief {
+  title: string;
+  summary: string;
+  highlights: AiEvidenceStatement[];
   reviewItems: AiEvidenceStatement[];
   limitations: string[];
 }
@@ -211,13 +222,16 @@ export interface AiSystemStatus {
   pricing: AiPricing;
   pricingByModel: AiPricing[];
   usage: {
+    currentDay: AiUsagePeriodSummary;
     currentMonth: AiUsagePeriodSummary;
     allTime: AiUsagePeriodSummary;
     functions: AiFunctionUsageSummary[];
     recentRuns: AiRunSummary[];
   };
   budget: {
-    recommendedPerRunUsd: number;
+    dailyLimitUsd: number;
+    spentTodayUsd: number;
+    remainingTodayUsd: number;
     monthlyLimitUsd: number;
     warningPercent: number;
     spentUsd: number;
