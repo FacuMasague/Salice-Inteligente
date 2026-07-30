@@ -1,4 +1,5 @@
 import { REPORT_UNIVERSES } from '../shared/metrics.js';
+import { EXCLUDED_SALICE_CLIENT_NAMES, SALICE_COMPANY_ID } from '../shared/salice-data-scope.js';
 import type { SqlValue } from './report-metrics.js';
 
 export interface ExecutableMovementUniverse {
@@ -16,8 +17,8 @@ export interface ExecutableMovementUniverse {
 }
 
 export const EXECUTABLE_UNIVERSES = {
-  spt: { id: 'spt-main', companies: [3, 6], branches: [3, 6], allowedIssuers: [], excludedCategories: ['POP', 'Promociones'] },
-  commercialSales: { id: 'commercial-sales', companies: [3], branches: [3, 6], allowedIssuers: ['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.'], excludedClients: ['Via Salice MDP S.A.', 'Consumidor Final', 'GBA M6 S.A.'] },
+  spt: { id: 'spt-main', companies: [SALICE_COMPANY_ID], branches: [3, 6], allowedIssuers: [], excludedClients: [...EXCLUDED_SALICE_CLIENT_NAMES], excludedCategories: ['POP', 'Promociones'] },
+  commercialSales: { id: 'commercial-sales', companies: [SALICE_COMPANY_ID], branches: [3, 6], allowedIssuers: ['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.'], excludedClients: [...EXCLUDED_SALICE_CLIENT_NAMES, 'Consumidor Final', 'GBA M6 S.A.'] },
   mars: { id: 'mars', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Pet Nutrition'], excludedClients: ['Via Salice MDP S.A.'] },
   nutripet: { id: 'nutripet', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Nutri Pet'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },
   baires: { id: 'baires', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Baires SPT', 'Baires Masivo'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },

@@ -10,6 +10,13 @@ import {
   isExcludedReceivableClient,
   isReceivableSeller,
 } from '../shared/receivables-policy.js';
+import {
+  SALICE_COMPANY_ID,
+  SALICE_PRIMARY_BRANCH_ID,
+  hasExplicitForeignCompanyScope,
+  isExcludedSaliceClient,
+  isSaliceCompany,
+} from '../shared/salice-data-scope.js';
 
 export const PENDING_BALANCE_SELLERS = [...RECEIVABLE_SELLERS];
 
@@ -45,7 +52,10 @@ export function buildPendingBalancesDatabase(
   capture: GesiRawCapture,
   targetPath = resolve(process.cwd(), 'data/pending-balances.sqlite'),
 ) {
-  if (capture.captureMeta.empresaID !== 3 || capture.captureMeta.sucursalID !== 3) {
+  if (
+    capture.captureMeta.empresaID !== SALICE_COMPANY_ID
+    || capture.captureMeta.sucursalID !== SALICE_PRIMARY_BRANCH_ID
+  ) {
     throw new Error('Saldos Pendientes sólo admite la captura Salice empresa 3 / sucursal 3.');
   }
   const asOfDate = date(capture.captureMeta.capturedAt);
@@ -63,10 +73,16 @@ export function buildPendingBalancesDatabase(
   }>();
 
   for (const row of capture.clients) {
-    if (isExcludedReceivableClient(row.razonSocial, row.nombreDeFantasia, row.fantasia)) continue;
+    if (
+      isExcludedReceivableClient(row.razonSocial, row.nombreDeFantasia, row.fantasia)
+      || isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
+    ) continue;
     const definitions = Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : [];
-    const definition = definitions.find((item) => numeric(item.empresaID) === 3 && numeric(item.sucursalID) === 3)
-      ?? definitions.find((item) => numeric(item.sucursalID) === 3);
+    if (hasExplicitForeignCompanyScope(definitions)) continue;
+    const definition = definitions.find((item) => (
+      numeric(item.empresaID) === SALICE_COMPANY_ID
+      && numeric(item.sucursalID) === SALICE_PRIMARY_BRANCH_ID
+    ));
     const sellerID = numeric(definition?.vendedorID || row.enEstaSucursal_VendedorID || row.vendedorID);
     const paymentID = numeric(definition?.formaDePagoID || row.enEstaSucursal_FormaDePagoID || row.formaDePagoID);
     clients.set(numeric(row.clienteID), {
@@ -80,7 +96,13 @@ export function buildPendingBalancesDatabase(
   const addSales = (rows: GesiRow[], sign: 1 | -1) => {
     for (const row of deduplicate(rows)) {
       const issuedAt = date(row.fechaDeEmision);
-      if (row.anulado === true || issuedAt < salesFrom || issuedAt > asOfDate) continue;
+      if (
+        row.anulado === true
+        || !isSaliceCompany(row.empresaID)
+        || isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
+        || issuedAt < salesFrom
+        || issuedAt > asOfDate
+      ) continue;
       const clientID = numeric(row.clienteID);
       sales30.set(clientID, (sales30.get(clientID) ?? 0) + sign * numeric(row.importeTotal));
     }
@@ -95,6 +117,13 @@ export function buildPendingBalancesDatabase(
     // GESI, pero no forman parte de esta suma (sí afectan el saldo neto CC).
     if (
       document.anulado === true
+      || !isSaliceCompany(document.empresaID)
+      || isExcludedSaliceClient(
+        document.clienteID,
+        document.razonSocial,
+        document.nombreDeFantasia,
+        document.fantasia,
+      )
       || !['F', 'D'].includes(text(document.subtipo))
       || !isActionableReceivableAmount(document.saldoPendiente)
       || !isReceivableSeller(sellerLabels.get(numeric(document.vendedorID)))
@@ -225,6 +254,7 @@ export function buildPendingBalancesDatabase(
     const meta: Record<string, string> = {
       source_system: 'GESI API · saldos, comprobantes pendientes y ventas Salice',
       captured_at: capture.captureMeta.capturedAt,
+      company_scope: String(SALICE_COMPANY_ID),
       as_of_date: asOfDate,
       sales_from: salesFrom,
       client_count: String(clientCount),

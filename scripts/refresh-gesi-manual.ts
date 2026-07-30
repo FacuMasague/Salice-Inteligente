@@ -78,7 +78,12 @@ const candidateEnvironment: NodeJS.ProcessEnv = {
 async function execute(stage: (typeof MANUAL_REFRESH_STAGES)[number]) {
   const defaultHeapMb = Math.max(384, Number(process.env.SALICE_REFRESH_STAGE_HEAP_MB) || 512);
   const captureHeapMb = Math.max(defaultHeapMb, Number(process.env.SALICE_REFRESH_CAPTURE_HEAP_MB) || 768);
-  const heapMb = stage.id === 'capture' ? captureHeapMb : defaultHeapMb;
+  const activationHeapMb = Math.max(defaultHeapMb, Number(process.env.SALICE_REFRESH_ACTIVATION_HEAP_MB) || 1_024);
+  const heapMb = stage.id === 'capture'
+    ? captureHeapMb
+    : stage.id === 'activation'
+      ? activationHeapMb
+      : defaultHeapMb;
   await new Promise<void>((resolveStage, rejectStage) => {
     const child = spawn(process.execPath, [
       `--max-old-space-size=${heapMb}`,

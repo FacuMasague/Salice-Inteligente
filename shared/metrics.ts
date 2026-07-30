@@ -482,11 +482,11 @@ export const REPORT_UNIVERSES: ReportUniverseDefinition[] = [
   {
     id: 'spt-main',
     label: 'SPT · página principal',
-    companies: [3, 6],
+    companies: [3],
     branches: [3, 6],
     allowedIssuers: [],
     included: ['Vendedores, canales y grupos documentados en PBIX 001'],
-    excluded: ['Rubros POP y Promociones'],
+    excluded: ['Rubros POP y Promociones', 'Via Salice MDP S.A.'],
     sellerRule: 'Lista histórica publicada; la página Vendedores y Trimestre poseen universos propios.',
     dateRule: 'Mes seleccionado y cortes equivalentes por número de día.',
     source: 'Base comercial del paquete activo desde GESI; PBIX sólo para conciliación',

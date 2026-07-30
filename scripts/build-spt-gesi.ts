@@ -7,6 +7,13 @@ import { pick } from 'stream-json/filters/pick.js';
 import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
+import {
+  EXCLUDED_SALICE_CLIENT_NAMES,
+  SALICE_COMPANY_ID,
+  SALICE_PRIMARY_BRANCH_ID,
+  isExcludedSaliceClient,
+  isSaliceCompany,
+} from '../shared/salice-data-scope.js';
 
 const capturePath = resolve(process.env.SALICE_CAPTURE_PATH ?? 'data/raw/gesi-salice-latest.json');
 const targetPath = resolve(process.env.SALICE_SPT_OUTPUT_PATH ?? 'data/spt-gesi.sqlite');
@@ -52,7 +59,10 @@ async function forEachCaptureRow(key: string, handler: (row: GesiRow) => void | 
 
 console.log('Base comercial: leyendo metadatos y maestros en pasadas de memoria acotada…');
 const captureMeta = await readCaptureValue<CaptureMeta>('captureMeta');
-if (captureMeta.empresaID !== 3 || captureMeta.sucursalID !== 3) {
+if (
+  captureMeta.empresaID !== SALICE_COMPANY_ID
+  || captureMeta.sucursalID !== SALICE_PRIMARY_BRANCH_ID
+) {
   throw new Error('El modelo SPT sólo admite la captura Salice empresa 3 / sucursal 3.');
 }
 
@@ -156,8 +166,17 @@ const rejectedBackfillDocuments = captureMeta.optionalEndpointWarnings
 const deleteDocument = database.prepare('DELETE FROM movements WHERE source_document_key = ? AND source_kind = ?');
 
 const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credit_note') => {
+  if (
+    document.anulado === true
+    || !isSaliceCompany(document.empresaID)
+    || isExcludedSaliceClient(
+      document.clienteID,
+      document.razonSocial,
+      document.nombreDeFantasia,
+      document.fantasia,
+    )
+  ) return;
   sourceDocumentCount += 1;
-  if (document.anulado === true || ![3, 6].includes(number(document.empresaID))) return;
   const sourceDocumentKey = documentKey(document);
   const seenKey = `${kind}:${sourceDocumentKey}`;
   if (seenDocuments.has(seenKey)) deleteDocument.run(sourceDocumentKey, kind);
@@ -281,6 +300,8 @@ const metaValues: Record<string, string> = {
   missing_client_documents: String(missingClients),
   skipped_documents_without_detail: String(skippedHeadersWithoutDetail),
   client_type_catalog_source: masters.clientTypes.length ? 'gesi_api' : 'catalog_fallback_2026-07-20',
+  company_scope: String(SALICE_COMPANY_ID),
+  excluded_clients: JSON.stringify(EXCLUDED_SALICE_CLIENT_NAMES),
 };
 database.exec('BEGIN');
 for (const [key, value] of Object.entries(metaValues)) meta.run(key, value);

@@ -278,6 +278,22 @@ require(capture.stocks.length === stockProductIDs.size, 'Las existencias normali
 require([...productIDs].every((id) => stockProductIDs.has(id)), 'Hay maestros sin fila de existencias en la captura completa.');
 require([...stockProductIDs].every((id) => productIDs.has(id)), 'Hay existencias cuyo productoID no existe en el maestro.');
 require(capture.stocks.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3 && number(row.almacenID) === 2), 'Hay filas de existencias fuera de empresa 3 / sucursal 3 / depósito 2.');
+const companyScopedCollections = [
+  ['facturas', capture.invoices],
+  ['notas de crédito', capture.creditNotes],
+  ['facturas SPT', capture.sptInvoices],
+  ['notas de crédito SPT', capture.sptCreditNotes],
+  ['cobranzas', capture.collections],
+  ['documentos pendientes', capture.pendingDocuments],
+  ['fojas', capture.deliverySheets ?? []],
+  ['documentos sin foja', capture.unassignedDeliveryDocuments ?? []],
+] as const;
+for (const [label, rows] of companyScopedCollections) {
+  require(
+    rows.every((row) => number(row.empresaID) === 3),
+    `Hay ${label} fuera de empresa 3.`,
+  );
+}
 require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
 if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);

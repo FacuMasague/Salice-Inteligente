@@ -32,7 +32,7 @@ También fija el inicio del histórico comercial SPT de bootstrap en `2025-01-01
 
 La captura real usada para validar v0.11 pesa aproximadamente 449 MB. El flujo inicial materializaba el archivo completo: la normalización alcanzaba 1,62 GB de memoria residente y la construcción comercial 1,50 GB.
 
-El despliegue Standard usa un flujo de memoria acotada. La captura descarga los recursos de forma secuencial y escribe el JSON progresivamente. La normalización omite el histórico SPT, que no consume, y la base comercial relee el archivo por secciones y vuelca cada comprobante directamente a SQLite. En la medición local de la misma captura, la normalización bajó a 1,15 GB y la construcción comercial a 0,36 GB; esta última pasó de unos 5 segundos a unos 145 segundos. Los procesos hijos tienen límites de heap separados para priorizar estabilidad sobre velocidad.
+El despliegue Standard usa un flujo de memoria acotada. La captura descarga los recursos de forma secuencial y escribe el JSON progresivamente. La normalización omite el histórico SPT, que no consume, y la base comercial relee el archivo por secciones y vuelca cada comprobante directamente a SQLite. En la medición local de la captura del 29 de julio, la normalización necesitó un heap de 1.024 MB; con 512 y 768 MB se agotó antes de escribir el candidato. La construcción comercial conserva el límite general de 512 MB. Los procesos hijos tienen límites separados y se ejecutan de forma secuencial para priorizar estabilidad.
 
 Por eso el Blueprint usa `standard` (2 GB, 1 CPU). Antes de considerar el despliegue cerrado se debe ejecutar una actualización completa en Render y revisar la métrica de memoria de las etapas, especialmente la captura GESI.
 
