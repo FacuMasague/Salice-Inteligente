@@ -17,6 +17,7 @@ import type {
   AiCommercialExplanation,
   AiEvidenceStatement,
   AiExecutiveBrief,
+  AiOperationalBrief,
   AiFeedbackRating,
   AiFeedbackRecord,
   AiFrequentlyAskedQuestion,
@@ -407,6 +408,32 @@ export function AiSellerSummaryCard({
   >
     <div className="ai-insight-columns two">
       <InsightGroup index="01" title="Señales que explican la cartera" tone="positive" items={value.portfolioSignals} />
+      <InsightGroup index="02" title="Para mirar de cerca" tone="review" items={value.reviewItems} />
+    </div>
+    <Limitations values={value.limitations} />
+  </AiInsightShell>;
+}
+
+export function AiOperationalBriefCard({
+  artifact,
+  eyebrow,
+}: {
+  artifact?: AiStoredArtifact<AiOperationalBrief> | null;
+  eyebrow: string;
+}) {
+  if (!artifact) return null;
+  const value = artifact.output;
+  const evidenceCount = countEvidence([value.highlights, value.reviewItems]);
+  return <AiInsightShell
+    artifact={artifact}
+    eyebrow={eyebrow}
+    title={value.title}
+    description={value.summary}
+    evidenceCount={evidenceCount}
+    className="ai-operational-brief"
+  >
+    <div className="ai-insight-columns two">
+      <InsightGroup index="01" title="Señales destacadas" tone="positive" items={value.highlights} />
       <InsightGroup index="02" title="Para mirar de cerca" tone="review" items={value.reviewItems} />
     </div>
     <Limitations values={value.limitations} />

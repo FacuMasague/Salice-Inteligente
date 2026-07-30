@@ -16,6 +16,7 @@ import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number, shortDate } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
+import { shouldAdvanceFromPeriod } from '../lib/sales-explorer-navigation';
 
 type ExplorerTab = 'periods' | 'clients' | 'products' | 'documents';
 type ClientSort = 'name' | 'seller' | 'netAmount' | 'kilos' | 'documents' | 'lastSaleAt';
@@ -131,7 +132,11 @@ export function SalesExplorerView({ clients, navigationRequest, onOpenClient, on
     setFilters({ ...emptyFilters, from: from.toISOString().slice(0, 10) < meta.minDate ? meta.minDate : from.toISOString().slice(0, 10), to: meta.maxDate });
     setPage(1); setTab('periods');
   };
-  const selectPeriod = (from: string, to: string) => { setFilters((current) => ({ ...current, from, to })); setPage(1); setTab('clients'); };
+  const selectPeriod = (from: string, to: string) => {
+    setFilters((current) => ({ ...current, from, to }));
+    setPage(1);
+    if (shouldAdvanceFromPeriod(from, to)) setTab('clients');
+  };
   const drillClient = (clientId: number) => { changeFilter('client', encodeMultiFilter([String(clientId)])); setTab('documents'); };
   const drillProduct = (productId: string) => { changeFilter('product', encodeMultiFilter([productId])); setTab('documents'); };
   const exportUrl = (format: 'csv' | 'xlsx') => `/api/admin/sales/export?${new URLSearchParams({ ...filters, format })}`;
@@ -166,7 +171,7 @@ export function SalesExplorerView({ clients, navigationRequest, onOpenClient, on
     <section className="data-card admin-drill-card">
       <div className="admin-drill-steps"><button className={tab === 'periods' ? 'active' : ''} onClick={() => setTab('periods')}><i>1</i> Período</button><ChevronRight size={14} /><button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}><i>2</i> Cliente</button><span>o</span><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><i>2</i> Producto</button><ChevronRight size={14} /><button className={tab === 'documents' ? 'active' : ''} onClick={() => setTab('documents')}><i>3</i> Comprobante</button></div>
 
-      {tab === 'periods' && <><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Evolución</span><h2>Venta neta por {report.timelineGrain === 'day' ? 'día' : 'mes'}</h2><p>Elegí una barra para limitar el análisis a ese período y continuar hacia clientes o productos.</p></div><span className="count-badge">{report.timeline.length} períodos</span></div><SalesTimeline report={report} onSelect={selectPeriod} /></>}
+      {tab === 'periods' && <><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Evolución</span><h2>Venta neta por {report.timelineGrain === 'day' ? 'día' : 'mes'}</h2><p>{report.timelineGrain === 'day' ? 'Elegí un día para avanzar automáticamente, o pasá a Cliente o Producto cuando quieras.' : 'Elegí una barra para profundizar el período sin abandonar este paso; después podés pasar a Cliente o Producto.'}</p></div><span className="count-badge">{report.timeline.length} períodos</span></div><SalesTimeline report={report} onSelect={selectPeriod} /></>}
 
       {tab === 'clients' && <><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Segundo nivel</span><h2>Clientes que explican el período</h2><p>Hacé clic en una cuenta para filtrar sus comprobantes; el acceso lateral abre su perfil completo.</p></div><span className="count-badge">Top {report.resultLimits.clients}</span></div><div className="admin-table clients"><header><SortButton label="Cliente" direction={clientSort.key === 'name' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'name'))} /><SortButton label="Vendedor" direction={clientSort.key === 'seller' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'seller'))} /><SortButton label="Venta neta" direction={clientSort.key === 'netAmount' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'netAmount'))} /><SortButton label="Kilos" direction={clientSort.key === 'kilos' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'kilos'))} /><SortButton label="Comprobantes" direction={clientSort.key === 'documents' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'documents'))} /><SortButton label="Última venta" direction={clientSort.key === 'lastSaleAt' ? clientSort.direction : null} onClick={() => setClientSort((state) => cycleSort(state, 'lastSaleAt'))} /></header>{sortedClients.map((row: SalesExplorerClientRow) => { const client = clientMap.get(row.clientId); return <article key={row.clientId}><button className="admin-drill-entity" onClick={() => drillClient(row.clientId)}><strong>{client ? clientPrimaryName(client) : row.name}</strong><small>{client && clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}ID {row.clientId} · {row.zone} · {exact(row.share, 1)}%</small></button><button className="entity-link" onClick={() => onOpenClient(row.clientId)}>{row.seller}</button><span>{money(row.netAmount)}</span><span>{exact(row.kilos, 2)}</span><span>{number(row.documents)}</span><span>{shortDate(row.lastSaleAt)}</span></article>; })}</div></>}
 

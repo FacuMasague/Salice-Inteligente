@@ -278,9 +278,29 @@ require(capture.stocks.length === stockProductIDs.size, 'Las existencias normali
 require([...productIDs].every((id) => stockProductIDs.has(id)), 'Hay maestros sin fila de existencias en la captura completa.');
 require([...stockProductIDs].every((id) => productIDs.has(id)), 'Hay existencias cuyo productoID no existe en el maestro.');
 require(capture.stocks.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3 && number(row.almacenID) === 2), 'Hay filas de existencias fuera de empresa 3 / sucursal 3 / depósito 2.');
+const companyScopedCollections = [
+  ['facturas', capture.invoices],
+  ['notas de crédito', capture.creditNotes],
+  ['facturas SPT', capture.sptInvoices],
+  ['notas de crédito SPT', capture.sptCreditNotes],
+  ['cobranzas', capture.collections],
+  ['documentos pendientes', capture.pendingDocuments],
+  ['documentos sin foja', capture.unassignedDeliveryDocuments ?? []],
+] as const;
+for (const [label, rows] of companyScopedCollections) {
+  require(
+    rows.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3),
+    `Hay ${label} fuera de empresa 3 / sucursal 3.`,
+  );
+}
+require(
+  (capture.deliverySheets ?? []).every((row) => number(row.empresaID) === 3),
+  'Hay fojas fuera de empresa 3; GESI no informa sucursalID en este recurso.',
+);
 require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
 if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);
+if ((capture.captureMeta.inventoryScopeRepairedRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryScopeRepairedRows} fila(s) de existencias sin alcance específico o con marcador global 65535 y stock cero se asociaron a empresa 3, sucursal 3 y depósito 2 solicitados al endpoint.`);
 if (capture.products.some((row) => !text(row.unidad1))) qualityWarnings.push(`${capture.products.filter((row) => !text(row.unidad1)).length} maestro(s) no informan unidad primaria.`);
 if (capture.products.some((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0)) qualityWarnings.push(`${capture.products.filter((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0).length} maestro(s) informan U2 sin una relación positiva U2/U1.`);
 

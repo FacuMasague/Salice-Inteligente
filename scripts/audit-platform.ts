@@ -61,6 +61,9 @@ const pendingDatabase = new DatabaseSync(pendingPath, { readOnly: true });
 const sptMeta = metadata(sptDatabase);
 const pendingMeta = metadata(pendingDatabase);
 const movementRows = Number(sptDatabase.prepare('SELECT COUNT(*) AS total FROM movements').get()?.total ?? 0);
+const outOfScopeMovementRows = Number(sptDatabase.prepare(
+  'SELECT COUNT(*) AS total FROM movements WHERE company_id <> 3 OR branch_id <> 3',
+).get()?.total ?? 0);
 const pendingDocuments = Number(pendingDatabase.prepare('SELECT COUNT(*) AS total FROM documents').get()?.total ?? 0);
 sptDatabase.close();
 pendingDatabase.close();
@@ -163,9 +166,21 @@ add('staging-revision', 'Staging y snapshot usan la misma revisión', staging.me
 add('commercial-capture', 'La base comercial corresponde al snapshot activo', sptMeta.get('captured_at') === snapshot.meta.generatedAt, `${sptMeta.get('captured_at') ?? 'sin fecha'} / ${snapshot.meta.generatedAt}`);
 add('commercial-cutoff', 'La base comercial no contiene movimientos posteriores al snapshot', (sptMeta.get('max_date') ?? '') <= snapshotDate, `Máximo ${sptMeta.get('max_date') ?? 'sin fecha'}; snapshot ${snapshotDate}`);
 add('commercial-grain', 'El conteo físico de movimientos coincide con su metadata', movementRows === Number(sptMeta.get('row_count') ?? -1), `${movementRows} filas físicas / ${sptMeta.get('row_count') ?? 'sin metadata'}`);
+add(
+  'commercial-scope',
+  'La base comercial contiene únicamente empresa 3 / sucursal 3',
+  outOfScopeMovementRows === 0 && sptMeta.get('company_scope') === '3' && sptMeta.get('branch_scope') === '3',
+  `${outOfScopeMovementRows} filas fuera de alcance · metadata empresa ${sptMeta.get('company_scope') ?? 'ausente'} / sucursal ${sptMeta.get('branch_scope') ?? 'ausente'}`,
+);
 add('pending-capture', 'Saldos pendientes corresponde al snapshot activo', pendingMeta.get('captured_at') === snapshot.meta.generatedAt, `${pendingMeta.get('captured_at') ?? 'sin fecha'} / ${snapshot.meta.generatedAt}`);
 add('pending-cutoff', 'El corte de saldos coincide con la fecha del snapshot', pendingMeta.get('as_of_date') === snapshotDate, `${pendingMeta.get('as_of_date') ?? 'sin fecha'} / ${snapshotDate}`);
 add('pending-grain', 'El conteo físico de documentos abiertos coincide con su metadata', pendingDocuments === Number(pendingMeta.get('document_count') ?? -1), `${pendingDocuments} documentos físicos / ${pendingMeta.get('document_count') ?? 'sin metadata'}`);
+add(
+  'pending-scope',
+  'La cartera publicada declara empresa 3 / sucursal 3',
+  pendingMeta.get('company_scope') === '3' && pendingMeta.get('branch_scope') === '3',
+  `Metadata empresa ${pendingMeta.get('company_scope') ?? 'ausente'} / sucursal ${pendingMeta.get('branch_scope') ?? 'ausente'}`,
+);
 add('metric-identifiers', 'Los identificadores de métricas son únicos', new Set(metricIds).size === metricIds.length, `${metricIds.length} métricas`);
 add('universe-identifiers', 'Los identificadores de universos son únicos', new Set(universeIds).size === universeIds.length, `${universeIds.length} universos`);
 add('metric-traceability', 'Todas las métricas declaran fuente, fecha, fórmula y consumidores', METRIC_CATALOG.every((metric) => metric.source && metric.dateBasis && metric.formula && metric.consumers.length > 0), 'Contrato central shared/metrics.ts');

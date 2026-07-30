@@ -249,7 +249,7 @@ describeWithReports('paquetes reales compactos de los ocho reportes', () => {
     store.close();
   }, 30_000);
 
-  it('completa las cuatro funciones visibles con proveedor falso y sin red', async () => {
+  it('completa todas las funciones visibles con proveedor falso y sin red', async () => {
     const store = await testStore();
     const snapshot = await loadSnapshot();
     const definitions = createAiFunctionDefinitions({ store, snapshotAt: snapshot.meta.generatedAt });
@@ -320,6 +320,13 @@ describeWithReports('paquetes reales compactos de los ocho reportes', () => {
           limitations: ['No evalúa productividad.'],
         })),
       };
+      if (request.functionKey === 'commercial_daily_brief' || request.functionKey === 'product_demand_brief') return {
+        title: 'Lectura operativa',
+        summary: 'Resumen basado únicamente en agregados determinísticos.',
+        highlights: [{ text: 'Señal destacada.', evidenceIds: [ref] }],
+        reviewItems: [{ text: 'Aspecto para revisar.', evidenceIds: [ref] }],
+        limitations: ['No es una predicción ni una planificación.'],
+      };
       throw new Error(`Función inesperada: ${request.functionKey}`);
     });
     const run = await runAiEnrichment({
@@ -338,7 +345,22 @@ describeWithReports('paquetes reales compactos de los ocho reportes', () => {
       'executive_summary',
       'commercial_inbox_explanation',
       'seller_summary',
+      'commercial_daily_brief',
+      'product_demand_brief',
     ]));
+    const commercialBriefEvidence = provider.calls
+      .find((call) => call.functionKey === 'commercial_daily_brief')!
+      .evidence as {
+        metrics: Array<{ id: string; value: number; percentOfClients?: number | null }>;
+        signalCounts: Array<{ value: number; percentOfSystemSignals: number | null }>;
+      };
+    const clientTotal = commercialBriefEvidence.metrics.find((item) => item.id === 'commercial-daily:clients')!.value;
+    const signalTotal = commercialBriefEvidence.metrics.find((item) => item.id === 'commercial-daily:system-signals')!.value;
+    expect(commercialBriefEvidence.metrics
+      .filter((item) => item.percentOfClients != null)
+      .every((item) => item.percentOfClients === Math.round(item.value / clientTotal * 10_000) / 100)).toBe(true);
+    expect(commercialBriefEvidence.signalCounts
+      .every((item) => item.percentOfSystemSignals === Math.round(item.value / signalTotal * 10_000) / 100)).toBe(true);
     expect(store.listArtifacts({ functionKey: 'report_narrative', snapshotAt: snapshot.meta.generatedAt })).toHaveLength(8);
 
     const callsAfterFirstUpdate = provider.calls.length;
@@ -363,5 +385,5 @@ describeWithReports('paquetes reales compactos de los ocho reportes', () => {
     expect(repeatedRun.reused).toBeGreaterThan(0);
     expect(provider.calls).toHaveLength(callsAfterFirstUpdate);
     store.close();
-  }, 30_000);
+  }, 60_000);
 });

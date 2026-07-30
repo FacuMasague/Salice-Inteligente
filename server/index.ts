@@ -51,6 +51,7 @@ import {
   attachCommercialExplanations,
   getCommercialExplanation,
   getExecutiveBrief,
+  getOperationalBrief,
   getReportNarrative,
   getSellerSummaries,
 } from './ai-artifacts.js';
@@ -868,6 +869,24 @@ app.get('/api/ai/seller-summaries', async (_req, res) => {
   return res.json({
     snapshotAt: data.meta.generatedAt,
     summaries: getSellerSummaries(data.meta.generatedAt),
+  });
+});
+
+app.get('/api/ai/commercial-daily-brief', async (_req, res) => {
+  const data = await loadSnapshot();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    snapshotAt: data.meta.generatedAt,
+    artifact: getOperationalBrief('commercial_daily_brief', data.meta.generatedAt),
+  });
+});
+
+app.get('/api/ai/product-demand-brief', async (_req, res) => {
+  const data = await loadSnapshot();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    snapshotAt: data.meta.generatedAt,
+    artifact: getOperationalBrief('product_demand_brief', data.meta.generatedAt),
   });
 });
 

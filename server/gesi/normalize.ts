@@ -14,6 +14,7 @@ import {
 } from '../../shared/models.js';
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 import { applyClientLocationQuality } from '../../shared/client-location.js';
+import { isCommercialSellerIncluded } from '../../shared/commercial-seller-scope.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
 import { referenceUnitPricePerKg } from '../../shared/product-prices.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
@@ -22,6 +23,13 @@ import {
   isExcludedReceivableClient,
   isReceivableSeller,
 } from '../../shared/receivables-policy.js';
+import {
+  SALICE_COMPANY_ID,
+  SALICE_PRIMARY_BRANCH_ID,
+  hasExplicitForeignDataScope,
+  isExcludedSaliceClient,
+  isSaliceDataScope,
+} from '../../shared/salice-data-scope.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
 
 const number = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -143,20 +151,56 @@ const recentMonthKeys = (snapshotDate: string) => {
 };
 
 export function normalizeCapture(capture: GesiRawCapture): DashboardData {
+  if (
+    capture.captureMeta.empresaID !== SALICE_COMPANY_ID
+    || capture.captureMeta.sucursalID !== SALICE_PRIMARY_BRANCH_ID
+  ) {
+    throw new Error('El snapshot operativo sólo admite Salice empresa 3 / sucursal 3.');
+  }
   const snapshotDate = date(capture.captureMeta.capturedAt);
   const current90From = addDays(snapshotDate, -90);
   const previous90From = addDays(snapshotDate, -180);
   const monthKeys = recentMonthKeys(snapshotDate);
 
-  const invoices = deduplicateDocuments(capture.invoices).filter((row) => row.anulado !== true);
-  const collections = deduplicateDocuments(capture.collections).filter((row) => row.anulado !== true);
-  const pendingDocuments = deduplicateDocuments(capture.pendingDocuments);
+  const sellerLabels = makeLabelMap(capture.masters.sellers, 'vendedorID', ['fantasia', 'razonSocial']);
+  const branchDefinitions = new Map<number, GesiRow>();
+  for (const clientRow of capture.clients) {
+    const definitions = Array.isArray(clientRow.lstDefinicionClienteSucursal)
+      ? clientRow.lstDefinicionClienteSucursal as GesiRow[]
+      : [];
+    const definition = definitions.find((row) => (
+      number(row.empresaID) === SALICE_COMPANY_ID
+      && number(row.sucursalID) === SALICE_PRIMARY_BRANCH_ID
+    ));
+    if (definition) branchDefinitions.set(number(clientRow.clienteID), definition);
+  }
+  const sellerForClient = (clientRow: GesiRow | undefined) => {
+    if (!clientRow) return 'Sin vendedor';
+    const clientID = number(clientRow.clienteID);
+    const definition = branchDefinitions.get(clientID);
+    const sellerID = number(definition?.vendedorID || clientRow.enEstaSucursal_VendedorID || clientRow.vendedorID);
+    return sellerLabels.get(sellerID) || (sellerID ? `Vendedor ${sellerID}` : 'Sin vendedor');
+  };
+  const includedClientIDs = new Set(capture.clients
+    .filter((client) => isCommercialSellerIncluded(sellerForClient(client)))
+    .map((client) => number(client.clienteID)));
+
+  const belongsToOperationalScope = (row: GesiRow) => (
+    isSaliceDataScope(row.empresaID, row.sucursalID)
+    && includedClientIDs.has(number(row.clienteID))
+    && !isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
+  );
+  const invoices = deduplicateDocuments(capture.invoices)
+    .filter((row) => row.anulado !== true && belongsToOperationalScope(row));
+  const collections = deduplicateDocuments(capture.collections)
+    .filter((row) => row.anulado !== true && belongsToOperationalScope(row));
+  const pendingDocuments = deduplicateDocuments(capture.pendingDocuments)
+    .filter(belongsToOperationalScope);
   const current90Invoices = invoices.filter((row) => date(row.fechaDeEmision) >= current90From);
   const previous90Invoices = invoices.filter((row) => date(row.fechaDeEmision) >= previous90From && date(row.fechaDeEmision) < current90From);
 
   const channelLabels = makeLabelMap(capture.masters.channels, 'canalDeVentaID', ['descripcion']);
   const paymentMethodLabels = makeLabelMap(capture.masters.paymentMethods, 'formaDePagoID', ['descripcion']);
-  const sellerLabels = makeLabelMap(capture.masters.sellers, 'vendedorID', ['fantasia', 'razonSocial']);
   const zoneLabels = makeLabelMap(capture.masters.zones, 'zonaID', ['descripcion']);
   const typeLabels = makeLabelMap(capture.masters.clientTypes, 'tipoDeClienteID', ['descripcion']);
   const rubroLabels = makeLabelMap(capture.masters.rubros, 'rubroID', ['descripcion']);
@@ -170,16 +214,6 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const productGroupLabels = makeLabelMap(capture.masters.productGroups, 'grupoArtID', ['descripcion']);
 
   const balances = new Map(capture.balances.map((row) => [number(row.clienteID), number(row.saldoCliente)]));
-  const branchDefinitions = new Map<number, GesiRow>();
-  for (const clientRow of capture.clients) {
-    const definitions = Array.isArray(clientRow.lstDefinicionClienteSucursal)
-      ? clientRow.lstDefinicionClienteSucursal as GesiRow[]
-      : [];
-    const definition = definitions.find((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3)
-      ?? definitions.find((row) => number(row.sucursalID) === 3);
-    if (definition) branchDefinitions.set(number(clientRow.clienteID), definition);
-  }
-
   const invoicesByClient = new Map<number, GesiRow[]>();
   for (const invoice of invoices) {
     const id = number(invoice.clienteID);
@@ -401,6 +435,19 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   })));
 
   const rawClients: Client[] = capture.clients
+    .filter((row) => {
+      const definitions = Array.isArray(row.lstDefinicionClienteSucursal)
+        ? row.lstDefinicionClienteSucursal as GesiRow[]
+        : [];
+      return !hasExplicitForeignDataScope(definitions)
+        && includedClientIDs.has(number(row.clienteID))
+        && !isExcludedSaliceClient(
+          row.clienteID,
+          row.razonSocial,
+          row.nombreDeFantasia,
+          row.fantasia,
+        );
+    })
     .map((row) => {
       const id = number(row.clienteID);
       const gesiStateId = number(row.estadoID);
@@ -573,7 +620,9 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
 
   const invoiceIDs = new Set(invoices.map(documentIdentity));
   const assignmentByInvoice = new Map<string, DeliverySheetReference>();
-  const logisticsSheets: DeliverySheet[] = (capture.deliverySheets ?? []).map((row) => {
+  const logisticsSheets: DeliverySheet[] = (capture.deliverySheets ?? [])
+    .filter((row) => Number(row.empresaID) === SALICE_COMPANY_ID)
+    .map((row) => {
     const status = deliverySheetStatus(row);
     const reference: DeliverySheetReference = {
       id: number(row.fojaID),
@@ -603,7 +652,9 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       invoiceIds: assignedInvoiceIDs,
     };
   }).filter((sheet) => sheet.id > 0);
-  const explicitlyUnassigned = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentIdentity));
+  const explicitlyUnassigned = new Set((capture.unassignedDeliveryDocuments ?? [])
+    .filter(belongsToOperationalScope)
+    .map(documentIdentity));
   const logisticsFrom = capture.captureMeta.logisticsFrom || addDays(snapshotDate, -45);
   const logisticsCoverageFrom = date(logisticsFrom);
   const productContentKg = new Map(products.map((product) => [product.id, product.contentKg]));
@@ -780,6 +831,10 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.productVectorVersion === '2.2', 'El snapshot no declara vectorización de producto v2.2');
   check(data.meta.revision === SNAPSHOT_REVISION, `Revisión ${data.meta.revision} != ${SNAPSHOT_REVISION}`);
   check(new Set(data.clients.map((client) => client.id)).size === data.clients.length, 'Hay IDs de cliente duplicados');
+  check(
+    data.clients.every((client) => !isExcludedSaliceClient(client.id, client.name, client.tradeName)),
+    'El snapshot incluye una entidad excluida del universo Salice',
+  );
   check(productIDs.size === data.products.length, 'Hay IDs de producto duplicados');
   check(data.meta.coverage?.includedClients === data.clients.length, 'La cobertura de clientes no coincide con el snapshot');
   check(data.meta.coverage?.activeClients === data.clients.filter((client) => client.active).length, 'La cobertura de clientes activos no coincide');
@@ -795,6 +850,10 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.coverage?.clientsWithMixedCreditTerms === data.clients.filter((client) => client.creditTermStatus === 'mixed').length, 'La cobertura de clientes con plazo mixto no coincide');
   check(Boolean(data.logistics), 'El snapshot no contiene la capa logística');
   if (data.logistics) {
+    check(
+      data.logistics.invoices.every((invoice) => !isExcludedSaliceClient(invoice.clientId)),
+      'La logística incluye una entidad excluida del universo Salice',
+    );
     check(data.meta.coverage?.logistics?.invoices === data.logistics.invoices.length, 'La cobertura de facturas logísticas no coincide');
     check(data.meta.coverage?.logistics?.sheets === data.logistics.sheets.length, 'La cobertura de fojas no coincide');
     const sheetIDs = new Set(data.logistics.sheets.map((sheet) => sheet.id));

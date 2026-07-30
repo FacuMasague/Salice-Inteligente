@@ -7,6 +7,17 @@ import { pick } from 'stream-json/filters/pick.js';
 import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
+import {
+  EXCLUDED_HISTORICAL_SELLERS,
+  isCommercialSellerIncluded,
+} from '../shared/commercial-seller-scope.js';
+import {
+  EXCLUDED_SALICE_CLIENT_NAMES,
+  SALICE_COMPANY_ID,
+  SALICE_PRIMARY_BRANCH_ID,
+  isExcludedSaliceClient,
+  isSaliceDataScope,
+} from '../shared/salice-data-scope.js';
 
 const capturePath = resolve(process.env.SALICE_CAPTURE_PATH ?? 'data/raw/gesi-salice-latest.json');
 const targetPath = resolve(process.env.SALICE_SPT_OUTPUT_PATH ?? 'data/spt-gesi.sqlite');
@@ -52,7 +63,10 @@ async function forEachCaptureRow(key: string, handler: (row: GesiRow) => void | 
 
 console.log('Base comercial: leyendo metadatos y maestros en pasadas de memoria acotada…');
 const captureMeta = await readCaptureValue<CaptureMeta>('captureMeta');
-if (captureMeta.empresaID !== 3 || captureMeta.sucursalID !== 3) {
+if (
+  captureMeta.empresaID !== SALICE_COMPANY_ID
+  || captureMeta.sucursalID !== SALICE_PRIMARY_BRANCH_ID
+) {
   throw new Error('El modelo SPT sólo admite la captura Salice empresa 3 / sucursal 3.');
 }
 
@@ -156,8 +170,21 @@ const rejectedBackfillDocuments = captureMeta.optionalEndpointWarnings
 const deleteDocument = database.prepare('DELETE FROM movements WHERE source_document_key = ? AND source_kind = ?');
 
 const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credit_note') => {
+  if (
+    document.anulado === true
+    || !isSaliceDataScope(document.empresaID, document.sucursalID)
+    || isExcludedSaliceClient(
+      document.clienteID,
+      document.razonSocial,
+      document.nombreDeFantasia,
+      document.fantasia,
+    )
+  ) return;
+  const clientID = number(document.clienteID);
+  const client = clients.get(clientID);
+  const branchSellerLabel = branchSeller(client) === 'Male' ? 'Delfina' : branchSeller(client);
+  if (!isCommercialSellerIncluded(branchSellerLabel || 'Sin vendedor')) return;
   sourceDocumentCount += 1;
-  if (document.anulado === true || ![3, 6].includes(number(document.empresaID))) return;
   const sourceDocumentKey = documentKey(document);
   const seenKey = `${kind}:${sourceDocumentKey}`;
   if (seenDocuments.has(seenKey)) deleteDocument.run(sourceDocumentKey, kind);
@@ -171,8 +198,6 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
     const key = itemID ? String(itemID) : `${sourceItemID}:${text(row.codigoDeItem)}`;
     if (!uniqueItems.has(key)) uniqueItems.set(key, { row, sourceItemID });
   });
-  const clientID = number(document.clienteID);
-  const client = clients.get(clientID);
   if (!client) missingClients += 1;
   let saleDate = date(document.fechaDeEmision);
   if (saleDate === '2025-06-02' || saleDate === '2025-06-03') saleDate = '2025-05-31';
@@ -188,16 +213,10 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
     if (!product) missingProducts += 1;
     const rubroID = number(product?.rubroID);
     const subRubroID = number(product?.subRubroID);
-    const branchSellerLabel = branchSeller(client) === 'Male' ? 'Delfina' : branchSeller(client);
-    const customerSellerRaw = sellers.get(number(client?.vendedorID)) ?? '';
-    const customerSeller = customerSellerRaw === 'Male' ? 'Delfina' : customerSellerRaw;
+    const customerSeller = branchSellerLabel;
     const companyID = number(document.empresaID);
     const branchID = number(document.sucursalID);
-    const issuerName = companyID === 3 && branchID === 3
-      ? 'Salice Distribuciones S.A.'
-      : companyID === 3 && branchID === 6
-        ? 'MDQ Alarcon Distribuciones S.A.'
-        : `Empresa ${companyID} · sucursal ${branchID}`;
+    const issuerName = 'Salice Distribuciones S.A.';
     insert.run(
       saleDate,
       productID,
@@ -281,6 +300,10 @@ const metaValues: Record<string, string> = {
   missing_client_documents: String(missingClients),
   skipped_documents_without_detail: String(skippedHeadersWithoutDetail),
   client_type_catalog_source: masters.clientTypes.length ? 'gesi_api' : 'catalog_fallback_2026-07-20',
+  company_scope: String(SALICE_COMPANY_ID),
+  branch_scope: String(SALICE_PRIMARY_BRANCH_ID),
+  excluded_clients: JSON.stringify(EXCLUDED_SALICE_CLIENT_NAMES),
+  excluded_historical_sellers: JSON.stringify(EXCLUDED_HISTORICAL_SELLERS),
 };
 database.exec('BEGIN');
 for (const [key, value] of Object.entries(metaValues)) meta.run(key, value);

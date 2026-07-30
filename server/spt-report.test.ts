@@ -15,10 +15,11 @@ describeWithDatabase('reporte SPT construido desde GESI', () => {
     expect(meta.minDate <= '2025-01-02').toBe(true);
     expect(meta.maxDate >= '2026-07-20').toBe(true);
     expect(meta.unavailableDocumentCount).toBeLessThan(100);
-    expect(meta.defaultUniverse.companies).toEqual([3, 6]);
+    expect(meta.defaultUniverse.companies).toEqual([3]);
+    expect(meta.defaultUniverse.branches).toEqual([3]);
   }, 15_000);
 
-  it('calcula un corte actual coherente dentro del universo de empresas 3/6', () => {
+  it('calcula un corte actual coherente dentro del universo de empresa 3', () => {
     const report = buildSptReport({ month: '2026-07' });
     expect(report).not.toBeNull();
     expect(report!.current.kilos).toBeGreaterThan(0);

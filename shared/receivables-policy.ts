@@ -1,4 +1,5 @@
 import type { Client, Health, Invoice } from './models.js';
+import { EXCLUDED_SALICE_CLIENT_NAMES } from './salice-data-scope.js';
 
 export const MIN_RECEIVABLE_DOCUMENT_AMOUNT = 1_000;
 
@@ -6,6 +7,7 @@ export const EXCLUDED_RECEIVABLE_CLIENT_NAMES = [
   'GBA M6 S.A.',
   'Consumidor Final',
   'Salice Distribuciones S.A.',
+  ...EXCLUDED_SALICE_CLIENT_NAMES,
 ] as const;
 
 export const RECEIVABLE_SELLERS = [

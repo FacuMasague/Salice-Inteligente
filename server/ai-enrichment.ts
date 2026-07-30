@@ -11,7 +11,16 @@ import type {
   AiSystemStatus,
   AiUsage,
 } from '../shared/ai.js';
-import { aiBudget, aiLimits, estimateAiCost, LUNA_PRICING, pricingForModel, resolveOpenAiApiKey, TERRA_PRICING } from './ai-config.js';
+import {
+  aiBudget,
+  aiLimits,
+  estimateAiCost,
+  LUNA_PRICING,
+  pricingForModel,
+  resolveOpenAiApiKey,
+  SOL_PRICING,
+  TERRA_PRICING,
+} from './ai-config.js';
 import { assertCompactSafeEvidence, semanticRequestHash, sha256 } from './ai-evidence.js';
 import { AiProviderError, OpenAiResponsesProvider } from './ai-provider.js';
 import { createAiFunctionDefinitions } from './ai-functions.js';
@@ -67,6 +76,26 @@ function statusAfter(functions: AiFunctionStatusSummary[]): Exclude<AiRunStatus,
   return 'completed';
 }
 
+function argentinaDateParts(now: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<string, string>;
+}
+
+export function argentinaDayStartIso(now = new Date()) {
+  const { year, month, day } = argentinaDateParts(now);
+  return new Date(`${year}-${month}-${day}T00:00:00-03:00`).toISOString();
+}
+
+export function argentinaMonthStartIso(now = new Date()) {
+  const { year, month } = argentinaDateParts(now);
+  return new Date(`${year}-${month}-01T00:00:00-03:00`).toISOString();
+}
+
 export async function runAiEnrichment(input: EnrichmentInput) {
   const limits = input.limits ?? aiLimits();
   const ownStore = !input.store;
@@ -86,6 +115,9 @@ export async function runAiEnrichment(input: EnrichmentInput) {
     outcome: 'completed' | 'reused';
     summary: AiFunctionStatusSummary;
   }> = [];
+  const spentTodayUsd = store.usagePeriod(argentinaDayStartIso()).estimatedCostUsd;
+  const availableTodayUsd = Math.max(0, limits.maxEstimatedCostUsdPerDay - spentTodayUsd);
+  const runCostLimitUsd = Math.min(limits.maxEstimatedCostUsdPerRun, availableTodayUsd);
 
   try {
     if (!definitions.length) {
@@ -113,7 +145,6 @@ export async function runAiEnrichment(input: EnrichmentInput) {
     let estimatedInputTokens = 0;
 
     for (const definition of definitions) {
-      store.registerPrompt(definition);
       const summary: AiFunctionStatusSummary = {
         functionKey: definition.key,
         completed: 0,
@@ -124,6 +155,14 @@ export async function runAiEnrichment(input: EnrichmentInput) {
         effort: definition.effort,
       };
       functionSummaries.push(summary);
+      try {
+        store.registerPrompt(definition);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        summary.failed += 1;
+        firstError ??= message;
+        continue;
+      }
       const validate = ajv.compile(definition.schema);
       const jobs = (await definition.buildJobs(input.snapshot)).slice(0, limits.maxEntitiesPerFunction);
 
@@ -152,7 +191,8 @@ export async function runAiEnrichment(input: EnrichmentInput) {
             evidenceJson,
           });
           const promptTokens = Math.ceil(Buffer.byteLength(definition.prompt, 'utf8') / 4);
-          estimatedRequestTokens = compact.estimatedTokens + promptTokens;
+          const schemaTokens = Math.ceil(Buffer.byteLength(JSON.stringify(definition.schema), 'utf8') / 4);
+          estimatedRequestTokens = compact.estimatedTokens + promptTokens + schemaTokens;
           if (estimatedInputTokens + estimatedRequestTokens > limits.maxEstimatedInputTokensPerRun) {
             store.createArtifact({
               runId,
@@ -292,13 +332,18 @@ export async function runAiEnrichment(input: EnrichmentInput) {
         const pricing = pricingForModel(definition.model);
 
         for (let attemptNumber = 1; attemptNumber <= limits.maxAttempts; attemptNumber += 1) {
-          const estimatedInputCost = estimatedRequestTokens * pricing.inputPerMillion / 1_000_000;
-          const remainingBudget = limits.maxEstimatedCostUsdPerRun - estimatedCostUsd - estimatedInputCost;
+          // Reserva un margen sobre el cálculo por bytes para no superar el presupuesto
+          // cuando la tokenización real de español o del esquema resulte más costosa.
+          const budgetedInputTokens = Math.ceil(estimatedRequestTokens * 1.25);
+          const estimatedInputCost = budgetedInputTokens * pricing.inputPerMillion / 1_000_000;
+          const remainingBudget = runCostLimitUsd - estimatedCostUsd - estimatedInputCost;
           const affordableOutputTokens = Math.floor(Math.max(0, remainingBudget) * 1_000_000 / pricing.outputPerMillion);
           const maxOutputTokens = Math.min(configuredMaxOutputTokens, affordableOutputTokens);
           if (maxOutputTokens < 64) {
             finalStatus = 'skipped';
-            finalError = `Límite de costo de USD ${limits.maxEstimatedCostUsdPerRun.toFixed(2)} alcanzado.`;
+            finalError = availableTodayUsd <= 0
+              ? `Límite diario de IA de USD ${limits.maxEstimatedCostUsdPerDay.toFixed(2)} alcanzado.`
+              : `Límite de costo de esta ejecución de USD ${runCostLimitUsd.toFixed(2)} alcanzado.`;
             firstError ??= finalError;
             break;
           }
@@ -522,7 +567,9 @@ export function getAiSystemStatus(activeSnapshotAt: string, workspace = process.
   const store = new AiStore();
   try {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const dayStart = argentinaDayStartIso(now);
+    const monthStart = argentinaMonthStartIso(now);
+    const currentDay = store.usagePeriod(dayStart);
     const currentMonth = store.usagePeriod(monthStart);
     const spentUsd = currentMonth.estimatedCostUsd;
     const usedPercent = budgetConfig.monthlyLimitUsd
@@ -538,8 +585,9 @@ export function getAiSystemStatus(activeSnapshotAt: string, workspace = process.
       artifactCounts: store.artifactCounts(activeSnapshotAt),
       limits,
       pricing: TERRA_PRICING,
-      pricingByModel: [TERRA_PRICING, LUNA_PRICING],
+      pricingByModel: [SOL_PRICING, TERRA_PRICING, LUNA_PRICING],
       usage: {
+        currentDay,
         currentMonth,
         allTime: store.usagePeriod(),
         functions: store.functionUsage(monthStart),
@@ -547,6 +595,8 @@ export function getAiSystemStatus(activeSnapshotAt: string, workspace = process.
       },
       budget: {
         ...budgetConfig,
+        spentTodayUsd: currentDay.estimatedCostUsd,
+        remainingTodayUsd: Math.max(0, budgetConfig.dailyLimitUsd - currentDay.estimatedCostUsd),
         spentUsd,
         remainingUsd: Math.max(0, budgetConfig.monthlyLimitUsd - spentUsd),
         usedPercent,

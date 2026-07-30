@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AiFunctionDefinition, AiProvider } from '../shared/ai';
 import { FakeAiProvider, AiProviderError } from './ai-provider';
-import { runAiEnrichment } from './ai-enrichment';
+import { argentinaDayStartIso, argentinaMonthStartIso, runAiEnrichment } from './ai-enrichment';
 import { aiLimits } from './ai-config';
 import { AiStore } from './ai-store';
 
@@ -40,6 +40,12 @@ async function testStore() {
 }
 
 describe('orquestador de enriquecimiento IA', () => {
+  it('corta día y mes con la zona horaria de Argentina', () => {
+    expect(argentinaDayStartIso(new Date('2026-07-30T02:59:59.000Z'))).toBe('2026-07-29T03:00:00.000Z');
+    expect(argentinaDayStartIso(new Date('2026-07-30T03:00:00.000Z'))).toBe('2026-07-30T03:00:00.000Z');
+    expect(argentinaMonthStartIso(new Date('2026-08-01T02:59:59.000Z'))).toBe('2026-07-01T03:00:00.000Z');
+  });
+
   it('no consume proveedor cuando v0.9.0 todavía no tiene funciones habilitadas', async () => {
     const store = await testStore();
     const provider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
@@ -196,6 +202,41 @@ describe('orquestador de enriquecimiento IA', () => {
     store.close();
   });
 
+  it('aísla una versión de prompt incompatible y continúa con las demás funciones', async () => {
+    const store = await testStore();
+    const provider = new FakeAiProvider({ summary: 'Salida válida.' });
+    await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-prompt-original',
+      trigger: 'manual',
+      definitions: [definition()],
+      provider,
+      store,
+    });
+    const incompatible = { ...definition({ netSales: 1_300 }), model: 'gpt-5.6-luna' };
+    const independent: AiFunctionDefinition = {
+      ...definition({ netSales: 1_500 }),
+      key: 'executive_summary',
+      promptVersion: 2,
+    };
+    const run = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-25T16:19:50.818Z',
+      bundleId: 'bundle-prompt-conflict',
+      trigger: 'refresh',
+      definitions: [incompatible, independent],
+      provider,
+      store,
+    });
+    expect(run.status).toBe('partial');
+    expect(run.failed).toBe(1);
+    expect(run.completed).toBe(1);
+    expect(run.error).toMatch(/ya existe con otro contenido o configuración/);
+    expect(provider.calls.at(-1)?.functionKey).toBe('executive_summary');
+    store.close();
+  });
+
   it('rechaza evidencia sensible antes de invocar al proveedor', async () => {
     const store = await testStore();
     const provider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
@@ -233,6 +274,38 @@ describe('orquestador de enriquecimiento IA', () => {
     expect(run.skipped).toBe(1);
     expect(provider.calls).toHaveLength(0);
     expect(run.error).toMatch(/Límite de costo/);
+    store.close();
+  });
+
+  it('comparte el límite diario entre ejecuciones de la mañana y de la tarde', async () => {
+    const store = await testStore();
+    const expensive = new FakeAiProvider({ summary: 'Consume el presupuesto diario.' }, {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      totalTokens: 2_000_000,
+    });
+    await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T16:19:50.818Z',
+      bundleId: 'bundle-daily-first',
+      trigger: 'refresh',
+      definitions: [definition()],
+      provider: expensive,
+      store,
+    });
+    const secondProvider = new FakeAiProvider({ summary: 'No debe ejecutarse.' });
+    const second = await runAiEnrichment({
+      snapshot: {},
+      snapshotAt: '2026-07-24T18:19:50.818Z',
+      bundleId: 'bundle-daily-second',
+      trigger: 'refresh',
+      definitions: [definition({ netSales: 1_500 })],
+      provider: secondProvider,
+      store,
+    });
+    expect(second.status).toBe('skipped');
+    expect(second.error).toMatch(/Límite diario/);
+    expect(secondProvider.calls).toHaveLength(0);
     store.close();
   });
 });

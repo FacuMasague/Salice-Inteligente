@@ -62,7 +62,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   const savedFilters = { scope, clientVisibility, portfolioStatus, locationStatus, zone, health, selectedClientId: selected ? String(selected.id) : '' };
   const applySaved = (saved: Record<string, string>) => {
     setScope(saved.scope || 'regional');
-    onClientVisibilityChange(saved.clientVisibility || 'active');
+    onClientVisibilityChange(saved.clientVisibility || '');
     setPortfolioStatus(saved.portfolioStatus || '');
     setLocationStatus(saved.locationStatus || '');
     setZone(saved.zone || '');

@@ -105,7 +105,8 @@ export class GesiClient {
           // En GetItem, HTTP 500 suele indicar que una de las claves del lote
           // fue rechazada. El capturador divide ese lote para aislarla; repetir
           // la misma carga cinco veces sólo consume el límite de GESI.
-          if ((response.status < 500 && response.status !== 429) || response.status === 500) throw error;
+          const rejectedGetItemBatch = response.status === 500 && /\/GetItem(?:\?|$)/.test(path);
+          if ((response.status < 500 && response.status !== 429) || rejectedGetItemBatch) throw error;
           retryableStatus = response.status === 429 || response.status >= 500;
           lastError = error;
         } else {

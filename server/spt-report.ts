@@ -13,6 +13,7 @@ import type {
   SptReportPayload,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
+import { CURRENT_COMMERCIAL_SELLERS, isCommercialSellerIncluded } from '../shared/commercial-seller-scope.js';
 import { cutoffDate, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { readMovementMetrics } from './report-metrics.js';
@@ -23,7 +24,7 @@ const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
   : resolveActiveDataPaths().commercial;
 
-const DEFAULT_SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Reventas'];
+const DEFAULT_SELLERS = [...CURRENT_COMMERCIAL_SELLERS];
 const DEFAULT_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Small Retail', 'Partido de la Costa'];
 // Power BI compara estos textos sin distinguir mayúsculas. SQLite no lo hace en
 // un IN normal, por eso usamos las variantes reales de la tabla para reproducir
@@ -33,10 +34,10 @@ const SELLER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Distribuidor', 'Especializado', 'E
 const SELLER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Drovet', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'Sanicat', 'Andacollo', 'BedyWood', 'Sol Minerales'];
 const QUARTER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Partido de la Costa'];
 const QUARTER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition'];
-const QUARTER_PAGE_SELLERS = ['Alejandro Lurbe', 'Andres Dominguez', 'Edgardo Larrea', 'Lucas Morales', 'Pablo Ramires', 'Rutas', 'Hernan Jauregui', 'Male', 'Gonzalo Russian'];
 const UNIVERSE = EXECUTABLE_UNIVERSES.spt;
 const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
 const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
 
 const FILTER_COLUMNS: Record<SptFilterKey, string> = {
   seller: 'seller',
@@ -93,7 +94,7 @@ export function getSptReportMeta(): SptReportMeta {
       latestMonth: '',
       months: [],
       options: Object.fromEntries(Object.keys(FILTER_COLUMNS).map((key) => [key, []])) as unknown as Record<SptFilterKey, string[]>,
-      defaultUniverse: { companies: COMPANIES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
+      defaultUniverse: { companies: COMPANIES, branches: BRANCHES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
     };
   }
   const meta = metadata(database);
@@ -112,9 +113,11 @@ export function getSptReportMeta(): SptReportMeta {
     months,
     options: Object.fromEntries((Object.keys(FILTER_COLUMNS) as SptFilterKey[]).map((key) => [
       key,
-      rows<{ value: string }>(database.prepare('SELECT value FROM filter_options WHERE filter_key = ? ORDER BY value COLLATE NOCASE'), [key]).map((row) => row.value),
+      rows<{ value: string }>(database.prepare('SELECT value FROM filter_options WHERE filter_key = ? ORDER BY value COLLATE NOCASE'), [key])
+        .map((row) => row.value)
+        .filter((value) => key !== 'seller' || isCommercialSellerIncluded(value)),
     ])) as Record<SptFilterKey, string[]>,
-    defaultUniverse: { companies: COMPANIES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
+    defaultUniverse: { companies: COMPANIES, branches: BRANCHES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
   };
   return cachedMeta;
 }
@@ -136,16 +139,6 @@ function buildWhere(filters: SptFilters, start?: string, end?: string, page: Spt
     if (selected.length) {
       clauses.push(`${page === 'quarters' && key === 'seller' ? 'branch_seller' : column} IN (${placeholders(selected)})`);
       parameters.push(...selected);
-    } else if (key === 'seller') {
-      if (page === 'main') {
-        clauses.push(`seller IN (${placeholders(DEFAULT_SELLERS)})`);
-        parameters.push(...DEFAULT_SELLERS);
-      } else if (page === 'sellers') {
-        clauses.push("TRIM(seller) <> '' AND seller <> 'Administración'");
-      } else {
-        clauses.push(`branch_seller IN (${placeholders(QUARTER_PAGE_SELLERS)})`);
-        parameters.push(...QUARTER_PAGE_SELLERS);
-      }
     } else if (key === 'channel') {
       const channels = page === 'sellers' ? SELLER_PAGE_CHANNELS : page === 'quarters' ? QUARTER_PAGE_CHANNELS : DEFAULT_CHANNELS;
       clauses.push(`channel IN (${placeholders(channels)})`);

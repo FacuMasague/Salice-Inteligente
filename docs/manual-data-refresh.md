@@ -71,7 +71,7 @@ pnpm run enrich:ai
 pnpm run enrich:ai:resume
 ```
 
-Los paquetes enviados son agregados y compactos. No incluyen snapshots completos, bases SQLite, credenciales ni archivos fuente. El límite predeterminado es USD 1 por ejecución y puede ajustarse con `SALICE_AI_MAX_COST_USD_PER_RUN`. El presupuesto mensual y su umbral de alerta se controlan con `SALICE_AI_MONTHLY_BUDGET_USD` y `SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT`.
+Los paquetes enviados son agregados y compactos. No incluyen snapshots completos, bases SQLite, credenciales ni archivos fuente. `SALICE_AI_DAILY_BUDGET_USD` limita el gasto total compartido por todas las ejecuciones del día de Argentina y vale USD 1 de forma predeterminada. `SALICE_AI_MAX_COST_USD_PER_RUN` conserva un techo secundario por ejecución. El presupuesto mensual y su umbral de alerta se controlan con `SALICE_AI_MONTHLY_BUDGET_USD` y `SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT`.
 
 ## Persistencia y recuperación
 

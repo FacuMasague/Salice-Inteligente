@@ -121,7 +121,7 @@ def main() -> None:
             );
             """
         )
-        option_frame = frame[frame["company_id"].isin([3, 6])]
+        option_frame = frame[frame["company_id"].eq(3) & frame["branch_id"].eq(3)]
         filter_rows = []
         for key, column in FILTER_OPTIONS.items():
             values = set(str(value) for value in option_frame[column].dropna().unique() if str(value).strip())

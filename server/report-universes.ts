@@ -1,4 +1,10 @@
 import { REPORT_UNIVERSES } from '../shared/metrics.js';
+import { EXCLUDED_HISTORICAL_SELLERS } from '../shared/commercial-seller-scope.js';
+import {
+  EXCLUDED_SALICE_CLIENT_NAMES,
+  SALICE_COMPANY_ID,
+  SALICE_PRIMARY_BRANCH_ID,
+} from '../shared/salice-data-scope.js';
 import type { SqlValue } from './report-metrics.js';
 
 export interface ExecutableMovementUniverse {
@@ -16,8 +22,8 @@ export interface ExecutableMovementUniverse {
 }
 
 export const EXECUTABLE_UNIVERSES = {
-  spt: { id: 'spt-main', companies: [3, 6], branches: [3, 6], allowedIssuers: [], excludedCategories: ['POP', 'Promociones'] },
-  commercialSales: { id: 'commercial-sales', companies: [3], branches: [3, 6], allowedIssuers: ['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.'], excludedClients: ['Via Salice MDP S.A.', 'Consumidor Final', 'GBA M6 S.A.'] },
+  spt: { id: 'spt-main', companies: [SALICE_COMPANY_ID], branches: [SALICE_PRIMARY_BRANCH_ID], allowedIssuers: [], excludedClients: [...EXCLUDED_SALICE_CLIENT_NAMES], excludedCategories: ['POP', 'Promociones'] },
+  commercialSales: { id: 'commercial-sales', companies: [SALICE_COMPANY_ID], branches: [SALICE_PRIMARY_BRANCH_ID], allowedIssuers: ['Salice Distribuciones S.A.'], excludedClients: [...EXCLUDED_SALICE_CLIENT_NAMES, 'Consumidor Final', 'GBA M6 S.A.'] },
   mars: { id: 'mars', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Pet Nutrition'], excludedClients: ['Via Salice MDP S.A.'] },
   nutripet: { id: 'nutripet', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Nutri Pet'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },
   baires: { id: 'baires', companies: [3], branches: [3], allowedIssuers: ['Salice Distribuciones S.A.'], includedProductGroups: ['Baires SPT', 'Baires Masivo'], excludedCategories: ['POP'], excludedClients: ['Via Salice MDP S.A.'] },
@@ -43,6 +49,11 @@ export function compileMovementUniverse(universe: ExecutableMovementUniverse) {
     clauses.push(`${upperText ? `UPPER(TRIM(${column}))` : `TRIM(${column})`} NOT IN (${placeholders(values)})`);
     parameters.push(...(upperText ? values.map((value) => value.toUpperCase()) : values));
   };
+  const excludeExact = (column: string, values: readonly string[]) => {
+    if (!values.length) return;
+    clauses.push(`TRIM(${column}) NOT IN (${placeholders(values)})`);
+    parameters.push(...values);
+  };
   include('company_id', universe.companies);
   include('branch_id', universe.branches);
   include('issuer_name', universe.allowedIssuers, true);
@@ -51,6 +62,10 @@ export function compileMovementUniverse(universe: ExecutableMovementUniverse) {
   exclude('client_name', universe.excludedClients ?? []);
   exclude('category', universe.excludedCategories ?? []);
   exclude('product_group', universe.excludedProductGroups ?? []);
+  // SQLite no transforma letras acentuadas con UPPER sin una extensión ICU.
+  // Los nombres provienen del maestro GESI y se comparan con su texto exacto.
+  excludeExact('seller', EXCLUDED_HISTORICAL_SELLERS);
+  excludeExact('branch_seller', EXCLUDED_HISTORICAL_SELLERS);
   exclude('branch_seller', universe.excludedSellers ?? []);
   return { sql: clauses.length ? clauses.join(' AND ') : '1 = 1', parameters };
 }

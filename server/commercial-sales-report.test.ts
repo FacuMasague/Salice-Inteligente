@@ -15,8 +15,8 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(meta.latestYear).toBe(meta.maxDate.slice(0, 4));
     expect(meta.years).toContain(meta.latestYear);
     expect(meta.universe.companies).toEqual([3]);
-    expect(meta.universe.branches).toEqual([3, 6]);
-    expect(meta.universe.allowedIssuers).toEqual(['Salice Distribuciones S.A.', 'MDQ Alarcon Distribuciones S.A.']);
+    expect(meta.universe.branches).toEqual([3]);
+    expect(meta.universe.allowedIssuers).toEqual(['Salice Distribuciones S.A.']);
     expect(meta.options.seller.length).toBeGreaterThan(5);
     expect(meta.options.brand.length).toBeGreaterThan(20);
   }, 15_000);

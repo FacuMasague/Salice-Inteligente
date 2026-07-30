@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.2.1
+# Salice Inteligente · v1.3.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.1 incorpora el rol Developer con auditoría de uso real y recupera los mapas base de OpenStreetMap sin ampliar el acceso a otros recursos externos.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.3.0 mejora la continuidad, calidad y control de costo de la asistencia con IA y agrega lecturas operativas en Bandeja comercial y demanda de productos.
 
 ## Abrir el programa
 
@@ -101,12 +101,13 @@ La IA es complementaria:
 - No publica narrativas rechazadas por control de calidad.
 - Acepta feedback útil, poco útil, incorrecto o incompleto y correcciones breves versionadas.
 - No ajusta prompts automáticamente y no realiza aprendizaje autónomo ni fine-tuning automático.
-- Usa Terra para narrativas y lectura ejecutiva; Luna para clasificación y tareas estructuradas de mayor volumen.
+- Usa Sol para la síntesis ejecutiva, Terra para análisis y Luna para tareas estructuradas de mayor volumen.
+- Resume de forma agregada la Bandeja comercial y la demanda/rotación de productos sin reemplazar sus cálculos.
 - Calcula el costo con la tarifa del modelo utilizado en cada intento.
 - Presenta enteros con separador de miles y porcentajes con hasta dos decimales.
 - Reutiliza en la ficha del cliente la explicación vigente de Bandeja sin llamar a OpenAI al abrir la pantalla.
 
-Configuración muestra contenido disponible, último intento, calidad, feedback, consumo por función y actualización, resultados reutilizados, reintentos y presupuesto. El límite recomendado continúa siendo USD 1 por actualización; una actualización sin evidencia nueva no vuelve a consumir IA.
+Configuración muestra contenido disponible, último intento, calidad, feedback, consumo por función y actualización, resultados reutilizados, reintentos y presupuesto. Las ejecuciones de las 03:00 y 15:00 comparten un límite total de USD 1 por día; una actualización sin evidencia nueva no vuelve a consumir IA.
 
 ## Configuración
 
@@ -125,6 +126,10 @@ Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las 
 
 La aplicación conserva la última actualización aprobada si un intento posterior falla. Notas, gestiones, promesas, vistas, objetivos, correcciones y feedback se almacenan por separado de los datos comerciales.
 
+Los movimientos de ventas, cobranzas, cartera, logística y reportes sólo se aceptan cuando pertenecen simultáneamente a empresa 3 y sucursal 3. Via Salice MDP S.A. se excluye por identidad comercial de los snapshots y bases derivadas. Los maestros compartidos que no informan empresa o sucursal se conservan mientras no exista evidencia suficiente para atribuirlos a otro alcance.
+
+La normalización del paquete candidato tiene un límite de heap propio de 1.024 MB; las demás etapas generales conservan 512 MB y la captura 768 MB. Las etapas continúan ejecutándose de forma secuencial.
+
 En producción, snapshots, paquetes de datos, operaciones, feedback y artefactos de IA viven en el disco persistente de Render. El servidor ejecuta la actualización internamente porque ese almacenamiento no puede compartirse con un Cron Job independiente. Si el servicio vuelve después de haberse perdido un horario, intenta recuperar esa ejecución; nunca permite dos actualizaciones simultáneas.
 
 La cartera documental sólo incluye facturas y notas de débito asignadas en el propio comprobante a Andres Dominguez, Edgardo Larrea, Ignacio Carea, Ana Ottaviano, Julieta Errecart o Gonzalo Russian. Continúan vigentes el mínimo de $1.000 y la exclusión de entidades internas o genéricas.
@@ -140,7 +145,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v1.2
+## Alcance deliberadamente fuera de v1.3
 
 - Empaquetado instalable.
 - Rediseño móvil completo.
@@ -165,3 +170,6 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.1.1.md`
 - `docs/release-v1.2.0.md`
 - `docs/release-v1.2.1.md`
+- `docs/release-v1.2.2.md`
+- `docs/release-v1.2.3.md`
+- `docs/release-v1.3.0.md`

@@ -15,7 +15,8 @@ const grain = database.prepare(`
          MIN(sale_date) AS minDate,
          MAX(sale_date) AS maxDate,
          SUM(CASE WHEN TRIM(product_id) = '' THEN 1 ELSE 0 END) AS missingProductIds,
-         SUM(CASE WHEN client_id <= 0 THEN 1 ELSE 0 END) AS missingClientIds
+         SUM(CASE WHEN client_id <= 0 THEN 1 ELSE 0 END) AS missingClientIds,
+         SUM(CASE WHEN company_id <> 3 OR branch_id <> 3 THEN 1 ELSE 0 END) AS outOfScopeRows
   FROM movements
 `).get() as Record<string, number | string>;
 const months = database.prepare(`
@@ -41,6 +42,9 @@ const checks = {
   uniqueMovementGrain: Number(grain.rows) === Number(grain.uniqueRows),
   noMissingProductIds: Number(grain.missingProductIds) === 0,
   noMissingClientIds: Number(grain.missingClientIds) === 0,
+  onlyCompany3Branch3: Number(grain.outOfScopeRows) === 0
+    && metadata.get('company_scope') === '3'
+    && metadata.get('branch_scope') === '3',
   unavailableDocumentsBelowHalfPercent: unavailableRate < 0.005,
 };
 const failures = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
@@ -62,6 +66,7 @@ const result = {
     unavailableDocumentRate: unavailableRate,
     missingProductIds: Number(grain.missingProductIds),
     missingClientIds: Number(grain.missingClientIds),
+    outOfScopeRows: Number(grain.outOfScopeRows),
   },
   months2025,
 };

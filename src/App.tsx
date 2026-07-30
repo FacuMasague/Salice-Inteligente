@@ -2,6 +2,11 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, UserCircle, Users, WalletCards, X } from 'lucide-react';
 import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
+import {
+  CLIENT_SCOPE_OPTIONS,
+  filterClientsByScope,
+  type ClientScopeMode,
+} from '../shared/client-visibility';
 import type { DataHealthPayload } from '../shared/data-health';
 import { ClientPanel } from './components/ClientPanel';
 import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawer';
@@ -48,6 +53,21 @@ const viewSection: Record<View, SidebarSection> = {
   'report-center': 'reports', reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
   settings: 'system', users: 'system', 'user-activity': 'system',
 };
+
+const clientScopeViews = new Set<View>([
+  'map',
+  'routes',
+  'clients',
+  'sellers',
+  'products',
+  'finance',
+  'agenda',
+  'sales-explorer',
+  'receivables',
+  'report-center',
+  'reports',
+  'non-buyers',
+]);
 
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
@@ -126,7 +146,11 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
-  const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('active');
+  const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('');
+  const [clientScope, setClientScope] = useState<ClientScopeMode>(() => {
+    const stored = localStorage.getItem(`salice-client-scope-v123-${user.id}`);
+    return CLIENT_SCOPE_OPTIONS.some((option) => option.value === stored) ? stored as ClientScopeMode : 'recent3';
+  });
   const [tutorial, setTutorial] = useState<{ section: TutorialSection; stepIndex: number } | null>(null);
   const [tutorialCompleted, setTutorialCompleted] = useState<Record<TutorialSection, boolean>>(() => ({
     operations: localStorage.getItem('salice-tutorial-v121-operations') === 'completed',
@@ -269,6 +293,10 @@ export default function App() {
   }, [productComparisonIds]);
 
   useEffect(() => {
+    localStorage.setItem(`salice-client-scope-v123-${user.id}`, clientScope);
+  }, [clientScope, user.id]);
+
+  useEffect(() => {
     const section = viewSection[view];
     setSidebarSections((current) => current[section] ? current : { ...current, [section]: true });
   }, [view]);
@@ -292,23 +320,29 @@ export default function App() {
     setView(step.view);
     setSidebarOpen(false);
     if (step.target === 'client-panel') {
-      const tutorialClient = [...data.clients]
+      const tutorialClient = filterClientsByScope(data.clients, clientScope, data.meta.generatedAt)
         .filter((client) => client.active && client.coordinates !== null)
         .sort((a, b) => b.visitPriority - a.visitPriority)[0];
-      setMapClientVisibility('active');
+      setMapClientVisibility('');
       setSelectedId(tutorialClient?.id ?? null);
       setClientProfileOpen(false);
     } else {
       setSelectedId(null);
       setClientProfileOpen(false);
     }
-  }, [data, tutorial]);
+  }, [clientScope, data, tutorial]);
 
-  const selected = useMemo(() => data?.clients.find((client) => client.id === selectedId) || null, [data, selectedId]);
+  const visibleClients = useMemo(() => data
+    ? filterClientsByScope(data.clients, clientScope, data.meta.generatedAt)
+    : [], [clientScope, data]);
+  const visibleData = useMemo(() => data ? { ...data, clients: visibleClients } : null, [data, visibleClients]);
+  const visibleClientIDs = useMemo(() => new Set(visibleClients.map((client) => client.id)), [visibleClients]);
+  const visibleNotifications = useMemo(() => notifications.filter((item) => visibleClientIDs.has(item.clientId)), [notifications, visibleClientIDs]);
+  const selected = useMemo(() => visibleClients.find((client) => client.id === selectedId) || null, [selectedId, visibleClients]);
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
-  const activeClients = useMemo(() => data?.clients.filter((client) => client.active) ?? [], [data]);
+  const activeClients = useMemo(() => visibleClients.filter((client) => client.active), [visibleClients]);
   const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
-  const openClientById = (clientId: number) => { const client = data?.clients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
+  const openClientById = (clientId: number) => { const client = visibleClients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
   const addProductToComparison = (product: Product) => {
     setProductComparisonIds((current) => current.includes(product.id) ? current : current.length < 4 ? [...current, product.id] : current);
@@ -360,7 +394,7 @@ export default function App() {
   };
   const toggleSidebarSection = (section: SidebarSection) => setSidebarSections((current) => ({ ...current, [section]: !current[section] }));
   const planRoute = (clientId: number) => {
-    const client = data?.clients.find((candidate) => candidate.id === clientId);
+    const client = visibleClients.find((candidate) => candidate.id === clientId);
     if (!client?.active || !client.coordinates || client.locationPrecision === 'locality') return;
     setRouteClientId(clientId);
     setView('routes');
@@ -379,17 +413,17 @@ export default function App() {
   };
 
   const normalizedGlobalQuery = globalQuery.trim().toLowerCase();
-  const clientResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : data.clients
+  const clientResults = useMemo(() => normalizedGlobalQuery.length < 2 ? [] : visibleClients
     .filter((client) => `${client.tradeName} ${client.name} ${client.reference} ${client.locality} ${client.seller}`.toLowerCase().includes(normalizedGlobalQuery))
     .sort((a, b) => Number(b.active) - Number(a.active) || b.visitPriority - a.visitPriority)
-    .slice(0, 6), [data, normalizedGlobalQuery]);
+    .slice(0, 6), [normalizedGlobalQuery, visibleClients]);
   const productResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : data.products
     .filter((product) => `${product.name} ${product.sku} ${product.brand} ${product.line} ${product.family} ${product.subcategory} ${product.group}`.toLowerCase().includes(normalizedGlobalQuery))
     .sort((a, b) => b.monthlyUnits - a.monthlyUnits)
     .slice(0, 5), [data, normalizedGlobalQuery]);
-  const sellerResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : [...new Set(data.clients
+  const sellerResults = useMemo(() => normalizedGlobalQuery.length < 2 ? [] : [...new Set(visibleClients
     .filter((client) => client.active && client.seller !== 'Sin vendedor' && client.seller.toLowerCase().includes(normalizedGlobalQuery))
-    .map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')).slice(0, 5), [data, normalizedGlobalQuery]);
+    .map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')).slice(0, 5), [normalizedGlobalQuery, visibleClients]);
   const brandResults = useMemo(() => !data || normalizedGlobalQuery.length < 2 ? [] : [...new Set(data.products
     .map((product) => product.brand)
     .filter((brand) => brand && !brand.startsWith('Sin ') && brand.toLowerCase().includes(normalizedGlobalQuery)))]
@@ -447,35 +481,48 @@ export default function App() {
             </div>
             <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
             {preferences.contextualHelp && <div className="context-help-wrap"><button className="context-help-button" aria-label={`Ayuda sobre ${currentTitle.title}`} aria-expanded={helpOpen} onClick={() => { setHelpOpen((value) => !value); setSearchOpen(false); setNotificationsOpen(false); }}><HelpCircle size={18} /></button>{helpOpen && <aside className="context-help-panel"><header><span>Ayuda de esta pantalla</span><button aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={15} /></button></header><h3>{currentTitle.title}</h3><p>{contextualHelp[view].purpose}</p><ul>{contextualHelp[view].tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button className="button secondary" onClick={() => { selectView('settings'); setHelpOpen(false); }}>Abrir guías y preferencias</button></aside>}</div>}
-            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!notifications.length && <i>{number(notifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{notifications.map((item) => { const client = data.clients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!notifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
+            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!visibleNotifications.length && <i>{number(visibleNotifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{visibleNotifications.map((item) => { const client = visibleClients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!visibleNotifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
             <div className="user-menu-wrap"><button className="user-menu-button" aria-label="Menú de usuario" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((value) => !value); setNotificationsOpen(false); setSearchOpen(false); }}><UserCircle size={20} /><span>{user.displayName.split(' ')[0]}</span><ChevronDown size={13} /></button>{userMenuOpen && <aside className="user-menu-panel"><div><strong>{user.displayName}</strong><span>@{user.username} · {user.role === 'developer' ? 'Developer' : user.role === 'admin' ? 'Administrador' : 'Oficina'}</span></div>{user.role !== 'office' && <button onClick={() => { selectView('users'); setUserMenuOpen(false); }}><ShieldCheck size={15} /> Administrar usuarios</button>}{user.role === 'developer' && <button onClick={() => { selectView('user-activity'); setUserMenuOpen(false); }}><Activity size={15} /> Ver actividad</button>}<button className="logout" onClick={() => void logout()}><LogOut size={15} /> Cerrar sesión</button></aside>}</div>
           </div>
         </header>
 
+        {clientScopeViews.has(view) && <section className="client-scope-context" aria-label="Alcance de clientes">
+          <div>
+            <span><Users size={15} /></span>
+            <p><strong>Alcance de clientes</strong><small>{number(visibleClients.length)} clientes visibles en este módulo</small></p>
+          </div>
+          <label>
+            <span>Mostrar</span>
+            <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
+              {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        </section>}
+
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
-          {view === 'map' && <MapDashboard clients={data.clients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
-          {view === 'agenda' && <AgendaView clients={data.clients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
-          {view === 'clients' && <ClientsView clients={data.clients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
-          {view === 'sellers' && <SellersView clients={data.clients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
-          {view === 'finance' && <FinanceView clients={data.clients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
-          {view === 'products' && <ProductsView products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={false} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
+          {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
+          {view === 'agenda' && <AgendaView clients={visibleClients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
+          {view === 'clients' && <ClientsView clients={visibleClients} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
+          {view === 'sellers' && <SellersView clients={visibleClients} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
+          {view === 'finance' && <FinanceView clients={visibleClients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
+          {view === 'products' && <ProductsView products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={false} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
           {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
-          {view === 'routes' && <RoutesView clients={data.clients} logistics={data.logistics} initialClientId={routeClientId} onOpenClient={openClient} onOpenInvoice={openInvoice} />}
-          {view === 'sales-explorer' && <SalesExplorerView clients={data.clients} navigationRequest={salesExplorerRequest} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
-          {view === 'receivables' && <ReceivablesView dataClients={data.clients} navigationRequest={receivablesRequest} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}
+          {view === 'routes' && <RoutesView clients={visibleClients} logistics={data.logistics} initialClientId={routeClientId} onOpenClient={openClient} onOpenInvoice={openInvoice} />}
+          {view === 'sales-explorer' && <SalesExplorerView clients={visibleClients} navigationRequest={salesExplorerRequest} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
+          {view === 'receivables' && <ReceivablesView dataClients={visibleClients} navigationRequest={receivablesRequest} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}
           {view === 'report-center' && <ReportsHubView
-            data={data}
+            data={visibleData!}
             onOpenReport={(report: ReportViewId) => selectView(report)}
             onOpenDestination={(destination) => selectView(destination)}
             onOpenSheet={openSheet}
           />}
-          {view === 'reports' && <ReportsView data={data} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} />}
+          {view === 'reports' && <ReportsView data={visibleData!} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} />}
           {view === 'spt' && <SptReportView onOpenSeller={openSeller} />}
           {view === 'commercial-sales' && <CommercialSalesReportView onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenSalesExplorer={openSalesExplorer} />}
           {view === 'mars' && <MarsReportView onOpenBrand={openBrand} />}
           {view === 'nutripet' && <NutriPetReportView onOpenProduct={openProduct} onOpenBrand={openBrand} />}
           {view === 'baires' && <BairesReportView onOpenBrand={openBrand} />}
-          {view === 'non-buyers' && <NonBuyersReportView data={data} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} onOpenSalesExplorer={openSalesExplorer} />}
+          {view === 'non-buyers' && <NonBuyersReportView data={visibleData!} onOpen={openClient} onOpenSeller={openSeller} onOpenBrand={openBrand} onOpenSalesExplorer={openSalesExplorer} />}
           {view === 'pending-balances' && <PendingBalancesReportView onOpenSeller={openSeller} onOpenReceivables={openReceivables} />}
           {view === 'users' && user.role !== 'office' && <UsersView />}
           {view === 'user-activity' && user.role === 'developer' && <UserActivityView />}
@@ -483,12 +530,12 @@ export default function App() {
         </Suspense></div>
       </main>
       {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
-      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={data.clients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></div>}
+      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></div>}
       {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
       {sheetFocusId != null && data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId) && <DeliverySheetDetailDrawer
         sheet={data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId)!}
         logistics={data.logistics}
-        clients={data.clients}
+        clients={visibleClients}
         onClose={() => setSheetFocusId(null)}
         onOpenClient={openClientById}
         onOpenInvoice={openInvoice}

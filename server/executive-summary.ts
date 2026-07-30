@@ -15,7 +15,7 @@ import { buildNonBuyerReport, getNonBuyerReportMeta } from './non-buyers-report.
 import { buildPendingBalancesReport, getPendingBalancesReportMeta } from './pending-balances-report.js';
 import { metricVariation } from './report-metrics.js';
 
-const commercialUniverse = 'Ventas · Comercial: empresa 3; sucursales 3/6; emisores y exclusiones documentados en su ficha.';
+const commercialUniverse = 'Ventas · Comercial: empresa 3, sucursal 3; emisor y exclusiones documentados en su ficha.';
 const goalsUniverse = 'Reporte General · Objetivos kilos: empresa 3, sucursal 3, marcas, rubros y vendedores del plan activo.';
 const nonBuyerUniverse = 'Cuentas activas del universo de recuperación documentado; excluye grupos, rubros y vendedores definidos en su ficha.';
 const balancesUniverse = 'Cartera documental: facturas y notas de débito abiertas con vencimiento válido.';

@@ -11,7 +11,7 @@ const directories: string[] = [];
 
 function capture(): GesiRawCapture {
   const document = {
-    empresaID: 3, clienteID: 101, comprobanteID: 9, serie: 'B', puntoDeVentaID: 1, numero: 123,
+    empresaID: 3, sucursalID: 3, clienteID: 101, comprobanteID: 9, serie: 'B', puntoDeVentaID: 1, numero: 123,
     subtipo: 'F', fechaDeEmision: '2026-07-01', fechaDePrimerVencimiento: '2026-07-15',
     importeTotal: 25_000, saldoPendiente: 12_500, formaDePagoID: 2, vendedorID: 7, anulado: false,
   };
@@ -81,6 +81,117 @@ describe('forma de pago documental', () => {
     const raw = capture();
     raw.clients[0].razonSocial = 'GBA M6 S.A.';
     expect(normalizeCapture(raw).clients).toHaveLength(0);
+  });
+
+  it('excluye Via Salice y movimientos de empresas o sucursales ajenas de todos los derivados', () => {
+    const raw = capture();
+    const viaDocument = {
+      ...raw.invoices[0],
+      clienteID: 30033,
+      numero: 900,
+      razonSocial: 'Via Salice MDP S.A.',
+      detalleItems: [{ tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 4, importeTotalNeto: 25_000 }],
+    };
+    const foreignDocument = {
+      ...raw.invoices[0],
+      empresaID: 7,
+      clienteID: 707,
+      numero: 901,
+      razonSocial: 'Cliente empresa ajena',
+      detalleItems: [{ tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 6, importeTotalNeto: 30_000 }],
+    };
+    const foreignBranchDocument = {
+      ...raw.invoices[0],
+      sucursalID: 6,
+      clienteID: 606,
+      numero: 902,
+      razonSocial: 'Cliente sucursal ajena',
+      detalleItems: [{ tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 8, importeTotalNeto: 40_000 }],
+    };
+    raw.products = [{ productoID: 'SKU-1', estado: 'A', descripcion: 'Producto 1 kg', unidad1: 'UN' }];
+    raw.clients.push(
+      {
+        clienteID: 30033,
+        estadoID: 1,
+        razonSocial: 'Via Salice MDP S.A.',
+        lstDefinicionClienteSucursal: [{ empresaID: 3, sucursalID: 3 }],
+      },
+      {
+        clienteID: 707,
+        estadoID: 1,
+        razonSocial: 'Cliente empresa ajena',
+        lstDefinicionClienteSucursal: [{ empresaID: 7, sucursalID: 3 }],
+      },
+      {
+        clienteID: 606,
+        estadoID: 1,
+        razonSocial: 'Cliente sucursal ajena',
+        lstDefinicionClienteSucursal: [{ empresaID: 3, sucursalID: 6 }],
+      },
+    );
+    raw.invoices.push(viaDocument, foreignDocument, foreignBranchDocument);
+    raw.pendingDocuments.push(viaDocument, foreignDocument, foreignBranchDocument);
+    raw.deliverySheets = [{
+      empresaID: 7,
+      fojaID: 707,
+      listaDeComprobantesAsignados: [foreignDocument],
+    }];
+    raw.unassignedDeliveryDocuments = [viaDocument, foreignDocument, foreignBranchDocument];
+
+    const normalized = normalizeCapture(raw);
+    expect(normalized.clients.map((client) => client.id)).not.toEqual(expect.arrayContaining([30033, 707, 606]));
+    expect(normalized.products[0]).toMatchObject({ units90d: 0, sales90d: 0, clients90d: 0 });
+    expect(normalized.logistics.invoices.map((invoice) => invoice.clientId))
+      .not.toEqual(expect.arrayContaining([30033, 707, 606]));
+    expect(normalized.logistics.sheets).toHaveLength(0);
+  });
+
+  it('no incorpora Via Salice ni empresas o sucursales ajenas a la base de saldos', () => {
+    const raw = capture();
+    raw.clients[0] = {
+      clienteID: 30033,
+      estadoID: 1,
+      razonSocial: 'Via Salice MDP S.A.',
+      lstDefinicionClienteSucursal: [{ empresaID: 3, sucursalID: 3, vendedorID: 7 }],
+    };
+    raw.invoices[0].clienteID = 30033;
+    raw.pendingDocuments[0].clienteID = 30033;
+    const foreignDocument = {
+      ...raw.pendingDocuments[0],
+      empresaID: 7,
+      clienteID: 707,
+      numero: 901,
+      razonSocial: 'Cliente empresa ajena',
+    };
+    raw.clients.push({
+      clienteID: 707,
+      estadoID: 1,
+      razonSocial: 'Cliente empresa ajena',
+      lstDefinicionClienteSucursal: [{ empresaID: 7, sucursalID: 3, vendedorID: 7 }],
+    });
+    const foreignBranchDocument = {
+      ...raw.pendingDocuments[0],
+      sucursalID: 6,
+      clienteID: 606,
+      numero: 902,
+      razonSocial: 'Cliente sucursal ajena',
+    };
+    raw.clients.push({
+      clienteID: 606,
+      estadoID: 1,
+      razonSocial: 'Cliente sucursal ajena',
+      lstDefinicionClienteSucursal: [{ empresaID: 3, sucursalID: 6, vendedorID: 7 }],
+    });
+    raw.pendingDocuments.push(foreignDocument, foreignBranchDocument);
+
+    const directory = mkdtempSync(join(tmpdir(), 'salice-company-scope-'));
+    directories.push(directory);
+    const path = join(directory, 'pending.sqlite');
+    buildPendingBalancesDatabase(raw, path);
+    const database = new DatabaseSync(path, { readOnly: true });
+    expect(database.prepare('SELECT COUNT(*) total FROM clients').get()).toMatchObject({ total: 0 });
+    expect(database.prepare('SELECT COUNT(*) total FROM documents').get()).toMatchObject({ total: 0 });
+    database.close();
   });
 
   it('filtra por el vendedor de la factura y no por el responsable actual del cliente', () => {

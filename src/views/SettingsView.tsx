@@ -46,6 +46,8 @@ const aiFunctionLabels = {
   executive_summary: 'Resumen ejecutivo',
   commercial_inbox_explanation: 'Bandeja comercial',
   seller_summary: 'Carteras de vendedores',
+  commercial_daily_brief: 'Lectura comercial semanal',
+  product_demand_brief: 'Demanda y rotación de productos',
   report_coherence: 'Coherencia global',
 };
 
@@ -161,7 +163,7 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
             <p><span>Contenido disponible</span><strong>{system ? `${number(system.ai.artifactCounts.valid)} análisis vigentes` : 'Cargando…'}</strong></p>
             <p><span>Datos analizados</span><strong>{system?.ai.activeSnapshotAt ? longDate(system.ai.activeSnapshotAt) : 'No disponibles'}</strong></p>
             <p><span>Actividad actual</span><strong>{system?.ai.current ? `${aiRunStatusLabels[system.ai.current.status]} · ${longDate(system.ai.current.startedAt)}` : 'Sin procesos en curso'}</strong></p>
-            <p><span>Gasto del mes</span><strong>{system ? `USD ${system.ai.usage.currentMonth.estimatedCostUsd.toFixed(2)}` : 'Cargando…'}</strong></p>
+            <p><span>Gasto de hoy</span><strong>{system ? `USD ${system.ai.usage.currentDay.estimatedCostUsd.toFixed(2)} de USD ${system.ai.budget.dailyLimitUsd.toFixed(2)}` : 'Cargando…'}</strong></p>
           </div>
           {system && <div className={`ai-budget-banner ${system.ai.budget.alert}`}>
             <div><strong>Presupuesto mensual</strong><span>USD {system.ai.budget.spentUsd.toFixed(2)} consumidos de USD {system.ai.budget.monthlyLimitUsd.toFixed(2)}</span></div>
@@ -182,8 +184,8 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
             <p><span>Último intento</span><strong>{system.ai.lastRun ? `${aiRunStatusLabels[system.ai.lastRun.status]} · ${longDate(system.ai.lastRun.startedAt)}` : 'Sin ejecuciones'}</strong></p>
             <p><span>Resultados nuevos / reutilizados</span><strong>{system.ai.lastRun ? `${number(system.ai.lastRun.completed)} / ${number(system.ai.lastRun.reused)}` : '0 / 0'}</strong></p>
             <p><span>Consumo del mes</span><strong>{number(system.ai.usage.currentMonth.inputTokens)} entrada · {number(system.ai.usage.currentMonth.outputTokens)} salida</strong></p>
-            <p><span>Límite por actualización</span><strong>USD {system.ai.limits.maxEstimatedCostUsdPerRun.toFixed(2)}</strong></p>
-            <p><span>Modelos</span><strong>Terra para análisis complejos · Luna para tareas de alto volumen</strong></p>
+            <p><span>Límite diario</span><strong>USD {system.ai.budget.dailyLimitUsd.toFixed(2)} · quedan USD {system.ai.budget.remainingTodayUsd.toFixed(2)}</strong></p>
+            <p><span>Modelos</span><strong>Sol para síntesis ejecutiva · Terra para análisis · Luna para tareas de alto volumen</strong></p>
           </div><div className="ai-function-usage">
             <header><strong>Consumo y resultados por función · mes actual</strong><span>Costo medido sobre intentos reales</span></header>
             {system.ai.usage.functions.length

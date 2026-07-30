@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, CalendarClock, ChevronRight, Gauge, PackageSearch, Search, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import type { Product } from '../../shared/models';
+import type { AiOperationalBrief, AiStoredArtifact } from '../../shared/ai';
 import type { DemandDimension, DemandStability, DemandTrend, DemandWindowDays, ProductDemandPayload, ProductDemandRow } from '../../shared/product-demand';
 import { compactDate, money, number, shortDate } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
 import { SortButton } from './SortButton';
+import { AiOperationalBriefCard } from './AiInsights';
 
 type DemandSort = 'label' | 'current' | 'kilos' | 'previous' | 'variation' | 'buyers' | 'rotation' | 'kiloRotation' | 'stability' | 'lastSale';
 
@@ -34,6 +36,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
   const [windowDays, setWindowDays] = useState<DemandWindowDays>(90);
   const [dimension, setDimension] = useState<DemandDimension>('product');
   const [payload, setPayload] = useState<ProductDemandPayload | null>(null);
+  const [aiBrief, setAiBrief] = useState<AiStoredArtifact<AiOperationalBrief> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -68,6 +71,17 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
     return () => controller.abort();
   }, [availability, brand, dimension, family, group, line, masterStatus, query, stability, trend, windowDays]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/ai/product-demand-brief', { cache: 'no-store', signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => setAiBrief(result?.artifact ?? null))
+      .catch((cause) => {
+        if (!(cause instanceof DOMException && cause.name === 'AbortError')) setAiBrief(null);
+      });
+    return () => controller.abort();
+  }, []);
+
   const sorted = useMemo(() => sortItems(payload?.rows ?? [], sort, (row, key) => {
     if (key === 'label') return row.label;
     if (key === 'current') return row.current.units;
@@ -97,6 +111,16 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
       <div><span className="section-kicker"><Activity size={15} /> Historia comercial GESI</span><h2>Demanda y rotación</h2><p>Ventanas móviles equivalentes, compradores y estabilidad calculados con reglas visibles. No se usan pronósticos de IA.</p></div>
       <div className="demand-window-switch" aria-label="Ventana de análisis">{([30, 90, 180] as DemandWindowDays[]).map((days) => <button key={days} className={windowDays === days ? 'active' : ''} onClick={() => setWindowDays(days)}>{days} días</button>)}</div>
     </header>
+
+    <AiOperationalBriefCard
+      artifact={windowDays === 90
+        && dimension === 'product'
+        && !query && !brand && !family && !group && !line
+        && availability === 'all' && !masterStatus && !trend && !stability
+        ? aiBrief
+        : null}
+      eyebrow="Interpretación general · 90 días"
+    />
 
     {payload && <>
       <section className="demand-kpis">

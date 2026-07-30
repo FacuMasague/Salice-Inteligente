@@ -33,7 +33,7 @@ const segmentExpression = `CASE
   WHEN UPPER(TRIM(product_group)) = 'BAIRES MASIVO' THEN 'Masivo'
   ELSE product_group END`;
 const branchExpression = `CASE
-  WHEN branch_id IN (3, 6) THEN 'Mar del Plata'
+  WHEN branch_id = 3 THEN 'Mar del Plata'
   WHEN branch_id = 4 THEN 'Córdoba'
   ELSE COALESCE(NULLIF(TRIM(branch_name), ''), 'Otros') END`;
 

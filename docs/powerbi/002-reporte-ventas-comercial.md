@@ -76,11 +76,11 @@ Las tarjetas de Balanceado, Drovet y Sanitarios excluyen `Small Retail`, mientra
 El panel publicado se verificó directamente el 20/07/2026 y aplica estas reglas de página:
 
 - `EmpresaID = 3`;
-- `SucEmpresa` admite 3 y 6;
-- `RazonSocial` admite `Salice Distribuciones S.A.` y `MDQ Alarcon Distribuciones S.A.`;
+- `SucEmpresa = 3`;
+- `RazonSocial` admite únicamente `Salice Distribuciones S.A.`;
 - excluye `Via Salice MDP S.A.`, `Consumidor Final` y `GBA M6 S.A.`.
 
-La implementación web reproduce las cuatro reglas. La consulta directa a la API no devolvió comprobantes adicionales para los contextos empresa/sucursal 3/6, 6/3 ni 6/6 en julio; por lo tanto, el conjunto vigente proviene de empresa 3 / sucursal 3 y emisor Salice, sin que eso permita eliminar las opciones guardadas del universo.
+Desde v1.2.2 la implementación web restringe el universo a empresa 3 / sucursal 3 y emisor Salice. Las opciones históricas de sucursal 6 y otras combinaciones dejan de formar parte del contrato aunque no hayan aportado filas a la última captura.
 
 La pantalla utiliza `data/spt-gesi.sqlite`, construida directamente desde facturas, notas de crédito, clientes, productos, vendedores, canales y clasificaciones de la API de GESI. El PBIX no se abre durante la operación; sólo queda como referencia funcional y de conciliación.
 
@@ -110,7 +110,7 @@ El servidor expone:
 - `GET /api/reports/commercial-sales/meta`
 - `GET /api/reports/commercial-sales`
 
-Las pruebas verifican fuente GESI, empresa 3, sucursales 3/6, razones sociales admitidas, exclusiones internas, cobertura, corte equivalente, conciliación entre total y composición, clasificación de negocios y recálculo por vendedor.
+Las pruebas verifican fuente GESI, empresa 3, sucursal 3, emisor Salice, exclusiones internas, cobertura, corte equivalente, conciliación entre total y composición, clasificación de negocios y recálculo por vendedor.
 
 ## Ampliación administrativa v0.4.0
 

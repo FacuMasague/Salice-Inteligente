@@ -53,7 +53,11 @@ services:
         value: "512"
       - key: SALICE_REFRESH_CAPTURE_HEAP_MB
         value: "768"
+      - key: SALICE_REFRESH_ACTIVATION_HEAP_MB
+        value: "1024"
       - key: SALICE_AI_MAX_COST_USD_PER_RUN
+        value: "1"
+      - key: SALICE_AI_DAILY_BUDGET_USD
         value: "1"
       - key: SALICE_AI_MONTHLY_BUDGET_USD
         value: "30"
