@@ -14,6 +14,7 @@ import {
 } from '../../shared/models.js';
 import { invoiceCreditTermDays, summarizeCreditTerms } from '../../shared/credit-terms.js';
 import { applyClientLocationQuality } from '../../shared/client-location.js';
+import { isCommercialSellerIncluded } from '../../shared/commercial-seller-scope.js';
 import { calculateInventoryMetrics, catalogParticipationReasons } from '../../shared/inventory-metrics.js';
 import { referenceUnitPricePerKg } from '../../shared/product-prices.js';
 import { applyCatalogPricePositioning, inferProductVectorV2, resolveProductContentKg, VECTOR_KEYS } from '../../shared/product-vectors.js';
@@ -161,8 +162,32 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const previous90From = addDays(snapshotDate, -180);
   const monthKeys = recentMonthKeys(snapshotDate);
 
+  const sellerLabels = makeLabelMap(capture.masters.sellers, 'vendedorID', ['fantasia', 'razonSocial']);
+  const branchDefinitions = new Map<number, GesiRow>();
+  for (const clientRow of capture.clients) {
+    const definitions = Array.isArray(clientRow.lstDefinicionClienteSucursal)
+      ? clientRow.lstDefinicionClienteSucursal as GesiRow[]
+      : [];
+    const definition = definitions.find((row) => (
+      number(row.empresaID) === SALICE_COMPANY_ID
+      && number(row.sucursalID) === SALICE_PRIMARY_BRANCH_ID
+    ));
+    if (definition) branchDefinitions.set(number(clientRow.clienteID), definition);
+  }
+  const sellerForClient = (clientRow: GesiRow | undefined) => {
+    if (!clientRow) return 'Sin vendedor';
+    const clientID = number(clientRow.clienteID);
+    const definition = branchDefinitions.get(clientID);
+    const sellerID = number(definition?.vendedorID || clientRow.enEstaSucursal_VendedorID || clientRow.vendedorID);
+    return sellerLabels.get(sellerID) || (sellerID ? `Vendedor ${sellerID}` : 'Sin vendedor');
+  };
+  const includedClientIDs = new Set(capture.clients
+    .filter((client) => isCommercialSellerIncluded(sellerForClient(client)))
+    .map((client) => number(client.clienteID)));
+
   const belongsToOperationalScope = (row: GesiRow) => (
     isSaliceDataScope(row.empresaID, row.sucursalID)
+    && includedClientIDs.has(number(row.clienteID))
     && !isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
   );
   const invoices = deduplicateDocuments(capture.invoices)
@@ -176,7 +201,6 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
 
   const channelLabels = makeLabelMap(capture.masters.channels, 'canalDeVentaID', ['descripcion']);
   const paymentMethodLabels = makeLabelMap(capture.masters.paymentMethods, 'formaDePagoID', ['descripcion']);
-  const sellerLabels = makeLabelMap(capture.masters.sellers, 'vendedorID', ['fantasia', 'razonSocial']);
   const zoneLabels = makeLabelMap(capture.masters.zones, 'zonaID', ['descripcion']);
   const typeLabels = makeLabelMap(capture.masters.clientTypes, 'tipoDeClienteID', ['descripcion']);
   const rubroLabels = makeLabelMap(capture.masters.rubros, 'rubroID', ['descripcion']);
@@ -190,18 +214,6 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const productGroupLabels = makeLabelMap(capture.masters.productGroups, 'grupoArtID', ['descripcion']);
 
   const balances = new Map(capture.balances.map((row) => [number(row.clienteID), number(row.saldoCliente)]));
-  const branchDefinitions = new Map<number, GesiRow>();
-  for (const clientRow of capture.clients) {
-    const definitions = Array.isArray(clientRow.lstDefinicionClienteSucursal)
-      ? clientRow.lstDefinicionClienteSucursal as GesiRow[]
-      : [];
-    const definition = definitions.find((row) => (
-      number(row.empresaID) === SALICE_COMPANY_ID
-      && number(row.sucursalID) === SALICE_PRIMARY_BRANCH_ID
-    ));
-    if (definition) branchDefinitions.set(number(clientRow.clienteID), definition);
-  }
-
   const invoicesByClient = new Map<number, GesiRow[]>();
   for (const invoice of invoices) {
     const id = number(invoice.clienteID);
@@ -428,6 +440,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         ? row.lstDefinicionClienteSucursal as GesiRow[]
         : [];
       return !hasExplicitForeignDataScope(definitions)
+        && includedClientIDs.has(number(row.clienteID))
         && !isExcludedSaliceClient(
           row.clienteID,
           row.razonSocial,

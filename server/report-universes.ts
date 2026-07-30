@@ -1,4 +1,5 @@
 import { REPORT_UNIVERSES } from '../shared/metrics.js';
+import { EXCLUDED_HISTORICAL_SELLERS } from '../shared/commercial-seller-scope.js';
 import {
   EXCLUDED_SALICE_CLIENT_NAMES,
   SALICE_COMPANY_ID,
@@ -48,6 +49,11 @@ export function compileMovementUniverse(universe: ExecutableMovementUniverse) {
     clauses.push(`${upperText ? `UPPER(TRIM(${column}))` : `TRIM(${column})`} NOT IN (${placeholders(values)})`);
     parameters.push(...(upperText ? values.map((value) => value.toUpperCase()) : values));
   };
+  const excludeExact = (column: string, values: readonly string[]) => {
+    if (!values.length) return;
+    clauses.push(`TRIM(${column}) NOT IN (${placeholders(values)})`);
+    parameters.push(...values);
+  };
   include('company_id', universe.companies);
   include('branch_id', universe.branches);
   include('issuer_name', universe.allowedIssuers, true);
@@ -56,6 +62,10 @@ export function compileMovementUniverse(universe: ExecutableMovementUniverse) {
   exclude('client_name', universe.excludedClients ?? []);
   exclude('category', universe.excludedCategories ?? []);
   exclude('product_group', universe.excludedProductGroups ?? []);
+  // SQLite no transforma letras acentuadas con UPPER sin una extensión ICU.
+  // Los nombres provienen del maestro GESI y se comparan con su texto exacto.
+  excludeExact('seller', EXCLUDED_HISTORICAL_SELLERS);
+  excludeExact('branch_seller', EXCLUDED_HISTORICAL_SELLERS);
   exclude('branch_seller', universe.excludedSellers ?? []);
   return { sql: clauses.length ? clauses.join(' AND ') : '1 = 1', parameters };
 }

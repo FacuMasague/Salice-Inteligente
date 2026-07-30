@@ -16,7 +16,7 @@ type ClientSortKey = 'client' | 'status' | 'zone' | 'sales' | 'risk' | 'opportun
 export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: { clients: Client[]; query: string; onQuery: (value: string) => void; onOpen: (client: Client) => void; onOpenSeller: (seller: string) => void }) {
   const pageSize = 50;
   const [page, setPage] = useState(1);
-  const [commercialStatus, setCommercialStatus] = useState('active');
+  const [commercialStatus, setCommercialStatus] = useState('');
   const [portfolio, setPortfolio] = useState('');
   const [seller, setSeller] = useState('');
   const [risk, setRisk] = useState('');
@@ -77,7 +77,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
   const savedFilters = { query, commercialStatus, portfolio, seller, risk, trend, locationStatus, sort };
   const applySaved = (saved: Record<string, string>) => {
     onQuery(saved.query ?? '');
-    setCommercialStatus(saved.commercialStatus ?? 'active');
+    setCommercialStatus(saved.commercialStatus ?? '');
     setPortfolio(saved.portfolio ?? '');
     setSeller(saved.seller ?? '');
     setRisk(saved.risk ?? '');

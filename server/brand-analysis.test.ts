@@ -15,10 +15,11 @@ describe('participación comercial por marca', () => {
       CREATE TABLE movements (
         sale_date TEXT, product_id TEXT, product_name TEXT, brand TEXT,
         company_id INTEGER, branch_id INTEGER, issuer_name TEXT, client_name TEXT,
-        source_kind TEXT, units REAL, kilos REAL, net_amount REAL, client_id INTEGER
+        source_kind TEXT, units REAL, kilos REAL, net_amount REAL, client_id INTEGER,
+        seller TEXT, branch_seller TEXT
       );
     `);
-    const insert = database.prepare('INSERT INTO movements VALUES (?, ?, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const insert = database.prepare("INSERT INTO movements VALUES (?, ?, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?, 'Andres Dominguez', 'Andres Dominguez')");
     const add = (date: string, product: string, productName: string, brand: string, branch: number, issuer: string, clientName: string, kind: string, units: number, kilos: number, amount: number, client: number) => (
       insert.run(date, product, productName, brand, branch, issuer, clientName, kind, units, kilos, amount, client)
     );

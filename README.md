@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.2.2
+# Salice Inteligente · v1.2.3
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.2 fija empresa 3 como alcance único de todos los movimientos y excluye a Via Salice de los datos operativos y comerciales derivados.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.2.3 unifica el alcance comercial de vendedores, prioriza por defecto clientes con compra reciente o deuda y mejora la profundización temporal del Explorador de ventas.
 
 ## Abrir el programa
 
@@ -170,3 +170,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.2.0.md`
 - `docs/release-v1.2.1.md`
 - `docs/release-v1.2.2.md`
+- `docs/release-v1.2.3.md`

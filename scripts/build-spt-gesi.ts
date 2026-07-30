@@ -8,6 +8,10 @@ import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 import {
+  EXCLUDED_HISTORICAL_SELLERS,
+  isCommercialSellerIncluded,
+} from '../shared/commercial-seller-scope.js';
+import {
   EXCLUDED_SALICE_CLIENT_NAMES,
   SALICE_COMPANY_ID,
   SALICE_PRIMARY_BRANCH_ID,
@@ -176,6 +180,10 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
       document.fantasia,
     )
   ) return;
+  const clientID = number(document.clienteID);
+  const client = clients.get(clientID);
+  const branchSellerLabel = branchSeller(client) === 'Male' ? 'Delfina' : branchSeller(client);
+  if (!isCommercialSellerIncluded(branchSellerLabel || 'Sin vendedor')) return;
   sourceDocumentCount += 1;
   const sourceDocumentKey = documentKey(document);
   const seenKey = `${kind}:${sourceDocumentKey}`;
@@ -190,8 +198,6 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
     const key = itemID ? String(itemID) : `${sourceItemID}:${text(row.codigoDeItem)}`;
     if (!uniqueItems.has(key)) uniqueItems.set(key, { row, sourceItemID });
   });
-  const clientID = number(document.clienteID);
-  const client = clients.get(clientID);
   if (!client) missingClients += 1;
   let saleDate = date(document.fechaDeEmision);
   if (saleDate === '2025-06-02' || saleDate === '2025-06-03') saleDate = '2025-05-31';
@@ -207,9 +213,7 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
     if (!product) missingProducts += 1;
     const rubroID = number(product?.rubroID);
     const subRubroID = number(product?.subRubroID);
-    const branchSellerLabel = branchSeller(client) === 'Male' ? 'Delfina' : branchSeller(client);
-    const customerSellerRaw = sellers.get(number(client?.vendedorID)) ?? '';
-    const customerSeller = customerSellerRaw === 'Male' ? 'Delfina' : customerSellerRaw;
+    const customerSeller = branchSellerLabel;
     const companyID = number(document.empresaID);
     const branchID = number(document.sucursalID);
     const issuerName = 'Salice Distribuciones S.A.';
@@ -299,6 +303,7 @@ const metaValues: Record<string, string> = {
   company_scope: String(SALICE_COMPANY_ID),
   branch_scope: String(SALICE_PRIMARY_BRANCH_ID),
   excluded_clients: JSON.stringify(EXCLUDED_SALICE_CLIENT_NAMES),
+  excluded_historical_sellers: JSON.stringify(EXCLUDED_HISTORICAL_SELLERS),
 };
 database.exec('BEGIN');
 for (const [key, value] of Object.entries(metaValues)) meta.run(key, value);

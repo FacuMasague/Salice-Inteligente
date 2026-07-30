@@ -6,6 +6,7 @@ import { getActiveBundleManifest, resolveActiveDataPaths, verifyDataBundleManife
 import { applyAiProductVectors } from './ai-artifacts.js';
 import { importSnapshotNotes, mergeOperationalData } from './operational-store.js';
 import { applyClientLocationQuality } from '../shared/client-location.js';
+import { isCommercialSellerIncluded } from '../shared/commercial-seller-scope.js';
 import { applyReceivablesPolicyToClients } from '../shared/receivables-policy.js';
 import { applyCatalogPricePositioning, resolveProductContentKg } from '../shared/product-vectors.js';
 import { referenceUnitPricePerKg } from '../shared/product-prices.js';
@@ -73,6 +74,20 @@ export async function loadSnapshot(): Promise<DashboardData> {
   // La capa de IA sólo puede afectar productos con un artefacto validado. Las
   // correcciones humanas se aplican después y, por lo tanto, siempre prevalecen.
   const merged = mergeOperationalData(applyAiProductVectors(cachedSnapshot));
+  const scopedClients = merged.clients.filter((client) => isCommercialSellerIncluded(client.seller));
+  const policyClients = applyReceivablesPolicyToClients(scopedClients, merged.meta.generatedAt.slice(0, 10));
+  const locations = applyClientLocationQuality(policyClients);
+  const purchaseTotals = new Map<string, { units: number; sales: number; clients: Set<number>; lastSaleAt: string }>();
+  for (const client of locations.clients) {
+    for (const purchase of client.purchases) {
+      const current = purchaseTotals.get(purchase.productId) ?? { units: 0, sales: 0, clients: new Set<number>(), lastSaleAt: '' };
+      current.units += purchase.quantity;
+      current.sales += purchase.total;
+      current.clients.add(client.id);
+      current.lastSaleAt = current.lastSaleAt > purchase.date ? current.lastSaleAt : purchase.date;
+      purchaseTotals.set(purchase.productId, current);
+    }
+  }
   const products = applyCatalogPricePositioning(merged.products.map((product) => {
     const contentKg = product.contentKg ?? resolveProductContentKg({
       unit1: product.unit,
@@ -80,25 +95,60 @@ export async function loadSnapshot(): Promise<DashboardData> {
       unit2PerUnit1: product.inventory?.unit2PerUnit1,
       descriptions: [product.name, product.description, product.pack],
     });
+    const totals = purchaseTotals.get(product.id);
+    const units90d = totals?.units ?? 0;
+    const monthlyUnits = units90d / 3;
     return {
       ...product,
       contentKg,
       referencePricePerKg: referenceUnitPricePerKg(product.price, contentKg),
-      kilos90d: contentKg ? Math.round(product.units90d * contentKg * 100) / 100 : 0,
-      kiloDataStatus: product.units90d <= 0 || contentKg ? 'estimated' as const : 'unavailable' as const,
+      units90d: Math.round(units90d * 100) / 100,
+      monthlyUnits: Math.round(monthlyUnits * 100) / 100,
+      sales90d: Math.round((totals?.sales ?? 0) * 100) / 100,
+      clients90d: totals?.clients.size ?? 0,
+      lastSaleAt: totals?.lastSaleAt ?? '',
+      stockCoverageMonths: product.stock > 0 && monthlyUnits > 0
+        ? Math.round(product.stock / monthlyUnits * 10) / 10
+        : null,
+      kilos90d: contentKg ? Math.round(units90d * contentKg * 100) / 100 : 0,
+      kiloDataStatus: units90d <= 0 || contentKg ? 'estimated' as const : 'unavailable' as const,
     };
   }));
-  const policyClients = applyReceivablesPolicyToClients(merged.clients, merged.meta.generatedAt.slice(0, 10));
-  const locations = applyClientLocationQuality(policyClients);
+  const visibleClientIDs = new Set(locations.clients.map((client) => client.id));
+  const logisticsInvoices = merged.logistics.invoices.filter((invoice) => visibleClientIDs.has(invoice.clientId));
+  const visibleInvoiceIDs = new Set(logisticsInvoices.map((invoice) => invoice.id));
+  const logisticsSheets = merged.logistics.sheets
+    .map((sheet) => ({ ...sheet, invoiceIds: sheet.invoiceIds.filter((id) => visibleInvoiceIDs.has(id)) }))
+    .filter((sheet) => sheet.invoiceIds.length > 0);
+  const logistics = {
+    ...merged.logistics,
+    invoices: logisticsInvoices,
+    sheets: logisticsSheets,
+  };
+  const logisticsCoverage = {
+    coverageFrom: merged.logistics.coverageFrom,
+    coverageThrough: merged.logistics.coverageThrough,
+    invoices: logisticsInvoices.length,
+    unassignedInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unassigned').length,
+    openSheetInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'open_sheet').length,
+    closedSheetInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'closed_sheet').length,
+    unknownInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unknown').length,
+    sheets: logisticsSheets.length,
+    openSheets: logisticsSheets.filter((sheet) => sheet.status === 'open').length,
+    closedSheets: logisticsSheets.filter((sheet) => sheet.status === 'closed').length,
+    sheetsWithDriver: logisticsSheets.filter((sheet) => !sheet.driver.startsWith('Sin ')).length,
+  };
   return {
     ...merged,
     products,
     clients: locations.clients,
+    logistics,
     meta: {
       ...merged.meta,
       version: APP_VERSION,
       coverage: merged.meta.coverage ? {
         ...merged.meta.coverage,
+        logistics: logisticsCoverage,
         includedClients: locations.clients.length,
         activeClients: locations.clients.filter((client) => client.active).length,
         inactiveClients: locations.clients.filter((client) => !client.active).length,
