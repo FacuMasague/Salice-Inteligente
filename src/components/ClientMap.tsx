@@ -15,8 +15,8 @@ const markerIcon = (client: Client, selected: boolean) => L.divIcon({
 const clusterIcon = (count: number) => L.divIcon({
   className: 'client-cluster-shell',
   html: `<div class="client-cluster"><strong>${count}</strong><span>clientes</span></div>`,
-  iconSize: [54, 54],
-  iconAnchor: [27, 27],
+  iconSize: [56, 56],
+  iconAnchor: [28, 28],
 });
 
 const depotIcon = L.divIcon({

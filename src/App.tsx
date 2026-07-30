@@ -54,6 +54,21 @@ const viewSection: Record<View, SidebarSection> = {
   settings: 'system', users: 'system', 'user-activity': 'system',
 };
 
+const clientScopeViews = new Set<View>([
+  'map',
+  'routes',
+  'clients',
+  'sellers',
+  'products',
+  'finance',
+  'agenda',
+  'sales-explorer',
+  'receivables',
+  'report-center',
+  'reports',
+  'non-buyers',
+]);
+
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
   agenda: { title: 'Bandeja comercial', subtitle: 'Señales, oportunidades, compromisos y notas de oficina' },
@@ -454,13 +469,6 @@ export default function App() {
           <button className="desktop-sidebar-toggle" aria-label={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} title={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} aria-pressed={sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button>
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
-            <label className="client-scope-control" title="Define qué clientes se muestran en todo el programa">
-              <Users size={15} />
-              <span>Clientes</span>
-              <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
-                {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
             <div className={`global-search ${searchOpen ? 'open' : ''}`}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
               {searchOpen && <div className="global-search-results">
                 {normalizedGlobalQuery.length < 2 && <p>Escribí al menos 2 caracteres para buscar en toda la base.</p>}
@@ -477,6 +485,19 @@ export default function App() {
             <div className="user-menu-wrap"><button className="user-menu-button" aria-label="Menú de usuario" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((value) => !value); setNotificationsOpen(false); setSearchOpen(false); }}><UserCircle size={20} /><span>{user.displayName.split(' ')[0]}</span><ChevronDown size={13} /></button>{userMenuOpen && <aside className="user-menu-panel"><div><strong>{user.displayName}</strong><span>@{user.username} · {user.role === 'developer' ? 'Developer' : user.role === 'admin' ? 'Administrador' : 'Oficina'}</span></div>{user.role !== 'office' && <button onClick={() => { selectView('users'); setUserMenuOpen(false); }}><ShieldCheck size={15} /> Administrar usuarios</button>}{user.role === 'developer' && <button onClick={() => { selectView('user-activity'); setUserMenuOpen(false); }}><Activity size={15} /> Ver actividad</button>}<button className="logout" onClick={() => void logout()}><LogOut size={15} /> Cerrar sesión</button></aside>}</div>
           </div>
         </header>
+
+        {clientScopeViews.has(view) && <section className="client-scope-context" aria-label="Alcance de clientes">
+          <div>
+            <span><Users size={15} /></span>
+            <p><strong>Alcance de clientes</strong><small>{number(visibleClients.length)} clientes visibles en este módulo</small></p>
+          </div>
+          <label>
+            <span>Mostrar</span>
+            <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
+              {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        </section>}
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
           {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
