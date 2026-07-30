@@ -25,9 +25,9 @@ import {
 import {
   SALICE_COMPANY_ID,
   SALICE_PRIMARY_BRANCH_ID,
-  hasExplicitForeignCompanyScope,
+  hasExplicitForeignDataScope,
   isExcludedSaliceClient,
-  isSaliceCompany,
+  isSaliceDataScope,
 } from '../../shared/salice-data-scope.js';
 import type { GesiRawCapture, GesiRow } from './types.js';
 
@@ -162,7 +162,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const monthKeys = recentMonthKeys(snapshotDate);
 
   const belongsToOperationalScope = (row: GesiRow) => (
-    isSaliceCompany(row.empresaID)
+    isSaliceDataScope(row.empresaID, row.sucursalID)
     && !isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
   );
   const invoices = deduplicateDocuments(capture.invoices)
@@ -427,7 +427,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       const definitions = Array.isArray(row.lstDefinicionClienteSucursal)
         ? row.lstDefinicionClienteSucursal as GesiRow[]
         : [];
-      return !hasExplicitForeignCompanyScope(definitions)
+      return !hasExplicitForeignDataScope(definitions)
         && !isExcludedSaliceClient(
           row.clienteID,
           row.razonSocial,
@@ -608,7 +608,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   const invoiceIDs = new Set(invoices.map(documentIdentity));
   const assignmentByInvoice = new Map<string, DeliverySheetReference>();
   const logisticsSheets: DeliverySheet[] = (capture.deliverySheets ?? [])
-    .filter((row) => isSaliceCompany(row.empresaID))
+    .filter((row) => Number(row.empresaID) === SALICE_COMPANY_ID)
     .map((row) => {
     const status = deliverySheetStatus(row);
     const reference: DeliverySheetReference = {

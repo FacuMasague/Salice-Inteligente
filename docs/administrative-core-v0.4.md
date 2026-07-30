@@ -16,7 +16,7 @@ Una actualización de GESI puede reemplazar el paquete analítico, pero nunca bo
 
 ## Explorador general de ventas
 
-El explorador usa el contrato ejecutable `commercial-sales`: empresa 3, sucursales 3/6, emisores admitidos y exclusiones documentadas en la ficha 002. Su fuente física es la tabla `movements` de la base comercial activa.
+El explorador usa el contrato ejecutable `commercial-sales`: empresa 3, sucursal 3, emisor Salice y exclusiones documentadas en la ficha 002. Su fuente física es la tabla `movements` de la base comercial activa.
 
 Filtros globales:
 

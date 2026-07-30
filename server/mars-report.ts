@@ -41,7 +41,7 @@ const MASS_CHANNELS = ['On Line', 'Tienda', 'Gastronomico', 'Masivo', 'Premium',
 
 const branchExpression = `CASE
   WHEN branch_id = 7 THEN 'Bahía Blanca'
-  WHEN branch_id IN (3, 6) THEN 'Mar del Plata'
+  WHEN branch_id = 3 THEN 'Mar del Plata'
   ELSE 'Otros' END`;
 const channelExpression = `CASE
   WHEN channel IN (${sqlList(SPECIALIZED_CHANNELS)}) THEN 'Especializado'

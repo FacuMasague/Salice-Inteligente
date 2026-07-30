@@ -37,6 +37,7 @@ const QUARTER_PAGE_SELLERS = ['Alejandro Lurbe', 'Andres Dominguez', 'Edgardo La
 const UNIVERSE = EXECUTABLE_UNIVERSES.spt;
 const EXCLUDED_CATEGORIES = [...UNIVERSE.excludedCategories];
 const COMPANIES = [...UNIVERSE.companies];
+const BRANCHES = [...UNIVERSE.branches];
 
 const FILTER_COLUMNS: Record<SptFilterKey, string> = {
   seller: 'seller',
@@ -93,7 +94,7 @@ export function getSptReportMeta(): SptReportMeta {
       latestMonth: '',
       months: [],
       options: Object.fromEntries(Object.keys(FILTER_COLUMNS).map((key) => [key, []])) as unknown as Record<SptFilterKey, string[]>,
-      defaultUniverse: { companies: COMPANIES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
+      defaultUniverse: { companies: COMPANIES, branches: BRANCHES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
     };
   }
   const meta = metadata(database);
@@ -114,7 +115,7 @@ export function getSptReportMeta(): SptReportMeta {
       key,
       rows<{ value: string }>(database.prepare('SELECT value FROM filter_options WHERE filter_key = ? ORDER BY value COLLATE NOCASE'), [key]).map((row) => row.value),
     ])) as Record<SptFilterKey, string[]>,
-    defaultUniverse: { companies: COMPANIES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
+    defaultUniverse: { companies: COMPANIES, branches: BRANCHES, sellers: DEFAULT_SELLERS, channels: DEFAULT_CHANNELS, productGroups: DEFAULT_PRODUCT_GROUPS, excludedCategories: EXCLUDED_CATEGORIES },
   };
   return cachedMeta;
 }

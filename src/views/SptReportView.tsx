@@ -257,7 +257,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
       {loading && <div className="spt-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
 
-    <ReportContext universe={`Empresas ${meta.defaultUniverse.companies.join('/')} · universo SPT conciliado`} period={`${report.selectedMonth}-01 → ${report.selectedMonth}-${String(report.cutoffDay).padStart(2, '0')}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.cutoffDay < new Date(Date.UTC(Number(report.selectedMonth.slice(0, 4)), Number(report.selectedMonth.slice(5, 7)), 0)).getUTCDate()} warnings={[...(incompleteHistoricalCoverage ? [`Cobertura histórica disponible desde ${meta.coverageFrom}.`] : []), ...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : [])]} related={[{ view: 'reports', label: 'Abrir Reporte General' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('spt', { ...filters, page: tab === 'summary' ? 'main' : tab }), label: 'Exportar informe', kind: 'xlsx' }]} />} />
+    <ReportContext universe="Empresa 3 · sucursal 3 · universo SPT conciliado" period={`${report.selectedMonth}-01 → ${report.selectedMonth}-${String(report.cutoffDay).padStart(2, '0')}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.cutoffDay < new Date(Date.UTC(Number(report.selectedMonth.slice(0, 4)), Number(report.selectedMonth.slice(5, 7)), 0)).getUTCDate()} warnings={[...(incompleteHistoricalCoverage ? [`Cobertura histórica disponible desde ${meta.coverageFrom}.`] : []), ...(meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : [])]} related={[{ view: 'reports', label: 'Abrir Reporte General' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('spt', { ...filters, page: tab === 'summary' ? 'main' : tab }), label: 'Exportar informe', kind: 'xlsx' }]} />} />
     <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
@@ -284,6 +284,6 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     {tab === 'sellers' && <SellerTab report={report} onOpenSeller={onOpenSeller} />}
     {tab === 'quarters' && <QuarterTab report={report} />}
 
-    <details className="business-report-source-note"><summary><Database size={15} /> Información técnica del reporte</summary><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos · cobertura solicitada {meta.coverageFrom} a {meta.maxDate} · filtro de empresas 3/6.</span></div></details>
+    <details className="business-report-source-note"><summary><Database size={15} /> Información técnica del reporte</summary><div><strong>{meta.sourceSystem}</strong><span>{number(meta.rowCount)} movimientos · cobertura solicitada {meta.coverageFrom} a {meta.maxDate} · empresa 3 / sucursal 3.</span></div></details>
   </div>;
 }

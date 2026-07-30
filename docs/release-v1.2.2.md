@@ -2,11 +2,11 @@
 
 ## Alcance de datos
 
-- Empresa 3 pasa a ser el único alcance aceptado para movimientos de ventas, cobranzas, cartera, logística y reportes.
-- Las sucursales 3 y 6 continúan disponibles cuando el comprobante pertenece a empresa 3.
+- Empresa 3 y sucursal 3 pasan a ser el único alcance aceptado para movimientos de ventas, cobranzas, cartera, logística y reportes.
+- La sucursal 6 y cualquier otra empresa o sucursal se descartan antes de construir snapshots y bases derivadas.
 - Via Salice MDP S.A. (cliente GESI 30033) se excluye de clientes, ventas, productos, cartera, fojas y bases de reportes derivadas.
-- El universo SPT corrige una regla heredada que permitía interpretar empresa 6 como parte de Salice.
-- Los maestros compartidos que no informan empresa no se eliminan automáticamente: sólo se excluyen identidades confirmadas o movimientos con empresa incompatible.
+- Los universos SPT y Ventas Comercial corrigen reglas heredadas que todavía admitían sucursal 6.
+- Los maestros compartidos que no informan empresa o sucursal no se eliminan automáticamente: sólo se excluyen identidades confirmadas o definiciones con un alcance incompatible.
 
 ## Persistencia
 

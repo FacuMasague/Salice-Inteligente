@@ -13,9 +13,9 @@ import {
 import {
   SALICE_COMPANY_ID,
   SALICE_PRIMARY_BRANCH_ID,
-  hasExplicitForeignCompanyScope,
+  hasExplicitForeignDataScope,
   isExcludedSaliceClient,
-  isSaliceCompany,
+  isSaliceDataScope,
 } from '../shared/salice-data-scope.js';
 
 export const PENDING_BALANCE_SELLERS = [...RECEIVABLE_SELLERS];
@@ -78,7 +78,7 @@ export function buildPendingBalancesDatabase(
       || isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
     ) continue;
     const definitions = Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : [];
-    if (hasExplicitForeignCompanyScope(definitions)) continue;
+    if (hasExplicitForeignDataScope(definitions)) continue;
     const definition = definitions.find((item) => (
       numeric(item.empresaID) === SALICE_COMPANY_ID
       && numeric(item.sucursalID) === SALICE_PRIMARY_BRANCH_ID
@@ -98,7 +98,7 @@ export function buildPendingBalancesDatabase(
       const issuedAt = date(row.fechaDeEmision);
       if (
         row.anulado === true
-        || !isSaliceCompany(row.empresaID)
+        || !isSaliceDataScope(row.empresaID, row.sucursalID)
         || isExcludedSaliceClient(row.clienteID, row.razonSocial, row.nombreDeFantasia, row.fantasia)
         || issuedAt < salesFrom
         || issuedAt > asOfDate
@@ -117,7 +117,7 @@ export function buildPendingBalancesDatabase(
     // GESI, pero no forman parte de esta suma (sí afectan el saldo neto CC).
     if (
       document.anulado === true
-      || !isSaliceCompany(document.empresaID)
+      || !isSaliceDataScope(document.empresaID, document.sucursalID)
       || isExcludedSaliceClient(
         document.clienteID,
         document.razonSocial,
@@ -255,6 +255,7 @@ export function buildPendingBalancesDatabase(
       source_system: 'GESI API · saldos, comprobantes pendientes y ventas Salice',
       captured_at: capture.captureMeta.capturedAt,
       company_scope: String(SALICE_COMPANY_ID),
+      branch_scope: String(SALICE_PRIMARY_BRANCH_ID),
       as_of_date: asOfDate,
       sales_from: salesFrom,
       client_count: String(clientCount),

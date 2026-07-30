@@ -41,10 +41,10 @@ describe('participación comercial por marca', () => {
       { id: 'C', contentKg: 10 },
     ]);
     const brandA = result.brands.find((brand) => brand.name === 'Marca A')!;
-    expect(result.totals).toMatchObject({ netAmount: 1_500, kilos: 60, units: 15, buyers: 4 });
-    expect(brandA).toMatchObject({ netAmount: 800, kilos: 16, salesSharePercent: 53.33, kiloSharePercent: 26.67 });
+    expect(result.totals).toMatchObject({ netAmount: 1_400, kilos: 50, units: 14, buyers: 3 });
+    expect(brandA).toMatchObject({ netAmount: 800, kilos: 16, salesSharePercent: 57.14, kiloSharePercent: 32 });
     expect(result.brands.find((brand) => brand.name === 'Sin marca informada')).toMatchObject({ netAmount: 100, kilos: 4 });
-    expect(result.brands.find((brand) => brand.name === 'Marca C')).toMatchObject({ netAmount: 100, kilos: 10 });
+    expect(result.brands.some((brand) => brand.name === 'Marca C')).toBe(false);
     expect(result.brands.some((brand) => brand.name === 'Marca excluida')).toBe(false);
     expect(result.brands.reduce((sum, brand) => sum + brand.salesSharePercent, 0)).toBeCloseTo(100, 1);
     expect(result.unavailableDocumentCount).toBe(2);

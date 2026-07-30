@@ -87,11 +87,11 @@ const REPORT_CONFIG: Record<AiReportId, { label: string; universe: string }> = {
   },
   spt: {
     label: 'SPT',
-    universe: 'Canal especializado conciliado: empresas 3/6, canales y grupos documentados, sin POP ni Promociones.',
+    universe: 'Canal especializado conciliado: empresa 3, sucursal 3; canales y grupos documentados, sin POP ni Promociones.',
   },
   'commercial-sales': {
     label: 'Ventas Comercial',
-    universe: 'Empresa 3; sucursales 3/6; emisores y exclusiones documentados en el contrato de Ventas Comercial.',
+    universe: 'Empresa 3, sucursal 3; emisor y exclusiones documentados en el contrato de Ventas Comercial.',
   },
   mars: {
     label: 'Mars',

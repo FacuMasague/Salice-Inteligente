@@ -285,15 +285,18 @@ const companyScopedCollections = [
   ['notas de crédito SPT', capture.sptCreditNotes],
   ['cobranzas', capture.collections],
   ['documentos pendientes', capture.pendingDocuments],
-  ['fojas', capture.deliverySheets ?? []],
   ['documentos sin foja', capture.unassignedDeliveryDocuments ?? []],
 ] as const;
 for (const [label, rows] of companyScopedCollections) {
   require(
-    rows.every((row) => number(row.empresaID) === 3),
-    `Hay ${label} fuera de empresa 3.`,
+    rows.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3),
+    `Hay ${label} fuera de empresa 3 / sucursal 3.`,
   );
 }
+require(
+  (capture.deliverySheets ?? []).every((row) => number(row.empresaID) === 3),
+  'Hay fojas fuera de empresa 3; GESI no informa sucursalID en este recurso.',
+);
 require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
 if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);

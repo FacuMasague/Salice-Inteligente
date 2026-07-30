@@ -424,6 +424,7 @@ export interface SptReportMeta {
   options: Record<SptFilterKey, string[]>;
   defaultUniverse: {
     companies: number[];
+    branches: number[];
     sellers: string[];
     channels: string[];
     productGroups: string[];

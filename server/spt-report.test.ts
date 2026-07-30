@@ -16,6 +16,7 @@ describeWithDatabase('reporte SPT construido desde GESI', () => {
     expect(meta.maxDate >= '2026-07-20').toBe(true);
     expect(meta.unavailableDocumentCount).toBeLessThan(100);
     expect(meta.defaultUniverse.companies).toEqual([3]);
+    expect(meta.defaultUniverse.branches).toEqual([3]);
   }, 15_000);
 
   it('calcula un corte actual coherente dentro del universo de empresa 3', () => {

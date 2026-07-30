@@ -63,7 +63,7 @@ La medida llamada `Promedio diario` divide el MTD por el número de día. Funcio
 ## Filtros guardados en la página principal
 
 - Mes guardado: julio de 2026.
-- Empresas admitidas: 3 y 6.
+- Alcance operativo desde v1.2.2: empresa 3 y sucursal 3 exclusivamente.
 - Vendedores: Ana Ottaviano, Andres Dominguez, Edgardo Larrea, Gonzalo Russian, Ignacio Carea, Julieta Errecart y Reventas.
 - Canales: COSTA-RUTA2, Especializado, Especializado Z2, Small Retail y Partido de la Costa.
 - Grupos: ANDACOLLO, Baires Masivo, Baires SPT, BEDYWOOD, CanCat, Lokal, Nutri Pet, Patagonia Pet, Pet Nutrition, Sanicat y Sol Minerales. Power BI resuelve ANDACOLLO/Andacollo y BEDYWOOD/BedyWood sin distinguir mayúsculas.
@@ -86,7 +86,7 @@ Estas cifras se recalcularon directamente sobre el modelo embebido, con los filt
 | Cociente YTD contra YTD anterior | 106,93% |
 | Importe neto del período | $287.633.871,96 |
 
-En ese corte, aunque el filtro admite empresas 3 y 6, las filas resultantes pertenecen únicamente a empresa 3.
+En ese corte, las filas resultantes pertenecen únicamente a empresa 3 / sucursal 3.
 
 La página `Vendedores`, que usa un universo algo más amplio, devuelve para el mismo corte 119.908,80 kg, 525 clientes y $302.970.326,45 de importe neto. No debe compararse directamente contra la página principal porque los grupos y canales admitidos son diferentes.
 
@@ -119,13 +119,13 @@ Este reporte no debe copiarse literalmente. El reemplazo web debería conservar 
 
 ## Verificación de filtros · v0.2.3
 
-El 20/07/2026 se verificó directamente el panel de filtros de la página publicada. Continúan vigentes las empresas 3/6, los siete vendedores, los cinco canales, los once grupos y la exclusión de POP/Promociones documentados arriba. En el corte observado, las filas resultantes siguen perteneciendo únicamente a empresa 3.
+El 20/07/2026 se verificó directamente el panel original de Power BI. Sus opciones históricas incluían empresas 3/6, pero desde v1.2.2 la aplicación aplica únicamente empresa 3 / sucursal 3. Se conservan los vendedores, canales, grupos y la exclusión de POP/Promociones documentados arriba.
 
 La instancia publicada mostraba 119.986,591 kg al momento de la inspección. La captura directa de la API realizada a las 10:05 de Argentina devolvió 123.949,142 kg con exactamente el mismo universo. La diferencia de 3.962,551 kg corresponde a movimientos del 20/07 que ya estaban en GESI después de la actualización de Power BI; no se recorta la fuente actual para igualar una foto anterior del mismo día.
 
 ## Estado de migración
 
-La implementación operativa construye `data/spt-gesi.sqlite` directamente desde facturas, notas de crédito, clientes, productos, vendedores, canales y clasificaciones de la API de GESI. El filtro del reporte admite empresas 3 y 6 tal como Power BI; la consulta de API del 20/07 confirmó que el contexto adicional no devolvió comprobantes y que el resultado vigente pertenece a empresa 3 / sucursal 3. El backfill mensual cubre desde el 01/01/2025.
+La implementación operativa construye `data/spt-gesi.sqlite` directamente desde facturas, notas de crédito, clientes, productos, vendedores, canales y clasificaciones de la API de GESI. Sólo inserta movimientos de empresa 3 / sucursal 3 aunque la referencia histórica de Power BI ofrezca otras opciones. El backfill mensual cubre desde el 01/01/2025.
 
 El PBIX se conserva en `data/reference/spt-pbix.sqlite` únicamente para verificar resultados. No forma parte de la ruta de ejecución, no actualiza la web y puede eliminarse sin impedir que el reporte funcione. La conciliación identificó que las notas de crédito deben restarse, que el vendedor de la página principal es el asignado al cliente y que `NombreVendSucursal` proviene de la definición del cliente para la sucursal.
 

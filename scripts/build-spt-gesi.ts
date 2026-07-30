@@ -12,7 +12,7 @@ import {
   SALICE_COMPANY_ID,
   SALICE_PRIMARY_BRANCH_ID,
   isExcludedSaliceClient,
-  isSaliceCompany,
+  isSaliceDataScope,
 } from '../shared/salice-data-scope.js';
 
 const capturePath = resolve(process.env.SALICE_CAPTURE_PATH ?? 'data/raw/gesi-salice-latest.json');
@@ -168,7 +168,7 @@ const deleteDocument = database.prepare('DELETE FROM movements WHERE source_docu
 const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credit_note') => {
   if (
     document.anulado === true
-    || !isSaliceCompany(document.empresaID)
+    || !isSaliceDataScope(document.empresaID, document.sucursalID)
     || isExcludedSaliceClient(
       document.clienteID,
       document.razonSocial,
@@ -212,11 +212,7 @@ const writeDocument = (document: GesiRow, sign: 1 | -1, kind: 'invoice' | 'credi
     const customerSeller = customerSellerRaw === 'Male' ? 'Delfina' : customerSellerRaw;
     const companyID = number(document.empresaID);
     const branchID = number(document.sucursalID);
-    const issuerName = companyID === 3 && branchID === 3
-      ? 'Salice Distribuciones S.A.'
-      : companyID === 3 && branchID === 6
-        ? 'MDQ Alarcon Distribuciones S.A.'
-        : `Empresa ${companyID} · sucursal ${branchID}`;
+    const issuerName = 'Salice Distribuciones S.A.';
     insert.run(
       saleDate,
       productID,
@@ -301,6 +297,7 @@ const metaValues: Record<string, string> = {
   skipped_documents_without_detail: String(skippedHeadersWithoutDetail),
   client_type_catalog_source: masters.clientTypes.length ? 'gesi_api' : 'catalog_fallback_2026-07-20',
   company_scope: String(SALICE_COMPANY_ID),
+  branch_scope: String(SALICE_PRIMARY_BRANCH_ID),
   excluded_clients: JSON.stringify(EXCLUDED_SALICE_CLIENT_NAMES),
 };
 database.exec('BEGIN');

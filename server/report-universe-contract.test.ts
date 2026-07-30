@@ -40,6 +40,7 @@ describe('contrato central de universos de reporte', () => {
     const runtime = getSptReportMeta().defaultUniverse;
     const catalog = documented('spt-main');
     expect(runtime.companies).toEqual(catalog.companies);
+    expect(runtime.branches).toEqual(catalog.branches);
     expect(runtime.excludedCategories).toEqual(expect.arrayContaining(['POP', 'Promociones']));
   });
 });

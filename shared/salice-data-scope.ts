@@ -17,17 +17,31 @@ export function isSaliceCompany(value: unknown) {
   return Number(value) === SALICE_COMPANY_ID;
 }
 
+export function isSaliceBranch(value: unknown) {
+  return Number(value) === SALICE_PRIMARY_BRANCH_ID;
+}
+
+export function isSaliceDataScope(companyID: unknown, branchID: unknown) {
+  return isSaliceCompany(companyID) && isSaliceBranch(branchID);
+}
+
 export function isExcludedSaliceClient(clientID: unknown, ...names: unknown[]) {
   const numericID = Number(clientID);
   return (Number.isFinite(numericID) && excludedClientIDs.has(numericID))
     || names.some((name) => excludedClientNames.has(identity(name)));
 }
 
-export function hasExplicitForeignCompanyScope(
+export function hasExplicitForeignDataScope(
   definitions: Array<Record<string, unknown>> | undefined,
 ) {
-  const companyIDs = (definitions ?? [])
-    .map((definition) => Number(definition.empresaID))
-    .filter((companyID) => Number.isFinite(companyID) && companyID > 0);
-  return companyIDs.length > 0 && !companyIDs.includes(SALICE_COMPANY_ID);
+  const explicitDefinitions = (definitions ?? []).filter((definition) => (
+    Number.isFinite(Number(definition.empresaID))
+    && Number(definition.empresaID) > 0
+    && Number.isFinite(Number(definition.sucursalID))
+    && Number(definition.sucursalID) > 0
+  ));
+  return explicitDefinitions.length > 0
+    && !explicitDefinitions.some((definition) => (
+      isSaliceDataScope(definition.empresaID, definition.sucursalID)
+    ));
 }

@@ -69,7 +69,7 @@ export function exportSalesCsv(response: Response, input: Partial<Record<string,
     title: 'Explorador general de ventas',
     period: `${filters.from} → ${filters.to}`,
     cutoff: meta.maxDate,
-    universe: 'Ventas Comercial · empresa 3 · sucursales 3/6 · emisores publicados',
+    universe: 'Ventas Comercial · empresa 3 · sucursal 3 · emisor publicado',
     filters,
     warnings: meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle no se completaron artificialmente.`] : [],
   }).forEach((row) => response.write(csvRow(row)));
@@ -120,7 +120,7 @@ export async function exportSalesXlsx(response: Response, input: Partial<Record<
     title: 'Explorador general de ventas',
     period: `${filters.from} → ${filters.to}`,
     cutoff: meta.maxDate,
-    universe: 'Ventas Comercial · empresa 3 · sucursales 3/6',
+    universe: 'Ventas Comercial · empresa 3 · sucursal 3',
     filters,
     warnings: meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle no se completaron artificialmente.`] : [],
   });
