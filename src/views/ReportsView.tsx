@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarRange, CheckCircle2, ChevronRight, Database, Gauge, Info, PackageCheck, Target, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, CalendarRange, CheckCircle2, ChevronRight, Database, FileDown, Gauge, Info, PackageCheck, Scale, Target, TrendingUp, Users } from 'lucide-react';
 import type { Client, DashboardData, GeneralPerformanceRow, GeneralReportMeta, GeneralReportMode, GeneralReportPayload } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { AiNarrativeCard } from '../components/AiInsights';
+import { CommercialGoalsManager } from '../components/CommercialGoalsManager';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
@@ -29,14 +31,17 @@ const modes: { id: GeneralReportMode; label: string; note: string }[] = [
 ];
 
 const monthLabel = (value: string, long = false) => new Intl.DateTimeFormat('es-AR', {
-  month: long ? 'long' : 'short', year: '2-digit', timeZone: 'UTC',
+  month: long ? 'long' : 'short', year: long ? 'numeric' : '2-digit', timeZone: 'UTC',
 }).format(new Date(`${value}-01T12:00:00Z`)).replace('.', '');
 
 const percent = (value: number | null, digits = 0) => value == null
   ? 'Sin objetivo'
   : `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: digits }).format(value)}%`;
 
-function metric(value: number, unit: GeneralReportPayload['unit'], compact = false) {
+type DisplayUnit = GeneralReportPayload['unit'] | 'count';
+
+function metric(value: number, unit: DisplayUnit, compact = false) {
+  if (unit === 'count') return number(value);
   if (unit === 'currency') return money(value, compact);
   if (compact && Math.abs(value) >= 1_000_000) return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value / 1_000_000)} M kg`;
   if (compact && Math.abs(value) >= 1_000) return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value / 1_000)} k kg`;
@@ -86,7 +91,7 @@ function TrendChart({ report }: { report: GeneralReportPayload }) {
   </div>;
 }
 
-function PerformanceTable({ title, subtitle, rows, unit, onOpenName }: { title: string; subtitle: string; rows: GeneralPerformanceRow[]; unit: GeneralReportPayload['unit']; onOpenName?: (name: string) => void }) {
+function PerformanceTable({ title, subtitle, rows, unit, onOpenName }: { title: string; subtitle: string; rows: GeneralPerformanceRow[]; unit: DisplayUnit; onOpenName?: (name: string) => void }) {
   const [sort, setSort] = useState(emptySort<PerformanceSortKey>());
   const sorted = useMemo(() => sortItems(rows, sort, (row, key) => row[key]), [rows, sort]);
   const direction = (key: PerformanceSortKey) => sort.key === key ? sort.direction : null;
@@ -110,6 +115,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
   const [brand, setBrand] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [goalUpdateMessage, setGoalUpdateMessage] = useState('');
 
   useEffect(() => {
     fetch('/api/reports/general/meta').then((response) => {
@@ -147,9 +153,12 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
   const actualChangeYear = report ? change(report.actual, report.previousYearActual) : null;
   const pulseClients = useMemo(() => data.clients.filter((client) => client.active && matchesMultiFilter(client.seller, seller)), [data.clients, seller]);
   const pulseSales = pulseClients.reduce((sum, client) => sum + client.sales90d, 0);
+  const pulseProductContent = useMemo(() => productContentById(data.products), [data.products]);
+  const pulseKilos = pulseClients.reduce((sum, client) => sum + clientKilos90d(client, pulseProductContent).kilos, 0);
   const pulseOverdue = pulseClients.reduce((sum, client) => sum + client.overdueOutstanding, 0);
   const priority = [...pulseClients].sort((left, right) => right.visitPriority - left.visitPriority)[0];
   const breakdown = report?.brands.length ? report.brands : report?.categories ?? [];
+  const selectedMonthPlan = meta?.targetSource.monthPlans.find((item) => item.month === month);
   const savedFilters = { mode, month, seller, category, brand };
   const applySaved = (saved: Record<string, string>) => {
     setMode(modes.some((item) => item.id === saved.mode) ? saved.mode as GeneralReportMode : 'core');
@@ -158,16 +167,29 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
     setCategory(saved.category || '');
     setBrand(saved.brand || '');
   };
+  const goalsImported = async (importedMonth: string, importedName: string) => {
+    const response = await fetch('/api/reports/general/meta', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Los objetivos se guardaron, pero no se pudo recargar el reporte. Actualizá la página.');
+    const nextMeta = await response.json() as GeneralReportMeta;
+    setMeta(nextMeta);
+    setMonth(importedMonth);
+    setGoalUpdateMessage(`“${importedName}” ya está activo en Reporte General.`);
+  };
 
   if (error && !report) return <ReportState state="error" title="Reporte General no disponible" detail={error} onRetry={() => location.reload()} />;
   if (!meta || !report) return <ReportState state="loading" title="Preparando Reporte General…" detail="Calculando resultados y objetivos desde las fuentes conciliadas." />;
 
   return <div className={`page-view general-report-page ${loading ? 'is-loading' : ''}`}>
+    <section className="data-card general-plan-toolbar">
+      <div className="general-plan-current"><span className="section-kicker"><Target size={14} /> Objetivos seleccionados</span><strong>{selectedMonthPlan?.name ?? meta.targetSource.label}</strong><small>{monthLabel(month, true)} · los resultados reales siguen viniendo de GESI</small></div>
+      <div className="general-plan-actions"><CommercialGoalsManager currentMonth={month} onSaved={goalsImported} /><a className="button secondary goal-history-export" href="/api/admin/goals/export-history"><FileDown size={15} /> Exportar objetivos</a></div>
+    </section>
+    {goalUpdateMessage && <div className="general-plan-success"><CheckCircle2 size={15} /><span>{goalUpdateMessage}</span><button onClick={() => setGoalUpdateMessage('')}>Cerrar</button></div>}
     <section className="data-card general-filter-card" data-tour="reports-overview">
       <div className="general-filter-heading"><span className="section-kicker"><Gauge size={14} /> Estado Salice</span><h2>Resultado real frente al plan mensual</h2><p>Resultados reales y objetivos del plan mensual activo se consultan juntos en este reporte.</p></div>
       <div className="general-mode-switch">{modes.map((item) => <button key={item.id} className={mode === item.id ? 'active' : ''} onClick={() => changeMode(item.id)}><strong>{item.label}</strong><small>{item.note}</small></button>)}</div>
       <div className="general-filters">
-        <SingleSelectFilter label="Mes" value={month} options={meta.months.map((item) => ({ value: item, label: monthLabel(item, true) }))} onChange={setMonth} />
+        <SingleSelectFilter label="Mes y objetivos" value={month} options={meta.months.map((item) => ({ value: item, label: `${monthLabel(item, true)} · ${meta.targetSource.monthPlans.find((plan) => plan.month === item)?.name ?? 'Plan vigente'}` }))} onChange={setMonth} />
         <MultiSelectFilter label="Vendedor" value={seller} options={sellerOptions} onChange={setSeller} />
         {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
         {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
@@ -179,11 +201,12 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
     <AiNarrativeCard artifact={report.aiNarrative} />
 
     <div className="general-kpis">
+      <article><span className="general-kpi-icon green"><Scale size={20} /></span><div><small>Facturación / kilos del período</small><strong>{money(report.netAmount, true)}</strong><em>{number(report.kilos, 2)} kg · {number(report.clients)} compradores</em></div></article>
       <article><span className="general-kpi-icon green"><BarChart3 size={20} /></span><div><small>Resultado real</small><strong>{metric(report.actual, report.unit, true)}</strong><em>Hasta el {new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(new Date(`${report.periodEnd}T12:00:00`))}</em></div></article>
-      <article><span className="general-kpi-icon blue"><Target size={20} /></span><div><small>Objetivo mensual</small><strong>{metric(report.target, report.unit, true)}</strong><em>{monthLabel(report.selectedMonth, true)}</em></div></article>
+      <article><span className="general-kpi-icon blue"><Target size={20} /></span><div><small>Objetivo mensual</small><strong>{metric(report.target, report.unit, true)}</strong><em>{selectedMonthPlan?.name ?? monthLabel(report.selectedMonth, true)}</em></div></article>
       <article><span className="general-kpi-icon ochre"><Gauge size={20} /></span><div><small>Cumplimiento</small><strong>{percent(report.completion, 1)}</strong><em>{report.target ? `${metric(Math.abs(report.gap), report.unit, true)} ${report.gap >= 0 ? 'por encima' : 'pendiente'}` : 'Sin objetivo cargado'}</em></div></article>
       <article><span className="general-kpi-icon green"><TrendingUp size={20} /></span><div><small>Proyección lineal</small><strong>{report.projection == null ? 'Mes cerrado' : metric(report.projection, report.unit, true)}</strong><em>{report.projectedCompletion == null ? `${report.daysInMonth} días completos` : `${percent(report.projectedCompletion, 1)} del objetivo`}</em></div></article>
-      <article><span className="general-kpi-icon blue"><Users size={20} /></span><div><small>Clientes compradores</small><strong>{number(report.clients)}</strong><em>{number(report.units)} unidades informadas</em></div></article>
+      <article><span className="general-kpi-icon blue"><Users size={20} /></span><div><small>Clientes objetivo</small><strong>{mode === 'autoservice' || !report.clientGoals.target ? 'No aplica' : `${number(report.clientGoals.actual)} / ${number(report.clientGoals.target)}`}</strong><em>{mode === 'autoservice' || !report.clientGoals.target ? `${number(report.clients)} compradores únicos` : `${percent(report.clientGoals.completion, 1)} · ${number(report.clients)} compradores únicos`}</em></div></article>
     </div>
 
     <div className="general-primary-grid">
@@ -198,7 +221,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
 
       <section className="data-card general-pulse-card">
         <div className="data-card-header"><div><span className="section-kicker"><PackageCheck size={14} /> Contexto operativo</span><h2>Pulso de la cartera</h2><p>Señales complementarias, no incluidas en el objetivo.</p></div></div>
-        <div className="general-pulse-list"><article><span>Ventas últimos 90 días</span><strong>{money(pulseSales, true)}</strong></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{clientPrimaryName(priority)}</strong><small>{clientSecondaryName(priority) ? `${clientSecondaryName(priority)} · ` : ''}prioridad {priority.visitPriority}/100 · {priority.seller}</small></button>}</div>
+        <div className="general-pulse-list"><article><span>Facturación / kilos · últimos 90 días</span><strong>{money(pulseSales, true)}</strong><small>{number(pulseKilos, 2)} kg</small></article><article><span>Saldo vencido actual</span><strong>{money(pulseOverdue, true)}</strong></article><article><span>Clientes activos</span><strong>{number(pulseClients.length)}</strong></article>{priority && <button onClick={() => onOpen(priority)}><span>Prioridad comercial más alta</span><strong>{clientPrimaryName(priority)}</strong><small>{clientSecondaryName(priority) ? `${clientSecondaryName(priority)} · ` : ''}prioridad {priority.visitPriority}/100 · {priority.seller}</small></button>}</div>
       </section>
     </div>
 
@@ -213,6 +236,11 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
     </div>
 
     {mode === 'core' && report.categories.length > 0 && <PerformanceTable title="Resultado por rubro" subtitle="Alimento húmedo, balanceados y C&T bajo las mismas reglas del reporte." rows={report.categories} unit={report.unit} />}
+
+    {mode !== 'autoservice' && report.clientGoals.target > 0 && <div className="general-detail-grid">
+      <PerformanceTable title="Clientes objetivo por producto o rubro" subtitle={report.clientGoals.countingRule} rows={report.clientGoals.products} unit="count" />
+      <PerformanceTable title="Clientes objetivo por vendedor" subtitle="Suma los objetivos y compradores de cada producto asignado al vendedor." rows={report.clientGoals.sellers} unit="count" onOpenName={onOpenSeller} />
+    </div>}
 
     <details className="business-report-source-note">
       <summary><Database size={15} /> Información técnica del reporte</summary>

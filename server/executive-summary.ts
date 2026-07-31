@@ -147,7 +147,26 @@ export async function loadExecutiveSummary(data: DashboardData): Promise<Executi
     if (summary.snapshotAt !== data.meta.generatedAt) {
       throw new Error(`El resumen ejecutivo corresponde a ${summary.snapshotAt} y el snapshot activo a ${data.meta.generatedAt}.`);
     }
-    return summary;
+    const goals = buildGeneralReport({ mode: 'core' });
+    const goalsMeta = getGeneralReportMeta();
+    return goals ? {
+      ...summary,
+      goals: {
+        actual: goals.actual,
+        target: goals.target,
+        completion: goals.completion,
+        gap: goals.gap,
+        projectedCompletion: goals.projectedCompletion,
+        unit: goals.unit,
+        targetSource: goalsMeta.targetSource.label,
+        context: {
+          ...summary.goals.context,
+          period: `${goals.periodStart} — ${goals.periodEnd}`,
+          cutoff: goals.sourceMaxDate,
+          source: `${goalsMeta.sourceSystem} + plan versionado: ${goalsMeta.targetSource.label}`,
+        },
+      },
+    } : summary;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     // Compatibilidad con paquetes creados antes de que el resumen pasara a ser

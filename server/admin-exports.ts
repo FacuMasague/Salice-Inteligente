@@ -3,8 +3,14 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { resolve } from 'node:path';
 import type { CommercialGoalsPayload, InvoiceDetailPayload, ReceivableDashboardPayload } from '../shared/models.js';
+import { isCommercialGoalProduct, isCommercialGoalSeller } from '../shared/commercial-goals-scope.js';
 import { buildGeneralReport } from './general-report.js';
-import { getCommercialGoalsPayload } from './operational-store.js';
+import {
+  getActiveCommercialGoalPlan,
+  getCommercialGoalMonthRevision,
+  getCommercialGoalsPayload,
+  listCommercialGoalMonthRevisions,
+} from './operational-store.js';
 import { buildReceivablesDashboard } from './receivables-dashboard.js';
 import { forEachSalesExportRow, getSalesExplorerMeta, normalizeSalesExplorerFilters } from './sales-explorer.js';
 
@@ -240,7 +246,7 @@ export async function exportGoalsXlsx(response: Response, versionId?: string, mo
   sheet.columns = [
     { header: 'Mes', key: 'month', width: 12 }, { header: 'Producto / lectura', key: 'product', width: 32 },
     { header: 'Vendedor', key: 'seller', width: 24 }, { header: 'Kilos', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
-    { header: 'Cuentas', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
+    { header: 'Objetivo clientes', key: 'accounts', width: 18, style: { numFmt: '#,##0' } },
     { header: 'Facturación', key: 'invoicing', width: 22, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
   ];
   styleHeader(sheet.getRow(1));
@@ -249,6 +255,80 @@ export async function exportGoalsXlsx(response: Response, versionId?: string, mo
   sheet.autoFilter = 'A1:F1';
   sheet.commit();
   await workbook.commit();
+}
+
+function goalMonthDate(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber - 1, 1, 12));
+}
+
+function addPowerBiGoalColumns(sheet: ExcelJS.Worksheet) {
+  sheet.columns = [
+    { header: 'Mes', key: 'month', width: 14, style: { numFmt: 'mmmm yy' } },
+    { header: 'Producto', key: 'product', width: 32 },
+    { header: 'Vendedor', key: 'seller', width: 24 },
+    { header: 'Objetivo', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
+    { header: 'Obj. Ctas', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
+    { header: 'Obj. Fact', key: 'invoicing', width: 20, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
+  ];
+  styleHeader(sheet.getRow(1));
+  sheet.autoFilter = 'A1:F1';
+}
+
+export function createGoalsHistoryWorkbook() {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Salice Inteligente';
+  workbook.created = new Date();
+  const active = getActiveCommercialGoalPlan();
+  const current = workbook.addWorksheet('Power BI', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
+  addPowerBiGoalColumns(current);
+  active.rows.filter((row) => (
+    isCommercialGoalSeller(row.seller) && (!row.product || isCommercialGoalProduct(row.product))
+  )).forEach((row) => current.addRow({
+    month: goalMonthDate(row.month), product: row.product, seller: row.seller,
+    kilos: row.kilos, accounts: row.accounts, invoicing: row.invoicing,
+  }));
+
+  const history = workbook.addWorksheet('Historial', { views: [{ state: 'frozen', ySplit: 1, showGridLines: true }] });
+  history.columns = [
+    { header: 'Nombre del registro', key: 'recordName', width: 38 },
+    { header: 'Estado', key: 'status', width: 16 },
+    { header: 'Origen', key: 'source', width: 20 },
+    { header: 'Creado', key: 'createdAt', width: 19, style: { numFmt: 'dd/mm/yyyy hh:mm' } },
+    { header: 'Usuario', key: 'createdBy', width: 24 },
+    { header: 'Mes', key: 'month', width: 14, style: { numFmt: 'mmmm yy' } },
+    { header: 'Producto', key: 'product', width: 32 },
+    { header: 'Vendedor', key: 'seller', width: 24 },
+    { header: 'Objetivo', key: 'kilos', width: 15, style: { numFmt: '#,##0.00' } },
+    { header: 'Obj. Ctas', key: 'accounts', width: 14, style: { numFmt: '#,##0' } },
+    { header: 'Obj. Fact', key: 'invoicing', width: 20, style: { numFmt: '$ #,##0.00;[Red]-$ #,##0.00' } },
+  ];
+  styleHeader(history.getRow(1));
+  history.autoFilter = 'A1:K1';
+  for (const revision of listCommercialGoalMonthRevisions()) {
+    const detail = getCommercialGoalMonthRevision(revision.id);
+    if (!detail) continue;
+    detail.rows.forEach((row) => history.addRow({
+      recordName: revision.name,
+      status: revision.active ? 'En uso' : 'Registro anterior',
+      source: revision.sourceKind === 'excel' ? 'Excel histórico' : 'Creado desde la web',
+      createdAt: new Date(revision.createdAt),
+      createdBy: revision.createdBy,
+      month: goalMonthDate(row.month),
+      product: row.product,
+      seller: row.seller,
+      kilos: row.kilos,
+      accounts: row.accounts,
+      invoicing: row.invoicing,
+    }));
+  }
+  return workbook;
+}
+
+export async function exportGoalsHistoryXlsx(response: Response) {
+  setDownloadHeaders(response, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'objetivos-salice-actuales-e-historicos.xlsx');
+  await createGoalsHistoryWorkbook().xlsx.write(response);
+  response.end();
 }
 
 function formatNumber(value: number, unit: 'kg' | 'ars' | 'count') {
@@ -281,7 +361,7 @@ export function exportGoalsPdf(response: Response, versionId?: string, month?: s
   document.moveDown(1).fillColor('#1f2d28').font('Helvetica-Bold').fontSize(12).text('Plan cargado');
   document.font('Helvetica').fontSize(10)
     .text(`Kilos: ${formatNumber(totals.kilos, 'kg')}`)
-    .text(`Cuentas: ${formatNumber(totals.accounts, 'count')}`)
+    .text(`Objetivos de clientes: ${formatNumber(totals.accounts, 'count')}`)
     .text(`Facturación: ${formatNumber(totals.invoicing, 'ars')}`);
   if (version.status === 'active') {
     const reports = [

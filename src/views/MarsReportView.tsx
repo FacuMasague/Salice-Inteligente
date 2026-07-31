@@ -9,7 +9,7 @@ import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActi
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
-import { compactNumber, number } from '../lib/format';
+import { compactNumber, money as formatMoney, number } from '../lib/format';
 import { reportFiltersFromLocation } from '../lib/report-links';
 
 const EMPTY_FILTERS: MarsFilters = {
@@ -26,6 +26,7 @@ const FILTER_LABELS: Record<MarsFilterKey, string> = {
 
 const kilos = (value: number, compact = false) => compact ? compactNumber(value) : number(value, 2);
 const exactKilos = (value: number) => new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format(value);
+const money = (value: number) => formatMoney(value, true);
 const percent = (value: number | null, signed = false) => value == null
   ? 'Sin base'
   : `${signed && value > 0 ? '+' : ''}${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value)}%`;
@@ -72,6 +73,7 @@ function VolumeChart({ report }: { report: MarsReportPayload }) {
     {hoveredRow && hovered != null && <aside className={`mars-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.periods.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}>
       <strong>{hoveredRow.label} · {dateLabel(hoveredRow.start)}–{dateLabel(hoveredRow.end)}{hoveredRow.isPartial ? ' · parcial' : ''}</strong>
       <span><i className="volume" /><div><small>Volumen</small><b>{exactKilos(hoveredRow.kilos)} kg</b></div></span>
+      <span><i className="sales" /><div><small>Facturación neta</small><b>{money(hoveredRow.netAmount)}</b></div></span>
       <span><i className="ratio" /><div><small>Acumulado vs año anterior</small><b>{percent(hoveredRow.ytdVsPreviousYear)}</b></div></span>
       <div className="mars-tooltip-grid"><span>{number(hoveredRow.clients)} {report.filters.clientMode === 'branch' ? 'sucursales' : 'cuentas'}</span><span>{percent(hoveredRow.vsPreviousYear)} vs año anterior</span><span>{percent(hoveredRow.vsPreviousPeriod)} vs período anterior</span></div>
     </aside>}
@@ -126,7 +128,7 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
 
 function QuarterChart({ report }: { report: MarsReportPayload }) {
   const max = Math.max(1, ...report.quarters.flatMap((row) => [row.kilos, row.previousYearKilos]));
-  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className="current" style={{ height: `${row.kilos / max * 100}%` }}><i>{kilos(row.kilos, true)}</i></span><span className="previous" style={{ height: `${row.previousYearKilos / max * 100}%` }}><i>{kilos(row.previousYearKilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{percent(variation(row.kilos, row.previousYearKilos), true)}</p></article>)}</div>;
+  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className="current" style={{ height: `${row.kilos / max * 100}%` }}><i>{kilos(row.kilos, true)}</i></span><span className="previous" style={{ height: `${row.previousYearKilos / max * 100}%` }}><i>{kilos(row.previousYearKilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{money(row.netAmount)} · {percent(variation(row.kilos, row.previousYearKilos), true)}</p></article>)}</div>;
 }
 
 function BrandTable({ rows, onOpenBrand }: { rows: MarsBrandRow[]; onOpenBrand: (brand: string) => void }) {
@@ -135,7 +137,7 @@ function BrandTable({ rows, onOpenBrand }: { rows: MarsBrandRow[]; onOpenBrand: 
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const changeSort = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="mars-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => changeSort('share')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => changeSort('variation')} /></header>{sorted.map((row) => <article key={row.brand}><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span>{exactKilos(row.kilos)} kg</span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)} kg</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
+  return <div className="mars-brand-table"><header><SortButton label="Marca" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos / facturación" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Participación" direction={direction('share')} onClick={() => changeSort('share')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Variación" direction={direction('variation')} onClick={() => changeSort('variation')} /></header>{sorted.map((row) => <article key={row.brand}><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><span><strong>{exactKilos(row.kilos)} kg</strong><small>{money(row.netAmount)}</small></span><span>{number(row.clients)}</span><span>{percent(row.share)}</span><span>{exactKilos(row.previousYearKilos)} kg</span><span className={row.variation != null && row.variation >= 0 ? 'positive' : 'negative'}>{percent(row.variation, true)}</span></article>)}</div>;
 }
 
 function PeriodTable({ rows, mode }: { rows: MarsPeriodPoint[]; mode: MarsFilters['clientMode'] }) {
@@ -144,7 +146,7 @@ function PeriodTable({ rows, mode }: { rows: MarsPeriodPoint[]; mode: MarsFilter
   const sorted = sortItems(rows, sort, (row, key) => row[key]);
   const direction = (key: SortKey) => sort.key === key ? sort.direction : null;
   const changeSort = (key: SortKey) => setSort((current) => cycleSort(current, key));
-  return <div className="mars-period-table"><header><SortButton label="Período" direction={direction('period')} onClick={() => changeSort('period')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label={mode === 'branch' ? 'Sucursales' : 'Cuentas'} direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Vs año anterior" direction={direction('vsPreviousYear')} onClick={() => changeSort('vsPreviousYear')} /><SortButton label="Acumulado" direction={direction('ytdKilos')} onClick={() => changeSort('ytdKilos')} /><SortButton label="Acum. vs anterior" direction={direction('ytdVsPreviousYear')} onClick={() => changeSort('ytdVsPreviousYear')} /></header>{sorted.map((row) => <article key={row.label}><strong>{row.label}<small>{dateLabel(row.start)}–{dateLabel(row.end)}{row.isPartial ? ' · parcial' : ''}</small></strong><span>{exactKilos(row.kilos)}</span><span>{number(row.clients)}</span><span>{exactKilos(row.previousYearKilos)}</span><span>{percent(row.vsPreviousYear)}</span><span>{exactKilos(row.ytdKilos)}</span><span>{percent(row.ytdVsPreviousYear)}</span></article>)}</div>;
+  return <div className="mars-period-table"><header><SortButton label="Período" direction={direction('period')} onClick={() => changeSort('period')} /><SortButton label="Kilos / facturación" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label={mode === 'branch' ? 'Sucursales' : 'Cuentas'} direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Año anterior" direction={direction('previousYearKilos')} onClick={() => changeSort('previousYearKilos')} /><SortButton label="Vs año anterior" direction={direction('vsPreviousYear')} onClick={() => changeSort('vsPreviousYear')} /><SortButton label="Acumulado" direction={direction('ytdKilos')} onClick={() => changeSort('ytdKilos')} /><SortButton label="Acum. vs anterior" direction={direction('ytdVsPreviousYear')} onClick={() => changeSort('ytdVsPreviousYear')} /></header>{sorted.map((row) => <article key={row.label}><strong>{row.label}<small>{dateLabel(row.start)}–{dateLabel(row.end)}{row.isPartial ? ' · parcial' : ''}</small></strong><span><strong>{exactKilos(row.kilos)} kg</strong><small>{money(row.netAmount)}</small></span><span>{number(row.clients)}</span><span>{exactKilos(row.previousYearKilos)}</span><span>{percent(row.vsPreviousYear)}</span><span>{exactKilos(row.ytdKilos)}</span><span>{percent(row.ytdVsPreviousYear)}</span></article>)}</div>;
 }
 
 export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) => void }) {
@@ -229,12 +231,12 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     <BusinessReportPeriodNote partial={report.isPartial} title={`${report.selected.label} · ${dateLabel(report.selected.start)} al ${dateLabel(report.isPartial ? report.sourceMaxDate : report.selected.end)}`} detail={report.isPartial ? `Período en curso: ${report.elapsedDays} de ${report.selected.days} días. Las comparaciones acumuladas y por marca usan el mismo número de días del año anterior.` : `Período completo de ${report.selected.days} días.`} />
 
     <BusinessReportKpis items={[
-      { label: 'Total de kilos', value: <>{kilos(report.current.kilos)} kg</>, detail: report.isPartial ? 'corte parcial' : 'período completo', icon: <Scale size={20} />, tone: 'green' },
-      { label: priorPeriod, value: <>{kilos(report.previousPeriod.kilos)} kg</>, detail: `${percent(currentVsPrevious, true)} vs período seleccionado`, icon: currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />, tone: currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'blue' },
-      { label: `Mismo período ${report.selected.year - 1}`, value: <>{kilos(report.previousYear.kilos)} kg</>, detail: report.isPartial ? 'base completa del período' : `${percent(currentVsYear, true)} interanual`, icon: <BarChart3 size={20} />, tone: currentVsYear != null && currentVsYear >= 0 ? 'green' : 'blue' },
+      { label: 'Kilos / facturación', value: <>{kilos(report.current.kilos)} kg</>, detail: `${money(report.current.netAmount)} · ${report.isPartial ? 'corte parcial' : 'período completo'}`, icon: <Scale size={20} />, tone: 'green' },
+      { label: priorPeriod, value: <>{kilos(report.previousPeriod.kilos)} kg</>, detail: `${money(report.previousPeriod.netAmount)} · ${percent(currentVsPrevious, true)}`, icon: currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />, tone: currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'blue' },
+      { label: `Mismo período ${report.selected.year - 1}`, value: <>{kilos(report.previousYear.kilos)} kg</>, detail: `${money(report.previousYear.netAmount)} · ${report.isPartial ? 'base completa' : percent(currentVsYear, true)}`, icon: <BarChart3 size={20} />, tone: currentVsYear != null && currentVsYear >= 0 ? 'green' : 'blue' },
       { label: clientTerm, value: number(report.current.clients), detail: `${number(report.current.accounts)} cuentas · ${number(report.current.clientBranches)} sucursales`, icon: <Users size={20} />, tone: 'navy' },
-      { label: `${clientTerm} acumuladas`, value: number(report.ytd.clients), detail: `P01–${report.selected.label}`, icon: <CalendarRange size={20} />, tone: 'green' },
-      { label: 'Acumulado año anterior', value: number(report.previousYtd.clients), detail: `${percent(ytdClientVariation, true)} · corte equivalente`, icon: <Users size={20} />, tone: ytdClientVariation != null && ytdClientVariation >= 0 ? 'green' : 'blue' },
+      { label: 'Kilos / facturación acumulados', value: <>{kilos(report.ytd.kilos)} kg</>, detail: `${money(report.ytd.netAmount)} · P01–${report.selected.label}`, icon: <CalendarRange size={20} />, tone: 'green' },
+      { label: 'Acumulado año anterior', value: <>{kilos(report.previousYtd.kilos)} kg</>, detail: `${money(report.previousYtd.netAmount)} · ${percent(ytdClientVariation, true)} en ${clientTerm.toLowerCase()}`, icon: <Users size={20} />, tone: ytdClientVariation != null && ytdClientVariation >= 0 ? 'green' : 'blue' },
     ]} />
 
     <section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance acumulado</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section>

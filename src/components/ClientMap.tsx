@@ -1,9 +1,10 @@
 import L from 'leaflet';
 import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
-import { SALICE_DEPOT, type Client } from '../../shared/models';
-import { money } from '../lib/format';
+import { SALICE_DEPOT, type Client, type Product } from '../../shared/models';
+import { money, number } from '../lib/format';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 
 const markerIcon = (client: Client, selected: boolean) => L.divIcon({
   className: 'client-marker-shell',
@@ -40,11 +41,12 @@ function FitClients({ clients }: { clients: GeocodedClient[] }) {
 
 interface ClientMapProps {
   clients: Client[];
+  products: Product[];
   selectedId: number | null;
   onSelect: (client: Client) => void;
 }
 
-function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: GeocodedClient[]; selectedId: number | null; onSelect: (client: Client) => void }) {
+function ClusteredMarkers({ clients, contentByProduct, selectedId, onSelect }: { clients: GeocodedClient[]; contentByProduct: Map<string, number | null>; selectedId: number | null; onSelect: (client: Client) => void }) {
   const [zoom, setZoom] = useState(10);
   const map = useMap();
   useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
@@ -70,8 +72,9 @@ function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: Geocoded
   return <>{groups.map((group) => {
     if (group.clients.length === 1) {
       const client = group.clients[0];
+      const kilos = clientKilos90d(client, contentByProduct);
       return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} eventHandlers={{ click: () => onSelect(client) }}>
-        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo'}</span>{client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación corregida · referencia aproximada de la localidad</span>}<span>Ventas 90d: {money(client.sales90d, true)} · riesgo de cobranza {client.collectionRisk}/100</span></div></Tooltip>
+        <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo'}</span>{client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación corregida · referencia aproximada de la localidad</span>}<span>90d: {money(client.sales90d, true)} · {number(kilos.kilos, 2)} kg{kilos.complete ? '' : ' parciales'}</span><span>Riesgo de cobranza {client.collectionRisk}/100</span></div></Tooltip>
       </Marker>;
     }
     return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>
@@ -80,8 +83,9 @@ function ClusteredMarkers({ clients, selectedId, onSelect }: { clients: Geocoded
   })}</>;
 }
 
-export function ClientMap({ clients, selectedId, onSelect }: ClientMapProps) {
+export function ClientMap({ clients, products, selectedId, onSelect }: ClientMapProps) {
   const geocoded = clients.filter((client): client is GeocodedClient => client.coordinates !== null);
+  const contentByProduct = useMemo(() => productContentById(products), [products]);
   return (
     <MapContainer className="leaflet-map" center={SALICE_DEPOT.coordinates} zoom={10} zoomControl={false} scrollWheelZoom>
       <TileLayer
@@ -90,7 +94,7 @@ export function ClientMap({ clients, selectedId, onSelect }: ClientMapProps) {
       />
       <FitClients clients={geocoded} />
       <Marker position={SALICE_DEPOT.coordinates} icon={depotIcon} zIndexOffset={1000}><Tooltip direction="top" offset={[0, -31]} opacity={1}><div className="map-tooltip depot-tooltip"><strong>{SALICE_DEPOT.name}</strong><span>{SALICE_DEPOT.address}, {SALICE_DEPOT.locality}</span><span>Origen y regreso de los recorridos</span></div></Tooltip></Marker>
-      <ClusteredMarkers clients={geocoded} selectedId={selectedId} onSelect={onSelect} />
+      <ClusteredMarkers clients={geocoded} contentByProduct={contentByProduct} selectedId={selectedId} onSelect={onSelect} />
     </MapContainer>
   );
 }

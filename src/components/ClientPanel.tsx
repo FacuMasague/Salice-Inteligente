@@ -4,7 +4,8 @@ import { isCommercialOpportunityEligible } from '../../shared/commercial-opportu
 import type { Client, CommercialActivity, LogisticsSnapshot, PaymentPromise, Product, ReceivableCaseEvent, Recommendation } from '../../shared/models';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { invoiceDeliveryDisplay } from '../lib/delivery-status';
-import { compactDate, creditTermDetail, creditTermLabel, longDate, money, paymentDelay, shortDate } from '../lib/format';
+import { compactDate, creditTermDetail, creditTermLabel, longDate, money, number, paymentDelay, shortDate } from '../lib/format';
+import { clientKilos90d } from '../lib/commercial-metrics';
 import { partitionClientActivities } from '../lib/commercial-activities';
 import { ActionDialog } from './ActionDialog';
 import { AiCommercialExplanationCard } from './AiInsights';
@@ -49,7 +50,7 @@ function ClientProfileCharts({ client, snapshotDate }: { client: Client; snapsho
       <article><span>Saldo vencido actual</span><strong>{money(client.overdueOutstanding, true)}</strong><small>{client.oldestOverdueDays ? `${client.oldestOverdueDays} días de antigüedad máxima` : 'Sin comprobantes vencidos'}</small></article>
     </div>
     <div className="client-profile-chart-grid">
-      <article className="client-profile-chart"><header><div><span className="section-kicker"><BarChart3 size={14} /> Evolución comercial</span><h3>Compras mensuales · 6 meses</h3></div><strong>{money(client.salesTrend.reduce((sum, value) => sum + value, 0), true)}</strong></header><div className="client-sales-bars">{client.salesTrend.map((value, index) => <div key={`${monthLabels[index]}-${index}`} title={`${monthLabels[index]}: ${money(value)}`}><span><i style={{ height: `${Math.max(2, value / maxSales * 100)}%` }} /></span><strong>{monthLabels[index]}</strong><small>{money(value, true)}</small></div>)}</div></article>
+      <article className="client-profile-chart"><header><div><span className="section-kicker"><BarChart3 size={14} /> Evolución comercial</span><h3>Facturación mensual · 6 meses</h3></div><strong>{money(client.salesTrend.reduce((sum, value) => sum + value, 0), true)}</strong></header><div className="client-sales-bars">{client.salesTrend.map((value, index) => <div key={`${monthLabels[index]}-${index}`} title={`${monthLabels[index]}: ${money(value)}`}><span><i style={{ height: `${Math.max(2, value / maxSales * 100)}%` }} /></span><strong>{monthLabels[index]}</strong><small>{money(value, true)}</small></div>)}</div></article>
       <article className="client-profile-chart"><header><div><span className="section-kicker"><Clock3 size={14} /> Conducta de pago</span><h3>Días contra vencimiento · últimas facturas</h3></div><strong>{client.paymentSampleSize ? paymentDelay(client.avgPaymentDelayDays) : 'Sin muestra'}</strong></header>{delays.length ? <div className="client-delay-chart">{delays.map((value, index) => <div key={`${value}-${index}`} title={`${value > 0 ? `${value} días tarde` : value < 0 ? `${Math.abs(value)} días antes` : 'En fecha'}`}><span className="delay-positive"><i style={{ height: value > 0 ? `${Math.max(3, value / maxDelay * 100)}%` : 0 }} /></span><b /><span className="delay-negative"><i style={{ height: value < 0 ? `${Math.max(3, Math.abs(value) / maxDelay * 100)}%` : 0 }} /></span><small>{index + 1}</small></div>)}</div> : <div className="client-chart-empty">No hay pagos conciliados suficientes para dibujar la evolución.</div>}<footer><span><i className="early" />Antes del vencimiento</span><span><i className="late" />Después del vencimiento</span></footer></article>
     </div>
   </section>;
@@ -107,18 +108,21 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
   }, [client.id, client.active]);
 
   const purchased = useMemo(() => {
-    const grouped = new Map<string, { product: Product; quantity: number; total: number; lastDate: string }>();
+    const grouped = new Map<string, { product: Product; quantity: number; total: number; kilos: number; kilosComplete: boolean; lastDate: string }>();
     client.purchases.forEach((purchase) => {
       const product = products.find((item) => item.id === purchase.productId);
       if (!product) return;
-      const current = grouped.get(product.id) || { product, quantity: 0, total: 0, lastDate: purchase.date };
+      const current = grouped.get(product.id) || { product, quantity: 0, total: 0, kilos: 0, kilosComplete: true, lastDate: purchase.date };
       current.quantity += purchase.quantity;
       current.total += purchase.total;
+      if (product.contentKg == null) current.kilosComplete = false;
+      else current.kilos += purchase.quantity * product.contentKg;
       if (purchase.date > current.lastDate) current.lastDate = purchase.date;
       grouped.set(product.id, current);
     });
     return [...grouped.values()].sort((a, b) => b.total - a.total);
   }, [client.purchases, products]);
+  const clientKiloMetric = useMemo(() => clientKilos90d(client, products), [client, products]);
 
   const saveNote = async () => {
     setSaving(true);
@@ -197,8 +201,9 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
             {client.salesBlocked && <div className="sales-block-notice"><AlertTriangle size={18} /><div><strong>Bloqueo de ventas informado</strong><span>Validar con administración qué uso operativo tiene este campo antes de tomar una decisión.</span></div></div>}
             <section className="metric-grid three">
               <article className="mini-metric">
-                <span>Ventas 90 días</span>
+                <span>Facturación / kilos · 90 días</span>
                 <strong>{money(client.sales90d, true)}</strong>
+                <small>{number(clientKiloMetric.kilos, 2)} kg{clientKiloMetric.complete ? '' : ' · conversión parcial'}</small>
                 <small className={client.salesDelta >= 0 ? 'positive' : 'negative'}>
                   {client.salesDelta >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />} {Math.abs(client.salesDelta)}% vs. período anterior
                 </small>
@@ -280,7 +285,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
               {purchased.map((item, index) => (
                 <article key={item.product.id} className="purchase-row">
                   <span className="purchase-rank">{index + 1}</span>
-                  <div className="purchase-copy"><button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(item.product)}>{item.product.name}<ChevronRight size={12} /></button><span>{item.quantity} unidades · última compra {shortDate(item.lastDate)}</span></div>
+                  <div className="purchase-copy"><button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(item.product)}>{item.product.name}<ChevronRight size={12} /></button><span>{item.quantity} unidades · {number(item.kilos, 2)} kg{item.kilosComplete ? '' : ' parciales'} · última compra {shortDate(item.lastDate)}</span></div>
                   <strong>{money(item.total, true)}</strong>
                 </article>
               ))}

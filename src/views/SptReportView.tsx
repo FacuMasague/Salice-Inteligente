@@ -137,7 +137,7 @@ function MonthlyChart({ report }: { report: SptReportPayload }) {
 
 function Breakdown({ rows, title }: { rows: SptBreakdownRow[]; title: string }) {
   const max = Math.max(1, ...rows.map((row) => row.kilos));
-  return <div className="spt-breakdown"><div className="spt-breakdown-head"><span>{title}</span><span>Kilos</span></div>{rows.slice(0, 12).map((row) => <article key={row.label}><div><strong>{row.label}</strong><span><i style={{ width: `${row.kilos / max * 100}%` }} /></span></div><b>{kilos(row.kilos)}</b><small>{number(row.clients)} clientes</small></article>)}</div>;
+  return <div className="spt-breakdown"><div className="spt-breakdown-head"><span>{title}</span><span>Kilos / facturación</span></div>{rows.slice(0, 12).map((row) => <article key={row.label}><div><strong>{row.label}</strong><span><i style={{ width: `${row.kilos / max * 100}%` }} /></span></div><b>{kilos(row.kilos)} kg<small>{money(row.netAmount, true)}</small></b><small>{number(row.clients)} clientes</small></article>)}</div>;
 }
 
 function DailyTable({ report }: { report: SptReportPayload }) {
@@ -162,8 +162,10 @@ function SellerTab({ report, onOpenSeller }: { report: SptReportPayload; onOpenS
   const direction = (key: SellerSortKey) => sort.key === key ? sort.direction : null;
   const changeSort = (key: SellerSortKey) => setSort((current) => cycleSort(current, key));
   return <section className="data-card spt-seller-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Vendedores</span><h2>Volumen y cobertura comercial</h2><p>Usa el universo comercial ampliado definido para el análisis de vendedores.</p></div><span className="count-badge">{report.sellers.length} vendedores</span></div>
-    <div className="spt-seller-head"><SortButton label="Vendedor" direction={direction('label')} onClick={() => changeSort('label')} /><SortButton label="Volumen" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Unidades" direction={direction('units')} onClick={() => changeSort('units')} /><SortButton label="Importe neto" direction={direction('netAmount')} onClick={() => changeSort('netAmount')} /></div>
-    <div className="spt-seller-list">{rows.map((row) => <article key={row.label}><button className="entity-link" onClick={() => onOpenSeller(row.label)}>{row.label}<ChevronRight size={13} /></button><div><b>{kilos(row.kilos)} kg</b><i><span style={{ width: `${row.kilos / max * 100}%` }} /></i></div><span>{number(row.clients)}</span><span>{number(row.units)}</span><span>{money(row.netAmount, true)}</span></article>)}</div>
+    <div className="spt-seller-table-scroll">
+      <div className="spt-seller-head"><SortButton label="Vendedor" direction={direction('label')} onClick={() => changeSort('label')} /><SortButton label="Volumen" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Clientes" direction={direction('clients')} onClick={() => changeSort('clients')} /><SortButton label="Unidades" direction={direction('units')} onClick={() => changeSort('units')} /><SortButton label="Importe neto" direction={direction('netAmount')} onClick={() => changeSort('netAmount')} /></div>
+      <div className="spt-seller-list">{rows.map((row) => <article key={row.label}><button className="entity-link" onClick={() => onOpenSeller(row.label)}>{row.label}<ChevronRight size={13} /></button><div><b>{kilos(row.kilos)} kg</b><i><span style={{ width: `${row.kilos / max * 100}%` }} /></i></div><span>{number(row.clients)}</span><span>{number(row.units)}</span><span>{money(row.netAmount, true)}</span></article>)}</div>
+    </div>
   </section>;
 }
 
@@ -172,7 +174,7 @@ function QuarterTab({ report }: { report: SptReportPayload }) {
   const currentQuarter = Math.floor((Number(report.selectedMonth.slice(5, 7)) - 1) / 3) + 1;
   const max = Math.max(1, ...report.quarters.flatMap((row) => [row.current, row.previousYear]));
   return <section className="data-card spt-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestre</span><h2>Volumen trimestral contra el año anterior</h2><p>El trimestre en curso se corta en el mismo día para ambos años y aplica el universo histórico conciliado.</p></div><div className="spt-chart-legend"><span><i className="green" />{selectedYear}</span><span><i className="blue" />{selectedYear - 1}</span></div></div>
-    <div className="spt-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><h3>T{row.quarter}</h3><div><span className="current" style={{ height: `${row.current / max * 100}%` }}><i>{kilos(row.current, true)}</i></span><span className="previous" style={{ height: `${row.previousYear / max * 100}%` }}><i>{kilos(row.previousYear, true)}</i></span></div><p>{row.quarter > currentQuarter ? 'Aún no iniciado' : `${signedPercent(variation(row.current, row.previousYear))} interanual`}</p></article>)}</div>
+    <div className="spt-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><h3>T{row.quarter}</h3><div><span className="current" style={{ height: `${row.current / max * 100}%` }}><i>{kilos(row.current, true)}</i></span><span className="previous" style={{ height: `${row.previousYear / max * 100}%` }}><i>{kilos(row.previousYear, true)}</i></span></div><p>{row.quarter > currentQuarter ? 'Aún no iniciado' : `${money(row.currentNetAmount, true)} · ${signedPercent(variation(row.current, row.previousYear))}`}</p></article>)}</div>
   </section>;
 }
 
@@ -268,12 +270,12 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     <div className="spt-tabs"><button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}><Gauge size={15} /> Resumen mensual</button><button className={tab === 'sellers' ? 'active' : ''} onClick={() => setTab('sellers')}><Users size={15} /> Vendedores</button><button className={tab === 'quarters' ? 'active' : ''} onClick={() => setTab('quarters')}><CalendarRange size={15} /> Trimestre</button></div>
 
     <div className="spt-kpis">
-      <article><span className="spt-kpi-icon green"><Scale size={18} /></span><div><small>Kilos del mes</small><strong>{kilos(report.current.kilos)} kg</strong><em>1–{report.cutoffDay} {selectedMonthLong}</em></div></article>
+      <article><span className="spt-kpi-icon green"><Scale size={18} /></span><div><small>Kilos / facturación del mes</small><strong>{kilos(report.current.kilos)} kg</strong><em>{money(report.current.netAmount, true)} · 1–{report.cutoffDay} {selectedMonthLong}</em></div></article>
       <article><span className={`spt-kpi-icon ${previousRatio != null && previousRatio >= 100 ? 'green' : 'red'}`}>{previousRatio != null && previousRatio >= 100 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}</span><div><small>Vs mes anterior</small><strong>{previousRatio == null ? 'Sin base' : `${kilos(previousRatio)}%`}</strong><em>{signedPercent(variation(report.current.kilos, report.previousMonth.kilos))} · misma cantidad de días</em></div></article>
       <article><span className={`spt-kpi-icon ${yearRatio != null && yearRatio >= 100 ? 'green' : 'blue'}`}><BarChart3 size={18} /></span><div><small>Vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : yearRatio == null ? 'Sin base' : `${kilos(yearRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Histórico no disponible' : `${signedPercent(variation(report.current.kilos, report.previousYear.kilos))} interanual`}</em></div></article>
       <article><span className="spt-kpi-icon blue"><Users size={18} /></span><div><small>Clientes</small><strong>{number(report.current.clients)}</strong><em>clientes distintos en el período</em></div></article>
       <article><span className="spt-kpi-icon ochre"><PackageOpen size={18} /></span><div><small>Promedio 3 meses</small><strong>{kilos(report.averageLast3MonthsKilos)} kg</strong><em>tres meses completos anteriores</em></div></article>
-      <article><span className={`spt-kpi-icon ${ytdRatio != null && ytdRatio >= 100 ? 'green' : 'red'}`}><CalendarRange size={18} /></span><div><small>Acumulado vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : ytdRatio == null ? 'Sin base' : `${kilos(ytdRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Histórico no disponible' : `${signedPercent(variation(report.ytd.kilos, report.previousYtd.kilos))} acumulado`}</em></div></article>
+      <article><span className={`spt-kpi-icon ${ytdRatio != null && ytdRatio >= 100 ? 'green' : 'red'}`}><CalendarRange size={18} /></span><div><small>Acumulado vs año anterior</small><strong>{incompleteHistoricalCoverage ? 'Sin cobertura' : ytdRatio == null ? 'Sin base' : `${kilos(ytdRatio)}%`}</strong><em>{incompleteHistoricalCoverage ? 'Histórico no disponible' : `${money(report.ytd.netAmount, true)} · ${signedPercent(variation(report.ytd.kilos, report.previousYtd.kilos))}`}</em></div></article>
     </div>
 
     {tab === 'summary' && <>

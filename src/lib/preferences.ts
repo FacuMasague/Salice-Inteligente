@@ -1,4 +1,4 @@
-export type InterfaceDensity = 'comfortable' | 'compact';
+export type InterfaceDensity = 'wide' | 'compact';
 
 export interface AppPreferences {
   density: InterfaceDensity;
@@ -10,7 +10,7 @@ export const PREFERENCES_STORAGE_KEY = 'salice-preferences-v010';
 export const PREFERENCES_CHANGED_EVENT = 'salice-preferences-changed';
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
-  density: 'comfortable',
+  density: 'compact',
   contextualHelp: true,
   plannedRefreshTimes: [],
 };
@@ -19,7 +19,7 @@ export function readPreferences(): AppPreferences {
   try {
     const saved = JSON.parse(localStorage.getItem(PREFERENCES_STORAGE_KEY) ?? '{}') as Partial<AppPreferences>;
     return {
-      density: saved.density === 'compact' ? 'compact' : 'comfortable',
+      density: saved.density === 'wide' || (saved.density as string) === 'comfortable' ? 'wide' : 'compact',
       contextualHelp: saved.contextualHelp !== false,
       plannedRefreshTimes: Array.isArray(saved.plannedRefreshTimes)
         ? [...new Set(saved.plannedRefreshTimes.filter((value) => /^\d{2}:\d{2}$/.test(value)))].sort()

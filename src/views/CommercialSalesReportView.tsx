@@ -81,8 +81,8 @@ function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
     </svg>
     {hoveredRow && hovered != null && <aside className={`commercial-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.monthly.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}>
       <strong>{monthLabel(hoveredRow.month, true)}</strong>
-      <span><i style={{ background: '#397a60' }} /><div><small>Venta neta</small><b>{money(hoveredRow.current)}</b></div></span>
-      {report.comparisonAvailable && <span><i style={{ background: '#6687a4' }} /><div><small>Año anterior</small><b>{money(hoveredRow.previousYear)}</b></div></span>}
+      <span><i style={{ background: '#397a60' }} /><div><small>Facturación / kilos</small><b>{money(hoveredRow.current)}</b><small>{kilos(hoveredRow.currentKilos)} kg</small></div></span>
+      {report.comparisonAvailable && <span><i style={{ background: '#6687a4' }} /><div><small>Año anterior</small><b>{money(hoveredRow.previousYear)}</b><small>{kilos(hoveredRow.previousYearKilos)} kg</small></div></span>}
       <em>{report.comparisonAvailable ? `${percent(hoveredRow.previousYear ? (hoveredRow.current - hoveredRow.previousYear) / hoveredRow.previousYear * 100 : null, true)} interanual` : 'Sin cobertura del año anterior'}</em>
     </aside>}
   </div>;
@@ -241,8 +241,8 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
     {!report.current.clients && !report.current.netAmount && <ReportEmptyNotice />}
 
     <div className="commercial-main-kpis">
-      <article><span className="commercial-kpi-icon green"><CircleDollarSign size={21} /></span><div><small>Venta neta</small><strong>{money(report.current.netAmount, true)}</strong><em>{dateLabel(report.periodStart)}–{dateLabel(report.periodEnd)} · {number(report.elapsedDays)} días</em></div></article>
-      <article><span className="commercial-kpi-icon blue"><BarChart3 size={21} /></span><div><small>{comparisonTitle}</small><strong>{report.comparisonAvailable ? money(report.comparison.netAmount, true) : 'Sin cobertura'}</strong><em>{report.comparisonAvailable ? `${dateLabel(report.comparisonStart)}–${dateLabel(report.comparisonEnd)}` : `GESI comienza en ${meta.coverageFrom}`}</em></div></article>
+      <article><span className="commercial-kpi-icon green"><CircleDollarSign size={21} /></span><div><small>Facturación / kilos</small><strong>{money(report.current.netAmount, true)}</strong><em>{kilos(report.current.kilos)} kg · {dateLabel(report.periodStart)}–{dateLabel(report.periodEnd)}</em></div></article>
+      <article><span className="commercial-kpi-icon blue"><BarChart3 size={21} /></span><div><small>{comparisonTitle}</small><strong>{report.comparisonAvailable ? money(report.comparison.netAmount, true) : 'Sin cobertura'}</strong><em>{report.comparisonAvailable ? `${kilos(report.comparison.kilos)} kg · ${dateLabel(report.comparisonStart)}–${dateLabel(report.comparisonEnd)}` : `GESI comienza en ${meta.coverageFrom}`}</em></div></article>
       <article className={!hasComparison ? '' : positive ? 'positive' : 'negative'}><span className={`commercial-kpi-icon ${!hasComparison ? 'blue' : positive ? 'green' : 'red'}`}>{!hasComparison ? <BarChart3 size={21} /> : positive ? <TrendingUp size={21} /> : <TrendingDown size={21} />}</span><div><small>{differenceTitle}</small><strong>{hasComparison ? `${report.difference >= 0 ? '+' : ''}${money(report.difference, true)}` : 'Sin base'}</strong><em>{hasComparison ? percent(report.variation, true) : 'Período anterior fuera de cobertura'}</em></div></article>
     </div>
 
@@ -254,7 +254,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
     </div>
 
     <div className="commercial-chart-grid">
-      <section className="data-card commercial-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>{report.periodMode === 'year' ? `Evolución de ${report.selectedPeriod} por mes` : 'Evolución de $ por mes'}</h2><p>{report.periodMode === 'year' ? `Venta neta mensual de ${report.selectedPeriod} contra ${Number(report.selectedPeriod) - 1}.` : 'Siete meses de venta neta contra los mismos meses del año anterior.'}</p></div><div className="commercial-legend"><span><i className="current" />Venta neta</span>{report.comparisonAvailable && <span><i className="prior" />{comparisonLegend}</span>}</div></div><EvolutionChart report={report} /></section>
+      <section className="data-card commercial-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>{report.periodMode === 'year' ? `Evolución de ${report.selectedPeriod} por mes` : 'Evolución mensual'}</h2><p>{report.periodMode === 'year' ? `Facturación y kilos mensuales de ${report.selectedPeriod} contra ${Number(report.selectedPeriod) - 1}.` : 'Siete meses de facturación y kilos contra los mismos meses del año anterior.'}</p></div><div className="commercial-legend"><span><i className="current" />Facturación</span>{report.comparisonAvailable && <span><i className="prior" />{comparisonLegend}</span>}</div></div><EvolutionChart report={report} /></section>
       <section className="data-card commercial-mix-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Composición</span><h2>Venta neta por negocio</h2><p>Small Retail se muestra como Autoservicio.</p></div></div><MixChart rows={report.mix} /></section>
     </div>
 

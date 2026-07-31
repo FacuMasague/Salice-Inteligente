@@ -10,6 +10,12 @@ import type {
   GeneralTrendPoint,
 } from '../shared/models.js';
 import { decodeMultiFilter, matchesMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
+import {
+  COMMERCIAL_GOAL_CORE_BRANDS,
+  COMMERCIAL_GOAL_STRATEGIC_BRANDS,
+  commercialGoalSellerOptions,
+  isCommercialGoalSeller,
+} from '../shared/commercial-goals-scope.js';
 import { daysInclusive } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, readMovementMetrics } from './report-metrics.js';
@@ -25,13 +31,12 @@ const UNIVERSE = EXECUTABLE_UNIVERSES.general;
 const COMPANIES = [...UNIVERSE.companies];
 const BRANCHES = [...UNIVERSE.branches];
 const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
-const SELLERS = ['Ana Ottaviano', 'Andres Dominguez', 'Edgardo Larrea', 'Gonzalo Russian', 'Ignacio Carea', 'Julieta Errecart', 'Luciano Payba', 'Reventas'];
 const AUTOSERVICE_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'];
 const CORE_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'C&T'];
 const CORE_SQL_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'Snacks'];
-const CORE_BRANDS = ['Old Prince Equilibrium', 'Old Prince Noveles', 'Criadores High Pro', 'Criadores Maintenance', 'Optimum', 'Pedigree', 'Raza', 'Voraz', 'Whiskas', 'Kongo', 'Iams', 'Old Prince Premium', 'Company y Origen'];
+const CORE_BRANDS: string[] = [...COMMERCIAL_GOAL_CORE_BRANDS];
 const CORE_SQL_BRANDS = ['Kongo Gold', 'Old Prince Equilibrium', 'Old Prince Noveles', 'Criadores High Pro', 'Kongo', 'Raza', 'Pedigree', 'Whiskas', 'Voraz', 'Criadores Maintenance', 'Old Prince Premium', 'Optimum', 'Company', 'Origen', 'Iams'];
-const STRATEGIC_BRANDS = ['Fawna', 'Juvenia Nutrition', 'MaxPet', 'Pampa'];
+const STRATEGIC_BRANDS: string[] = [...COMMERCIAL_GOAL_STRATEGIC_BRANDS];
 const STRATEGIC_SQL_BRANDS = ['Fawna', 'Juvenia Nutrition', 'MaxPet', 'PAMPA'];
 const CORE_TARGET_EXCLUSIONS = new Set(['Fawna', 'MaxPet', 'Pampa']);
 
@@ -100,14 +105,15 @@ function commonUniverse() {
 }
 
 function buildWhere(filters: GeneralReportFilters, start: string, end: string) {
+  const sellerScope = getGeneralReportMeta().options.sellers;
   const base = commonUniverse();
   const clauses = [base.sql, 'sale_date >= ?', 'sale_date <= ?'];
   const parameters: SqlValue[] = [...base.parameters, start, end];
   if (filters.mode === 'core') {
     clauses.push(`TRIM(category) IN (${placeholders(CORE_SQL_CATEGORIES)})`);
     clauses.push(`TRIM(brand) IN (${placeholders(CORE_SQL_BRANDS)})`);
-    clauses.push(`TRIM(seller) IN (${placeholders(SELLERS)})`);
-    parameters.push(...CORE_SQL_CATEGORIES, ...CORE_SQL_BRANDS, ...SELLERS);
+    clauses.push(`TRIM(seller) IN (${placeholders(sellerScope)})`);
+    parameters.push(...CORE_SQL_CATEGORIES, ...CORE_SQL_BRANDS, ...sellerScope);
     const categories = decodeMultiFilter(filters.category);
     if (categories.length) {
       clauses.push(`(${categoryGroupExpression}) IN (${placeholders(categories)})`);
@@ -120,8 +126,8 @@ function buildWhere(filters: GeneralReportFilters, start: string, end: string) {
     }
   } else if (filters.mode === 'strategic') {
     clauses.push(`TRIM(brand) IN (${placeholders(STRATEGIC_SQL_BRANDS)})`);
-    clauses.push(`TRIM(seller) IN (${placeholders(SELLERS)})`);
-    parameters.push(...STRATEGIC_SQL_BRANDS, ...SELLERS);
+    clauses.push(`TRIM(seller) IN (${placeholders(sellerScope)})`);
+    parameters.push(...STRATEGIC_SQL_BRANDS, ...sellerScope);
     const brands = decodeMultiFilter(filters.brand);
     if (brands.length) {
       clauses.push(`(${brandGroupExpression}) IN (${placeholders(brands)})`);
@@ -153,6 +159,7 @@ function targetCategory(row: CommercialGoalRow) {
 
 function targetMatches(row: CommercialGoalRow, filters: GeneralReportFilters, month: string) {
   if (row.month !== month) return false;
+  if (!isCommercialGoalSeller(row.seller)) return false;
   if (!matchesMultiFilter(row.seller, filters.seller)) return false;
   if (filters.mode === 'autoservice') return row.invoicing != null && AUTOSERVICE_SELLERS.includes(row.seller);
   if (row.kilos == null || !row.product) return false;
@@ -181,6 +188,58 @@ function targetMap(goals: CommercialGoalRow[], filters: GeneralReportFilters, mo
     grouped.set(name, (grouped.get(name) ?? 0) + amount);
   }
   return grouped;
+}
+
+function clientGoalMatches(row: CommercialGoalRow, filters: GeneralReportFilters, month: string) {
+  if (filters.mode === 'autoservice' || Number(row.accounts ?? 0) <= 0) return false;
+  return targetMatches({ ...row, kilos: row.accounts }, filters, month);
+}
+
+function clientGoalSummary(value: DatabaseSync, goals: CommercialGoalRow[], filters: GeneralReportFilters, month: string, start: string, end: string) {
+  const goalRows = goals.filter((row) => clientGoalMatches(row, filters, month));
+  if (!goalRows.length) return {
+    actual: 0, target: 0, completion: null, gap: 0, products: [], sellers: [],
+    countingRule: 'Clientes compradores únicos por producto y vendedor; una misma cuenta puede contar en más de un producto o rubro.',
+  };
+  const where = buildWhere(filters, start, end);
+  const categoryActual = new Map(rows<{ seller: string; product: string; clients: number }>(value.prepare(`
+    SELECT TRIM(seller) AS seller, (${categoryGroupExpression}) AS product,
+           COUNT(DISTINCT client_id) AS clients
+    FROM movements WHERE ${where.sql}
+    GROUP BY TRIM(seller), (${categoryGroupExpression})
+  `), where.parameters).map((row) => [`${row.product}\u0000${row.seller}`, Number(row.clients)]));
+  const brandActual = new Map(rows<{ seller: string; product: string; clients: number }>(value.prepare(`
+    SELECT TRIM(seller) AS seller, (${brandGroupExpression}) AS product,
+           COUNT(DISTINCT client_id) AS clients
+    FROM movements WHERE ${where.sql}
+    GROUP BY TRIM(seller), (${brandGroupExpression})
+  `), where.parameters).map((row) => [`${row.product}\u0000${row.seller}`, Number(row.clients)]));
+  const productActual = new Map<string, number>();
+  const productTarget = new Map<string, number>();
+  const sellerActual = new Map<string, number>();
+  const sellerTarget = new Map<string, number>();
+  for (const row of goalRows) {
+    const key = `${row.product}\u0000${row.seller}`;
+    const actual = ['Alimento Húmedo', 'C&T'].includes(row.product)
+      ? categoryActual.get(key) ?? 0
+      : brandActual.get(key) ?? 0;
+    const target = Number(row.accounts ?? 0);
+    productActual.set(row.product, (productActual.get(row.product) ?? 0) + actual);
+    productTarget.set(row.product, (productTarget.get(row.product) ?? 0) + target);
+    sellerActual.set(row.seller, (sellerActual.get(row.seller) ?? 0) + actual);
+    sellerTarget.set(row.seller, (sellerTarget.get(row.seller) ?? 0) + target);
+  }
+  const actual = [...productActual.values()].reduce((sum, amount) => sum + amount, 0);
+  const target = [...productTarget.values()].reduce((sum, amount) => sum + amount, 0);
+  return {
+    actual,
+    target,
+    completion: ratio(actual, target),
+    gap: actual - target,
+    products: performanceRows(productActual, productTarget),
+    sellers: performanceRows(sellerActual, sellerTarget, filters.mode === 'autoservice' ? AUTOSERVICE_SELLERS : getGeneralReportMeta().options.sellers),
+    countingRule: 'Clientes compradores únicos por producto y vendedor; una misma cuenta puede contar en más de un producto o rubro.',
+  };
 }
 
 function actualMap(value: DatabaseSync, filters: GeneralReportFilters, start: string, end: string, expression: string) {
@@ -214,7 +273,7 @@ function normalizeFilters(input: Partial<Record<string, unknown>>, meta: General
   const requestedMode = String(input.mode ?? 'core') as GeneralReportMode;
   const mode: GeneralReportMode = ['core', 'strategic', 'autoservice'].includes(requestedMode) ? requestedMode : 'core';
   const month = meta.months.includes(String(input.month ?? '')) ? String(input.month) : meta.latestMonth;
-  const availableSellers = mode === 'autoservice' ? AUTOSERVICE_SELLERS : SELLERS;
+  const availableSellers = mode === 'autoservice' ? AUTOSERVICE_SELLERS : meta.options.sellers;
   return {
     mode,
     month,
@@ -241,6 +300,7 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     targetSource: goalPlan.source,
   });
   if (cachedMeta) return enrichTargets(cachedMeta);
+  const fallbackSellers = commercialGoalSellerOptions();
   const unavailable: GeneralReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
@@ -253,13 +313,13 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     months: targetMonths,
     sourceDocumentCount: 0,
     unavailableDocumentCount: 0,
-    options: { sellers: SELLERS, coreCategories: CORE_CATEGORIES, coreBrands: CORE_BRANDS, strategicBrands: STRATEGIC_BRANDS },
+    options: { sellers: fallbackSellers, coreCategories: CORE_CATEGORIES, coreBrands: CORE_BRANDS, strategicBrands: STRATEGIC_BRANDS },
     targetSource: goalPlan.source,
     universe: {
       companies: COMPANIES,
       branches: BRANCHES,
       allowedIssuers: ALLOWED_ISSUERS,
-      sellers: SELLERS,
+      sellers: fallbackSellers,
       coreCategories: CORE_SQL_CATEGORIES,
       coreBrands: CORE_SQL_BRANDS,
       strategicBrands: STRATEGIC_SQL_BRANDS,
@@ -275,6 +335,9 @@ export function getGeneralReportMeta(): GeneralReportMeta {
   `).get(...base.parameters) as { minDate: string | null; maxDate: string | null; rowCount: number; sourceDocumentCount: number };
   if (!profile.minDate || !profile.maxDate) return enrichTargets(unavailable);
   const meta = metadata(value);
+  const sellers = commercialGoalSellerOptions(rows<{ seller: string }>(value.prepare(`
+    SELECT DISTINCT TRIM(seller) AS seller FROM movements WHERE ${base.sql}
+  `), base.parameters).map((row) => row.seller));
   cachedMeta = {
     ...unavailable,
     available: true,
@@ -288,6 +351,8 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     months: [],
     sourceDocumentCount: Number(meta.get('source_document_count') ?? profile.sourceDocumentCount),
     unavailableDocumentCount: Number(meta.get('unavailable_document_count') ?? 0),
+    options: { ...unavailable.options, sellers },
+    universe: { ...unavailable.universe, sellers },
   };
   return enrichTargets(cachedMeta);
 }
@@ -327,6 +392,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>, goal
   const categoryTargets = filters.mode === 'core' ? targetMap(goals, filters, filters.month, 'category') : new Map<string, number>();
   const brandActual = filters.mode === 'autoservice' ? new Map<string, number>() : actualMap(value, filters, start, end, brandGroupExpression);
   const brandTargets = filters.mode === 'autoservice' ? new Map<string, number>() : targetMap(goals, filters, filters.month, 'brand');
+  const clientGoals = clientGoalSummary(value, goals, filters, filters.month, start, end);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -352,8 +418,9 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>, goal
     units: current.units,
     netAmount: current.netAmount,
     trend,
-    sellers: performanceRows(sellerActual, sellerTargets, filters.mode === 'autoservice' ? AUTOSERVICE_SELLERS : SELLERS),
+    sellers: performanceRows(sellerActual, sellerTargets, filters.mode === 'autoservice' ? AUTOSERVICE_SELLERS : meta.options.sellers),
     categories: performanceRows(categoryActual, categoryTargets, filters.mode === 'core' ? CORE_CATEGORIES : []),
     brands: performanceRows(brandActual, brandTargets, filters.mode === 'strategic' ? STRATEGIC_BRANDS : CORE_BRANDS),
+    clientGoals,
   };
 }

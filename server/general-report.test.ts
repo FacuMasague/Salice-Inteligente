@@ -15,6 +15,8 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
     expect(meta.targetSource.coverageThrough).toMatch(/^\d{4}-\d{2}$/);
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.universe.branches).toEqual([3]);
+    expect(meta.options.sellers).not.toContain('Alejandro Lurbe');
+    expect(meta.options.sellers).not.toContain('Luciano Payba');
     expect(meta.latestMonth).toMatch(/^\d{4}-\d{2}$/);
   });
 
@@ -26,6 +28,10 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
     expect(report?.completion).toBeCloseTo((report!.actual / report!.target) * 100, 6);
     expect(report?.sellers.reduce((sum, row) => sum + row.target, 0)).toBeCloseTo(report?.target ?? 0, 6);
     expect(report?.sellers.reduce((sum, row) => sum + row.actual, 0)).toBeCloseTo(report?.actual ?? 0, 6);
+    expect(report?.clientGoals.target).toBeGreaterThan(0);
+    expect(report?.clientGoals.products.reduce((sum, row) => sum + row.target, 0)).toBe(report?.clientGoals.target);
+    expect(report?.clientGoals.products.reduce((sum, row) => sum + row.actual, 0)).toBe(report?.clientGoals.actual);
+    expect(report?.clientGoals.completion).toBeCloseTo((report!.clientGoals.actual / report!.clientGoals.target) * 100, 6);
   });
 
   it('concilia estratégicas y facturación de autoservicio con sus desgloses', () => {

@@ -39,7 +39,7 @@ import { ensureSnapshot, getBackupCount, getSnapshotPath, loadSnapshot } from '.
 import { buildSptReport, getSptReportMeta, getSptReportPath } from './spt-report.js';
 import { buildSalesExplorer, getSalesExplorerDocument, getSalesExplorerMeta, getSalesExplorerPath } from './sales-explorer.js';
 import { buildReceivablesDashboard, getReceivableCaseDetail, RECEIVABLE_STATUSES } from './receivables-dashboard.js';
-import { exportGoalsPdf, exportGoalsXlsx, exportInvoicePdf, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
+import { exportGoalsHistoryXlsx, exportGoalsPdf, exportGoalsXlsx, exportInvoicePdf, exportReceivablesCsv, exportReceivablesXlsx, exportSalesCsv, exportSalesXlsx } from './admin-exports.js';
 import { exportReportXlsx, type ReportExportId } from './report-exports.js';
 import { buildInvoiceDetail } from './invoice-detail.js';
 import { acquireServerLock } from './runtime-lock.js';
@@ -77,11 +77,14 @@ import {
   deleteReceivableCaseEvent,
   deleteSavedView,
   getCommercialGoalsPayload,
+  getCommercialGoalMonthRevision,
+  importCommercialGoalMonth,
   getSavedView,
   createCommercialNote,
   getOperationalDatabasePath,
   listActivities,
   listCommercialGoals,
+  listCommercialGoalMonthRevisions,
   listAgendaItems,
   listClientTrendReviews,
   listInventoryAlertReviews,
@@ -96,6 +99,7 @@ import {
   rebuildAllReceivableCasesFromEvents,
   reconcileInventoryAlertReviews,
   saveClientNote,
+  saveCommercialGoalMonth,
   saveReceivableCase,
   setClientTrendReviewed,
   saveInventoryAlertReview,
@@ -108,6 +112,7 @@ import {
   updateSavedView,
   updatePromiseStatus,
 } from './operational-store.js';
+import { commercialGoalsImportPreview, parseCommercialGoalsWorkbook } from './commercial-goals-import.js';
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -557,11 +562,112 @@ app.post('/api/admin/receivables/:clientId/comments', async (req, res) => {
   return res.status(201).json(getReceivableCaseDetail(clientId));
 });
 
-app.get('/api/admin/goals', (req, res) => {
+app.get('/api/admin/goals', async (req, res) => {
   try {
-    return res.json(getCommercialGoalsPayload(String(req.query.versionId ?? ''), String(req.query.month ?? '')));
+    let currentSellers: string[] = [];
+    try {
+      const snapshot = await loadSnapshot();
+      currentSellers = snapshot.clients.map((client) => client.seller);
+    } catch {
+      // El editor conserva el alcance comercial base si el snapshot se está recargando.
+    }
+    return res.json(getCommercialGoalsPayload(
+      String(req.query.versionId ?? ''),
+      String(req.query.month ?? ''),
+      currentSellers,
+    ));
   } catch (error) {
     return res.status(503).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/admin/goals/history', (req, res) => {
+  const month = String(req.query.month ?? '');
+  if (month && !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'El mes no es válido.' });
+  return res.json({ revisions: listCommercialGoalMonthRevisions(month || undefined) });
+});
+
+app.get('/api/admin/goals/history/:revisionId', (req, res) => {
+  const revision = getCommercialGoalMonthRevision(String(req.params.revisionId));
+  return revision ? res.json({ revision }) : res.status(404).json({ error: 'El registro de objetivos no existe.' });
+});
+
+app.post('/api/admin/goals/months', (req, res) => {
+  const month = String(req.body?.month ?? '');
+  const name = String(req.body?.name ?? '').trim().slice(0, 120);
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Elegí el mes que querés guardar.' });
+  if (!name) return res.status(400).json({ error: 'Escribí un nombre para estos objetivos mensuales.' });
+  if (!Array.isArray(req.body?.rows) || !req.body.rows.length) return res.status(400).json({ error: 'Cargá al menos un objetivo antes de guardar.' });
+  const rows = req.body.rows.slice(0, 500).map((row: Record<string, unknown>) => ({
+    month,
+    product: String(row?.product ?? '').trim().slice(0, 160),
+    seller: String(row?.seller ?? '').trim().slice(0, 120),
+    kilos: optionalNonNegativeNumber(row?.kilos),
+    accounts: optionalNonNegativeNumber(row?.accounts),
+    invoicing: optionalNonNegativeNumber(row?.invoicing),
+  }));
+  if (rows.some((row: { kilos: number | null | undefined; accounts: number | null | undefined; invoicing: number | null | undefined }) => row.kilos === undefined || row.accounts === undefined || row.invoicing === undefined)) {
+    return res.status(400).json({ error: 'Los objetivos deben ser números positivos o cero.' });
+  }
+  if (rows.some((row: { product: string; seller: string; kilos: number | null; accounts: number | null; invoicing: number | null }) => !row.seller || ((!row.product) && (row.kilos != null || row.accounts != null)))) {
+    return res.status(400).json({ error: 'Cada objetivo de kilos o cuentas debe indicar producto y vendedor.' });
+  }
+  try {
+    const result = saveCommercialGoalMonth({
+      month,
+      name,
+      rows: rows as Array<{ month: string; product: string; seller: string; kilos: number | null; accounts: number | null; invoicing: number | null }>,
+      actor: currentAuth(res).user.displayName,
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+const commercialGoalsUpload = express.raw({
+  type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'],
+  limit: '5mb',
+});
+
+function commercialGoalsFileName(req: express.Request) {
+  return String(req.query.fileName ?? '').trim().slice(0, 240) || 'objetivos.xlsx';
+}
+
+app.post('/api/admin/goals/import/preview', commercialGoalsUpload, async (req, res) => {
+  try {
+    const parsed = await parseCommercialGoalsWorkbook(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), commercialGoalsFileName(req));
+    return res.json(commercialGoalsImportPreview(parsed));
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/admin/goals/import', commercialGoalsUpload, async (req, res) => {
+  const month = String(req.query.month ?? '');
+  const name = String(req.query.name ?? '').trim().slice(0, 120);
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Elegí el mes que querés actualizar.' });
+  if (!name) return res.status(400).json({ error: 'Escribí un nombre para estos objetivos mensuales.' });
+  try {
+    const fileName = commercialGoalsFileName(req);
+    const parsed = await parseCommercialGoalsWorkbook(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0), fileName);
+    const selected = parsed.months.find((item) => item.month === month);
+    if (!selected) return res.status(400).json({ error: 'El mes elegido ya no está disponible en el archivo.' });
+    if (selected.warnings.length && String(req.query.confirmWarnings ?? '') !== 'true') {
+      return res.status(409).json({ error: 'Revisá y confirmá las advertencias de la previsualización antes de aplicar el archivo.' });
+    }
+    const result = importCommercialGoalMonth({
+      month,
+      name,
+      sourceFile: fileName,
+      sourceSheet: selected.sourceSheet,
+      rows: selected.rows,
+      dimensions: selected.dimensions,
+      actor: currentAuth(res).user.displayName,
+    });
+    return res.status(201).json({ ...result, preview: commercialGoalsImportPreview(parsed).months.find((item) => item.month === month) });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -637,6 +743,8 @@ app.get('/api/admin/goals/export', async (req, res) => {
   if (format === 'pdf') return sendDownload(res, () => exportGoalsPdf(res, versionId, month));
   return res.status(400).json({ error: 'Formato inválido. Usá xlsx o pdf.' });
 });
+
+app.get('/api/admin/goals/export-history', async (_req, res) => sendDownload(res, () => exportGoalsHistoryXlsx(res)));
 
 app.post('/api/admin/goals/versions', (req, res) => {
   const name = String(req.body?.name ?? '').trim().slice(0, 120);

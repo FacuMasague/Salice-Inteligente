@@ -11,7 +11,7 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react';
-import type { Client } from '../../shared/models';
+import type { Client, Product } from '../../shared/models';
 import type { AiSellerSummary, AiStoredArtifact } from '../../shared/ai';
 import {
   buildSellerPortfolioProfiles,
@@ -24,6 +24,7 @@ import { SavedViewsBar } from '../components/SavedViewsBar';
 import { AiSellerSummaryCard } from '../components/AiInsights';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { money, number, paymentDelay, shortDate } from '../lib/format';
 import { cycleSortDescendingFirst, emptySort, sortItems } from '../lib/sorting';
 
@@ -34,6 +35,7 @@ const decimal = (value: number, digits = 1) => new Intl.NumberFormat('es-AR', {
 
 interface SellersViewProps {
   clients: Client[];
+  products: Product[];
   snapshotDate: string;
   selectedSeller: string;
   onSelectSeller: (seller: string) => void;
@@ -75,7 +77,7 @@ function RiskComposition({ profile }: { profile: SellerPortfolioProfile }) {
   return <div className="seller-risk-composition"><div className="seller-risk-track">{rows.map((row) => <span key={row.label} className={row.className} style={{ width: `${row.value / total * 100}%` }} title={`${row.label}: ${row.value}`} />)}</div>{rows.map((row) => <article key={row.label}><i className={row.className} /><span>{row.label}</span><strong>{number(row.value)}</strong><small>{decimal(row.value / total * 100)}%</small></article>)}</div>;
 }
 
-export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSeller, onOpenClient }: SellersViewProps) {
+export function SellersView({ clients, products, snapshotDate, selectedSeller, onSelectSeller, onOpenClient }: SellersViewProps) {
   const [query, setQuery] = useState('');
   const [clientQuery, setClientQuery] = useState('');
   const [lens, setLens] = useState<PortfolioLens>('all');
@@ -94,6 +96,9 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
   }, [snapshotDate]);
 
   const profiles = useMemo(() => buildSellerPortfolioProfiles(clients), [clients]);
+  const contentByProduct = useMemo(() => productContentById(products), [products]);
+  const kilosByClient = useMemo(() => new Map(clients.map((client) => [client.id, clientKilos90d(client, contentByProduct)])), [clients, contentByProduct]);
+  const profileKilos = (profile: SellerPortfolioProfile) => profile.clientRows.reduce((sum, row) => sum + (kilosByClient.get(row.client.id)?.kilos ?? 0), 0);
   const normalized = query.trim().toLocaleLowerCase('es');
   const filteredProfiles = profiles.filter((profile) => !normalized || profile.name.toLocaleLowerCase('es').includes(normalized));
   const visibleProfiles = sortItems(filteredProfiles, portfolioSort, (profile, key) => {
@@ -109,6 +114,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
   const selectedAiSummary = selected ? aiSummaries.find((item) => item.entityId === selected.name) ?? null : null;
   const totalClients = profiles.reduce((sum, profile) => sum + profile.activeClients, 0);
   const totalSales = profiles.reduce((sum, profile) => sum + profile.sales90d, 0);
+  const totalKilos = profiles.reduce((sum, profile) => sum + profileKilos(profile), 0);
   const highRisk = profiles.reduce((sum, profile) => sum + profile.criticalClients, 0);
   const savedFilters = { query, selectedSeller: selected?.name ?? '' };
   const applySaved = (saved: Record<string, string>) => {
@@ -140,7 +146,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
   return <div className="page-view sellers-page" data-tour="sellers-overview">
     <section className="seller-overview-kpis">
       <article><span className="seller-kpi-icon green"><Users size={20} /></span><div><small>Carteras visibles</small><strong>{number(profiles.length)}</strong><em>{number(totalClients)} clientes activos, incluso sin vendedor</em></div></article>
-      <article><span className="seller-kpi-icon green"><TrendingUp size={20} /></span><div><small>Ventas · 90 días</small><strong>{money(totalSales, true)}</strong><em>suma de clientes activos visibles</em></div></article>
+      <article><span className="seller-kpi-icon green"><TrendingUp size={20} /></span><div><small>Facturación / kilos · 90 días</small><strong>{money(totalSales, true)}</strong><em>{number(totalKilos, 2)} kg · clientes activos visibles</em></div></article>
       <article><span className="seller-kpi-icon blue"><AlertTriangle size={20} /></span><div><small>Riesgo alto</small><strong>{number(highRisk)}</strong><em>clientes con {PORTFOLIO_SIGNAL_THRESHOLD}/100 o superior</em></div></article>
     </section>
 
@@ -153,7 +159,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
           <thead><tr>
             <th><SortButton label="Vendedor" direction={direction('seller')} descendingFirst onClick={() => changeSort('seller')} /></th>
             <th><SortButton label="Clientes" direction={direction('clients')} descendingFirst onClick={() => changeSort('clients')} /></th>
-            <th><SortButton label="Ventas 90d" direction={direction('sales')} descendingFirst onClick={() => changeSort('sales')} /></th>
+            <th><SortButton label="Facturación / kilos · 90d" direction={direction('sales')} descendingFirst onClick={() => changeSort('sales')} /></th>
             <th><SortButton label="Localidades" direction={direction('localities')} descendingFirst onClick={() => changeSort('localities')} /></th>
             <th><SortButton label="Riesgo de cobranza" direction={direction('risk')} descendingFirst onClick={() => changeSort('risk')} /></th>
             <th><SortButton label="Oportunidad alta" direction={direction('opportunity')} descendingFirst onClick={() => changeSort('opportunity')} /></th>
@@ -162,7 +168,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
           <tbody>{visibleProfiles.map((profile) => <tr key={profile.name} className={profile.name === selected.name ? 'active' : ''} onClick={() => selectSeller(profile.name)}>
             <td><button className="entity-link">{profile.name}<ChevronRight size={13} /></button></td>
             <td><strong>{number(profile.activeClients)}</strong><span className="cell-sub">{profile.reviewClients} por revisar</span></td>
-            <td><strong>{money(profile.sales90d, true)}</strong><span className="cell-sub">{money(profile.sales90d / Math.max(1, profile.activeClients), true)} por cliente</span></td>
+            <td><strong>{money(profile.sales90d, true)}</strong><span className="cell-sub">{number(profileKilos(profile), 2)} kg</span><span className="cell-sub">{money(profile.sales90d / Math.max(1, profile.activeClients), true)} por cliente</span></td>
             <td><strong>{number(profile.localities.length)}</strong><span className="cell-sub">localidades informadas</span></td>
             <td><strong>{number(profile.criticalClients)}</strong><span className="cell-sub">riesgo</span></td>
             <td><strong>{number(profile.opportunityClients)}</strong><span className="cell-sub">elegibles</span></td>
@@ -177,7 +183,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
         <div className="seller-hero-heading"><div className="seller-avatar">{selected.name.split(' ').map((word) => word[0]).slice(0, 2).join('')}</div><div><span className="section-kicker">Cartera operativa activa</span><h2>{selected.name}</h2><p>{number(selected.confirmedClients)} confirmados en Salice · {number(selected.reviewClients)} por revisar · última compra {selected.lastPurchaseAt ? shortDate(selected.lastPurchaseAt) : 'sin compra observable'}</p></div></div>
         <div className="seller-detail-kpis">
           <article><small>Clientes activos</small><strong>{number(selected.activeClients)}</strong><span>{decimal(selected.mappedClients / Math.max(1, selected.activeClients) * 100)}% geolocalizados</span></article>
-          <article><small>Ventas · 90d</small><strong>{money(selected.sales90d, true)}</strong><span>{money(selected.sales90d / Math.max(1, selected.activeClients), true)} por cliente</span></article>
+          <article><small>Facturación / kilos · 90d</small><strong>{money(selected.sales90d, true)}</strong><span>{number(profileKilos(selected), 2)} kg · {money(selected.sales90d / Math.max(1, selected.activeClients), true)} por cliente</span></article>
           <article><small>Riesgo promedio</small><strong>{Math.round(selected.averageRisk)}/100</strong><span>{selected.criticalClients} con riesgo de cobranza</span></article>
           <article><small>Oportunidad promedio elegible</small><strong>{Math.round(selected.averageOpportunity)}/100</strong><span>{selected.opportunityClients} con oportunidad alta</span></article>
           <article><small>Prioridad promedio</small><strong>{Math.round(selected.averagePriority)}/100</strong><span>{selected.prioritySignalClients} con prioridad alta</span></article>
@@ -187,7 +193,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
       <AiSellerSummaryCard artifact={selectedAiSummary} />
 
       <div className="seller-chart-grid">
-        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Ventas</span><h2>Evolución mensual</h2><p>Seis meses disponibles, sumando la cartera activa.</p></div></div><SalesChart profile={selected} snapshotDate={snapshotDate} /></section>
+        <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Facturación</span><h2>Evolución mensual</h2><p>Seis meses disponibles. Los kilos comparables están disponibles para los últimos 90 días.</p></div></div><SalesChart profile={selected} snapshotDate={snapshotDate} /></section>
         <section className="data-card seller-chart-card"><div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Cobranza</span><h2>Composición de riesgo</h2><p>El riesgo de cobranza se calcula por separado de la oportunidad y la prioridad.</p></div></div><RiskComposition profile={selected} /><div className="seller-payment-summary"><article><Clock3 size={17} /><div><span>Pago promedio desde emisión</span><strong>{selected.averagePaymentDays == null ? 'Sin muestra' : `${decimal(selected.averagePaymentDays)} días`}</strong></div></article><article><CircleDollarSign size={17} /><div><span>Contra vencimiento</span><strong>{selected.averagePaymentDelayDays == null ? 'Sin muestra' : paymentDelay(Math.round(selected.averagePaymentDelayDays))}</strong></div></article><article><Target size={17} /><div><span>Pagos en término</span><strong>{selected.onTimeRate == null ? 'Sin muestra' : `${decimal(selected.onTimeRate)}%`}</strong><small>{number(selected.paymentSamples)} facturas conciliadas</small></div></article></div></section>
       </div>
 
@@ -203,7 +209,7 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
               const client = row.client;
               return <button key={client.id} onClick={() => onOpenClient(client)}>
                 <span className={`score-badge ${client.health}`}>{client.visitPriority}</span>
-                <div><strong>{clientPrimaryName(client)}</strong><small>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality}</small><em>{money(client.sales90d, true)} en 90 días</em></div>
+                <div><strong>{clientPrimaryName(client)}</strong><small>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality}</small><em>{money(client.sales90d, true)} · {number(kilosByClient.get(client.id)?.kilos ?? 0, 2)} kg en 90 días</em></div>
                 <ChevronRight size={15} />
               </button>;
             })}
@@ -214,11 +220,11 @@ export function SellersView({ clients, snapshotDate, selectedSeller, onSelectSel
         <section className="data-card seller-locality-card">
           <div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Distribución observada</span><h2>Localidades informadas</h2><p>Localidad del maestro GESI; no equivale a territorio ni propone reasignaciones.</p></div><span className="count-badge">{selected.localities.length}</span></div>
           <div className="seller-locality-table">
-            <div className="seller-locality-head"><span>Localidad y señales</span><span>Clientes</span><span>Ventas 90d</span></div>
+            <div className="seller-locality-head"><span>Localidad y señales</span><span>Clientes</span><span>Facturación / kilos · 90d</span></div>
             {selected.localities.map((row) => <article key={row.name}>
               <div><strong>{row.name}</strong><span>Prioridad promedio {Math.round(row.averagePriority)}/100 · riesgo alto {row.highRisk} · oportunidad alta {row.highOpportunity} · prioridad alta {row.highPriority}</span></div>
               <b>{number(row.clients)}</b>
-              <b>{money(row.sales90d, true)}</b>
+              <b>{money(row.sales90d, true)}<small>{number(selected.clientRows.filter((item) => item.client.locality === row.name).reduce((sum, item) => sum + (kilosByClient.get(item.client.id)?.kilos ?? 0), 0), 2)} kg</small></b>
             </article>)}
           </div>
         </section>

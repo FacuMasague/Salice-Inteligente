@@ -85,7 +85,7 @@ const FILTER_EXPRESSIONS: Record<MarsFilterKey, string> = {
 };
 
 type SqlValue = string | number;
-type MetricRow = { kilos: number | null; accounts: number | null; clientBranches: number | null };
+type MetricRow = { kilos: number | null; netAmount: number | null; accounts: number | null; clientBranches: number | null };
 
 let cachedMeta: MarsReportMeta | null = null;
 const reportDatabase = new ReloadableReadonlyDatabase(reportPath);
@@ -188,6 +188,7 @@ function metric(database: DatabaseSync, filters: MarsFilters, start: string, end
   const where = buildWhere(filters, start, end);
   const row = database.prepare(`
     SELECT COALESCE(SUM(kilos), 0) AS kilos,
+           COALESCE(SUM(net_amount), 0) AS netAmount,
            COUNT(DISTINCT client_id) AS accounts,
            COUNT(DISTINCT CAST(client_id AS TEXT) || ':' || CAST(client_branch_id AS TEXT)) AS clientBranches
     FROM movements WHERE ${where.sql}
@@ -196,6 +197,7 @@ function metric(database: DatabaseSync, filters: MarsFilters, start: string, end
   const clientBranches = Number(row.clientBranches ?? 0);
   return {
     kilos: Number(row.kilos ?? 0),
+    netAmount: Number(row.netAmount ?? 0),
     clients: filters.clientMode === 'branch' ? clientBranches : accounts,
     accounts,
     clientBranches,
@@ -254,9 +256,10 @@ function brandRows(database: DatabaseSync, filters: MarsFilters, current: MarsPe
   const clientExpression = filters.clientMode === 'branch'
     ? `CAST(client_id AS TEXT) || ':' || CAST(client_branch_id AS TEXT)`
     : 'client_id';
-  const currentRows = rows<{ brand: string; kilos: number; accounts: number; clientBranches: number; clients: number }>(database.prepare(`
+  const currentRows = rows<{ brand: string; kilos: number; netAmount: number; accounts: number; clientBranches: number; clients: number }>(database.prepare(`
     SELECT CASE WHEN TRIM(brand) = '' THEN 'Sin marca' ELSE brand END AS brand,
            COALESCE(SUM(kilos), 0) AS kilos,
+           COALESCE(SUM(net_amount), 0) AS netAmount,
            COUNT(DISTINCT client_id) AS accounts,
            COUNT(DISTINCT CAST(client_id AS TEXT) || ':' || CAST(client_branch_id AS TEXT)) AS clientBranches,
            COUNT(DISTINCT ${clientExpression}) AS clients
@@ -277,6 +280,7 @@ function brandRows(database: DatabaseSync, filters: MarsFilters, current: MarsPe
     return {
       brand: row.brand,
       kilos,
+      netAmount: Number(row.netAmount),
       clients: Number(row.clients),
       accounts: Number(row.accounts),
       clientBranches: Number(row.clientBranches),
@@ -383,6 +387,7 @@ export function buildMarsReport(input: Partial<Record<string, unknown>>): MarsRe
     return {
       quarter,
       kilos: quarterRows.reduce((sum, point) => sum + point.kilos, 0),
+      netAmount: quarterRows.reduce((sum, point) => sum + point.netAmount, 0),
       previousYearKilos: quarterRows.reduce((sum, point) => sum + point.previousYearKilos, 0),
     };
   }).filter((row) => row.kilos !== 0 || row.previousYearKilos !== 0);

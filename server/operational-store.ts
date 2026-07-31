@@ -9,6 +9,9 @@ import type {
   CommercialActivityOutcome,
   CommercialActivityType,
   CommercialGoalChange,
+  CommercialGoalMonth,
+  CommercialGoalMonthRevision,
+  CommercialGoalMonthRevisionDetail,
   CommercialGoalsPayload,
   CommercialGoalRow,
   CommercialGoalVersion,
@@ -28,7 +31,14 @@ import type {
   SavedViewPurpose,
   VectorKey,
 } from '../shared/models.js';
+import {
+  COMMERCIAL_GOAL_PRODUCTS,
+  commercialGoalSellerOptions,
+  isCommercialGoalProduct,
+  isCommercialGoalSeller,
+} from '../shared/commercial-goals-scope.js';
 import { STATUS_TARGET_SOURCE, STATUS_TARGETS } from './data/status-targets.js';
+import { STATUS_CLIENT_TARGET_HISTORY, STATUS_CLIENT_TARGET_SOURCE, STATUS_CLIENT_TARGETS } from './data/status-client-targets.js';
 import {
   classifyInventoryProduct,
   evaluateInventoryReviewLifecycle,
@@ -113,10 +123,10 @@ function seedCommercialGoals(store: DatabaseSync) {
     `).run(
       versionId,
       'Plan histórico inicial',
-      STATUS_TARGET_SOURCE.label,
+      `${STATUS_TARGET_SOURCE.label} + ${STATUS_CLIENT_TARGET_SOURCE.label}`,
       STATUS_TARGET_SOURCE.coverageFrom,
       STATUS_TARGET_SOURCE.coverageThrough,
-      'Importación inicial reconstruida desde la fuente externa del Reporte Status Salice.',
+      'Importación inicial reconstruida desde Reporte Status Salice y los objetivos de clientes de Objetivos Julio.xlsx.',
       createdAt,
       'Migración v0.4.0',
       createdAt,
@@ -133,6 +143,196 @@ function seedCommercialGoals(store: DatabaseSync) {
       'Importación inicial del plan histórico; los resultados reales permanecen en GESI.',
       JSON.stringify({ rows: STATUS_TARGETS.length, source: STATUS_TARGET_SOURCE.label }), createdAt,
     );
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+const GOAL_MONTH_NAMES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function historicalGoalMonthName(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return `Objetivos ${GOAL_MONTH_NAMES[monthNumber - 1] ?? month} ${year} · Excel histórico`;
+}
+
+function insertGoalMonthRevision(store: DatabaseSync, input: {
+  month: string;
+  name: string;
+  sourceKind: 'excel' | 'web';
+  sourceFile?: string;
+  sourceSheet?: string;
+  createdAt: string;
+  createdBy: string;
+  rows: CommercialGoalRow[];
+}) {
+  const id = randomUUID();
+  store.prepare(`
+    INSERT INTO commercial_goal_month_revisions (
+      id, month, name, source_kind, source_file, source_sheet, created_at, created_by, rows_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, input.month, input.name, input.sourceKind, input.sourceFile ?? '', input.sourceSheet ?? '',
+    input.createdAt, input.createdBy, JSON.stringify(input.rows),
+  );
+  return id;
+}
+
+function withHistoricalClientTargets(month: string, rows: CommercialGoalRow[]) {
+  const merged = new Map(rows.map((row) => [`${row.product}\u0000${row.seller}`, { ...row }]));
+  for (const target of STATUS_CLIENT_TARGET_HISTORY.filter((row) => row.month === month)) {
+    const key = `${target.product}\u0000${target.seller}`;
+    const existing = merged.get(key);
+    if (existing) merged.set(key, { ...existing, accounts: existing.accounts ?? target.accounts });
+    else merged.set(key, {
+      id: randomUUID(), month, product: target.product, seller: target.seller,
+      kilos: null, accounts: target.accounts, invoicing: null,
+    });
+  }
+  return [...merged.values()].sort((left, right) => (
+    left.product.localeCompare(right.product, 'es') || left.seller.localeCompare(right.seller, 'es')
+  ));
+}
+
+function backfillCommercialGoalHistory(store: DatabaseSync) {
+  const revisionCount = Number(store.prepare('SELECT COUNT(*) AS total FROM commercial_goal_month_revisions').get()?.total ?? 0);
+  if (revisionCount) return;
+  const active = store.prepare("SELECT * FROM commercial_goal_versions WHERE status = 'active' LIMIT 1").get() as Record<string, unknown> | undefined;
+  if (!active) return;
+  const versionId = String(active.id);
+  const createdAt = String(active.activated_at ?? active.created_at);
+  const createdBy = 'Migración v1.3.1';
+  const rows = store.prepare('SELECT * FROM commercial_goals WHERE version_id = ? ORDER BY month, product, seller').all(versionId)
+    .map((row) => commercialGoalFromRow(row));
+  const months = [...new Set(rows.map((row) => row.month))].sort();
+  const insertMonth = store.prepare(`
+    INSERT OR IGNORE INTO commercial_goal_months (
+      version_id, month, name, source_file, source_sheet, imported_at, imported_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    for (const month of months) {
+      const name = historicalGoalMonthName(month);
+      const monthRows = withHistoricalClientTargets(month, rows.filter((row) => row.month === month));
+      const clientSheet = STATUS_CLIENT_TARGET_SOURCE.sheets[month];
+      const sourceFile = clientSheet ? `Status Salice 2025.xlsx + ${STATUS_CLIENT_TARGET_SOURCE.file}` : 'Status Salice 2025.xlsx';
+      const sourceSheet = clientSheet ? `Power BI + ${clientSheet}` : 'Power BI';
+      insertMonth.run(versionId, month, name, sourceFile, sourceSheet, createdAt, createdBy);
+      insertGoalMonthRevision(store, {
+        month, name, sourceKind: 'excel', sourceFile, sourceSheet,
+        createdAt, createdBy, rows: monthRows,
+      });
+    }
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+const CLIENT_GOAL_MIGRATION_KEY = 'v1.3.1-client-goals-from-workbook';
+
+function migrateCommercialGoalClientTargets(store: DatabaseSync) {
+  const migrated = store.prepare('SELECT 1 FROM commercial_goal_changes WHERE entity_key = ? LIMIT 1')
+    .get(CLIENT_GOAL_MIGRATION_KEY);
+  if (migrated) return;
+  const active = store.prepare("SELECT * FROM commercial_goal_versions WHERE status = 'active' LIMIT 1")
+    .get() as Record<string, unknown> | undefined;
+  if (!active) return;
+  const activeId = String(active.id);
+  const sourceRows = store.prepare('SELECT * FROM commercial_goals WHERE version_id = ? ORDER BY month, product, seller, id')
+    .all(activeId).map((row) => commercialGoalFromRow(row));
+  const targets = new Map(STATUS_CLIENT_TARGETS.map((row) => [
+    `${row.month}\u0000${row.product}\u0000${row.seller}`,
+    row.accounts,
+  ]));
+  const missing = sourceRows.some((row) => Number(row.accounts ?? 0) === 0 && targets.has(`${row.month}\u0000${row.product}\u0000${row.seller}`));
+  const createdAt = new Date().toISOString();
+  const actor = 'Migración v1.3.1';
+
+  if (!missing) {
+    addGoalChange(store, {
+      versionId: activeId, eventType: 'imported', entityKey: CLIENT_GOAL_MIGRATION_KEY, actor,
+      comment: 'Objetivos de clientes verificados contra Objetivos Julio.xlsx.',
+      after: { rows: STATUS_CLIENT_TARGETS.length, source: STATUS_CLIENT_TARGET_SOURCE.label }, createdAt,
+    });
+    return;
+  }
+
+  const versionId = randomUUID();
+  const versionNumber = Number(store.prepare('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM commercial_goal_versions').get()?.next ?? 1);
+  const sourceMonths = store.prepare('SELECT * FROM commercial_goal_months WHERE version_id = ? ORDER BY month').all(activeId)
+    .map((row) => commercialGoalMonthFromRow(row));
+  const insertGoal = store.prepare(`
+    INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertMonth = store.prepare(`
+    INSERT INTO commercial_goal_months (
+      version_id, month, name, source_file, source_sheet, imported_at, imported_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    store.prepare(`
+      INSERT INTO commercial_goal_versions (
+        id, version_number, name, status, source_label, coverage_from, coverage_through,
+        notes, created_at, created_by, activated_at
+      ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      versionId, versionNumber, String(active.name),
+      `${String(active.source_label)} + ${STATUS_CLIENT_TARGET_SOURCE.label}`,
+      String(active.coverage_from), String(active.coverage_through),
+      `${String(active.notes ?? '')}\nObjetivos de clientes incorporados desde Objetivos Julio.xlsx.`.trim(),
+      createdAt, actor,
+    );
+    for (const row of sourceRows) {
+      const accounts = Number(row.accounts ?? 0) === 0
+        ? targets.get(`${row.month}\u0000${row.product}\u0000${row.seller}`) ?? row.accounts
+        : row.accounts;
+      insertGoal.run(randomUUID(), versionId, row.month, row.product, row.seller, row.kilos, accounts, row.invoicing);
+    }
+    for (const month of sourceMonths) {
+      const clientSheet = STATUS_CLIENT_TARGET_SOURCE.sheets[month.month];
+      insertMonth.run(
+        versionId, month.month, month.name,
+        clientSheet ? `${month.sourceFile || 'Status Salice 2025.xlsx'} + ${STATUS_CLIENT_TARGET_SOURCE.file}` : month.sourceFile,
+        clientSheet ? `${month.sourceSheet || 'Power BI'} + ${clientSheet}` : month.sourceSheet,
+        clientSheet ? createdAt : month.importedAt,
+        clientSheet ? actor : month.importedBy,
+      );
+    }
+    for (const month of Object.keys(STATUS_CLIENT_TARGET_SOURCE.sheets)) {
+      const monthPlan = sourceMonths.find((item) => item.month === month);
+      if (!monthPlan) continue;
+      const revisionRows = withHistoricalClientTargets(month, store.prepare('SELECT * FROM commercial_goals WHERE version_id = ? AND month = ? ORDER BY product, seller, id')
+        .all(versionId, month).map((row) => commercialGoalFromRow(row)));
+      insertGoalMonthRevision(store, {
+        month, name: monthPlan.name, sourceKind: 'excel',
+        sourceFile: `${monthPlan.sourceFile || 'Status Salice 2025.xlsx'} + ${STATUS_CLIENT_TARGET_SOURCE.file}`,
+        sourceSheet: `${monthPlan.sourceSheet || 'Power BI'} + ${STATUS_CLIENT_TARGET_SOURCE.sheets[month]}`,
+        createdAt, createdBy: actor, rows: revisionRows,
+      });
+    }
+    addGoalChange(store, {
+      versionId, eventType: 'created', actor,
+      comment: `Versión creada desde ${String(active.name)} · v${Number(active.version_number)}.`,
+      after: { sourceVersionId: activeId, rows: sourceRows.length }, createdAt,
+    });
+    addGoalChange(store, {
+      versionId, eventType: 'imported', entityKey: CLIENT_GOAL_MIGRATION_KEY, actor,
+      comment: 'Objetivos de clientes incorporados desde Objetivos Julio.xlsx.',
+      after: { rows: STATUS_CLIENT_TARGETS.length, source: STATUS_CLIENT_TARGET_SOURCE.label }, createdAt,
+    });
+    store.prepare("UPDATE commercial_goal_versions SET status = 'archived' WHERE status = 'active'").run();
+    store.prepare("UPDATE commercial_goal_versions SET status = 'active', activated_at = ? WHERE id = ?").run(createdAt, versionId);
+    addGoalChange(store, {
+      versionId, eventType: 'activated', actor,
+      comment: 'Plan activado con objetivos mensuales de clientes.',
+      after: { coverageFrom: String(active.coverage_from), coverageThrough: String(active.coverage_through), rows: sourceRows.length }, createdAt,
+    });
     store.exec('COMMIT');
   } catch (error) {
     store.exec('ROLLBACK');
@@ -388,6 +588,31 @@ function db() {
       FOREIGN KEY(version_id) REFERENCES commercial_goal_versions(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_commercial_goals_version_month ON commercial_goals(version_id, month);
+    CREATE TABLE IF NOT EXISTS commercial_goal_months (
+      version_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      name TEXT NOT NULL,
+      source_file TEXT NOT NULL DEFAULT '',
+      source_sheet TEXT NOT NULL DEFAULT '',
+      imported_at TEXT NOT NULL,
+      imported_by TEXT NOT NULL,
+      PRIMARY KEY (version_id, month),
+      FOREIGN KEY(version_id) REFERENCES commercial_goal_versions(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS commercial_goal_month_revisions (
+      id TEXT PRIMARY KEY,
+      month TEXT NOT NULL,
+      name TEXT NOT NULL,
+      source_kind TEXT NOT NULL,
+      source_file TEXT NOT NULL DEFAULT '',
+      source_sheet TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      rows_json TEXT NOT NULL,
+      CHECK (source_kind IN ('excel', 'web'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_goal_month_revisions_month
+      ON commercial_goal_month_revisions(month, created_at DESC);
     CREATE TABLE IF NOT EXISTS commercial_goal_changes (
       id TEXT PRIMARY KEY,
       version_id TEXT NOT NULL,
@@ -410,6 +635,12 @@ function db() {
     CREATE TRIGGER IF NOT EXISTS prevent_goal_change_delete
       BEFORE DELETE ON commercial_goal_changes
       BEGIN SELECT RAISE(ABORT, 'El historial de objetivos es append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_goal_month_revision_update
+      BEFORE UPDATE ON commercial_goal_month_revisions
+      BEGIN SELECT RAISE(ABORT, 'Los registros mensuales de objetivos son inmutables'); END;
+    CREATE TRIGGER IF NOT EXISTS prevent_goal_month_revision_delete
+      BEFORE DELETE ON commercial_goal_month_revisions
+      BEGIN SELECT RAISE(ABORT, 'Los registros mensuales de objetivos son inmutables'); END;
     CREATE TRIGGER IF NOT EXISTS prevent_vector_correction_event_update
       BEFORE UPDATE ON product_vector_correction_events
       BEGIN SELECT RAISE(ABORT, 'El historial de correcciones vectoriales es append-only'); END;
@@ -458,6 +689,8 @@ function db() {
       BEGIN SELECT RAISE(ABORT, 'El contenido del historial de cobranzas es inmutable'); END;
   `);
   seedCommercialGoals(database);
+  backfillCommercialGoalHistory(database);
+  migrateCommercialGoalClientTargets(database);
   return database;
 }
 
@@ -687,6 +920,17 @@ function commercialGoalVersionFromRow(row: Record<string, unknown>): CommercialG
     createdBy: textValue(row.created_by),
     activatedAt: nullableText(row.activated_at),
     rowCount: Number(row.row_count ?? 0),
+  };
+}
+
+function commercialGoalMonthFromRow(row: Record<string, unknown>): CommercialGoalMonth {
+  return {
+    month: textValue(row.month),
+    name: textValue(row.name),
+    sourceFile: textValue(row.source_file),
+    sourceSheet: textValue(row.source_sheet),
+    importedAt: textValue(row.imported_at),
+    importedBy: textValue(row.imported_by),
   };
 }
 
@@ -1601,14 +1845,92 @@ export function listCommercialGoals(versionId: string, month?: string) {
   return rows.map((row) => commercialGoalFromRow(row));
 }
 
+export function listCommercialGoalMonths(versionId: string) {
+  return db().prepare('SELECT * FROM commercial_goal_months WHERE version_id = ? ORDER BY month').all(versionId)
+    .map((row) => commercialGoalMonthFromRow(row));
+}
+
 export function listCommercialGoalChanges(versionId: string, limit = 100) {
   return db().prepare('SELECT * FROM commercial_goal_changes WHERE version_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?')
     .all(versionId, Math.max(1, Math.min(500, limit))).map((row) => commercialGoalChangeFromRow(row));
 }
 
+function commercialGoalRevisionRows(value: unknown): CommercialGoalRow[] {
+  try {
+    const parsed = JSON.parse(String(value ?? '[]')) as CommercialGoalRow[];
+    return Array.isArray(parsed) ? parsed.map((row) => ({
+      id: String(row.id ?? randomUUID()),
+      month: String(row.month ?? ''),
+      product: String(row.product ?? ''),
+      seller: String(row.seller ?? ''),
+      kilos: row.kilos == null ? null : Number(row.kilos),
+      accounts: row.accounts == null ? null : Number(row.accounts),
+      invoicing: row.invoicing == null ? null : Number(row.invoicing),
+    })) : [];
+  } catch {
+    return [];
+  }
+}
+
+function commercialGoalRevisionFromRow(row: Record<string, unknown>, activeMonths: Map<string, CommercialGoalMonth>): CommercialGoalMonthRevisionDetail {
+  const rows = commercialGoalRevisionRows(row.rows_json);
+  const month = textValue(row.month);
+  const activeMonth = activeMonths.get(month);
+  return {
+    id: textValue(row.id),
+    month,
+    name: textValue(row.name),
+    sourceKind: textValue(row.source_kind) === 'web' ? 'web' : 'excel',
+    sourceFile: textValue(row.source_file),
+    sourceSheet: textValue(row.source_sheet),
+    createdAt: textValue(row.created_at),
+    createdBy: textValue(row.created_by),
+    rowCount: rows.length,
+    totals: {
+      kilos: rows.reduce((sum, item) => sum + Number(item.kilos ?? 0), 0),
+      accounts: rows.reduce((sum, item) => sum + Number(item.accounts ?? 0), 0),
+      invoicing: rows.reduce((sum, item) => sum + Number(item.invoicing ?? 0), 0),
+    },
+    active: Boolean(activeMonth && activeMonth.name === textValue(row.name) && activeMonth.importedAt === textValue(row.created_at)),
+    rows,
+  };
+}
+
+export function listCommercialGoalMonthRevisions(month?: string): CommercialGoalMonthRevision[] {
+  const active = getCommercialGoalVersion();
+  const activeMonths = new Map(active ? listCommercialGoalMonths(active.id).map((item) => [item.month, item]) : []);
+  const rows = month
+    ? db().prepare('SELECT * FROM commercial_goal_month_revisions WHERE month = ? ORDER BY created_at DESC, rowid DESC').all(month)
+    : db().prepare('SELECT * FROM commercial_goal_month_revisions ORDER BY month DESC, created_at DESC, rowid DESC').all();
+  return rows.map((row) => {
+    const { rows: _rows, ...revision } = commercialGoalRevisionFromRow(row, activeMonths);
+    return revision;
+  });
+}
+
+export function getCommercialGoalMonthRevision(id: string): CommercialGoalMonthRevisionDetail | null {
+  const row = db().prepare('SELECT * FROM commercial_goal_month_revisions WHERE id = ?').get(id);
+  if (!row) return null;
+  const active = getCommercialGoalVersion();
+  const activeMonths = new Map(active ? listCommercialGoalMonths(active.id).map((item) => [item.month, item]) : []);
+  return commercialGoalRevisionFromRow(row, activeMonths);
+}
+
 export function getActiveCommercialGoalPlan() {
   const version = getCommercialGoalVersion();
   if (!version) throw new Error('No existe un plan comercial activo.');
+  const rows = listCommercialGoals(version.id);
+  const explicitMonthPlans = new Map(listCommercialGoalMonths(version.id).map((item) => [item.month, item]));
+  const monthPlans = [...new Set(rows.map((row) => row.month))].sort().map((month): CommercialGoalMonth => (
+    explicitMonthPlans.get(month) ?? {
+      month,
+      name: version.name,
+      sourceFile: '',
+      sourceSheet: '',
+      importedAt: version.activatedAt ?? version.createdAt,
+      importedBy: version.createdBy ?? '',
+    }
+  ));
   return {
     version,
     source: {
@@ -1616,28 +1938,31 @@ export function getActiveCommercialGoalPlan() {
       capturedAt: version.activatedAt?.slice(0, 10) ?? version.createdAt.slice(0, 10),
       coverageFrom: version.coverageFrom,
       coverageThrough: version.coverageThrough,
+      monthPlans,
     },
-    rows: listCommercialGoals(version.id),
+    rows,
   };
 }
 
-export function getCommercialGoalsPayload(versionId?: string, month?: string): CommercialGoalsPayload {
+export function getCommercialGoalsPayload(versionId?: string, month?: string, currentSellers: unknown[] = []): CommercialGoalsPayload {
   const versions = listCommercialGoalVersions();
   const selectedVersion = versions.find((item) => item.id === versionId) ?? versions.find((item) => item.status === 'active') ?? versions[0];
   if (!selectedVersion) throw new Error('No existe un plan comercial disponible.');
   const allRows = listCommercialGoals(selectedVersion.id);
   const months = [...new Set(allRows.map((row) => row.month))].sort();
   const selectedMonth = months.includes(month ?? '') ? month! : (months.at(-1) ?? '');
-  const rows = selectedMonth ? allRows.filter((row) => row.month === selectedMonth) : allRows;
+  const rows = (selectedMonth ? allRows.filter((row) => row.month === selectedMonth) : allRows)
+    .filter((row) => isCommercialGoalSeller(row.seller) && (!row.product || isCommercialGoalProduct(row.product)));
   return {
     versions,
     selectedVersion,
     selectedMonth,
     months,
-    sellers: [...new Set(allRows.map((row) => row.seller).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
-    products: [...new Set(allRows.map((row) => row.product).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    sellers: commercialGoalSellerOptions([...currentSellers, ...allRows.map((row) => row.seller)]),
+    products: [...COMMERCIAL_GOAL_PRODUCTS].sort((a, b) => a.localeCompare(b, 'es')),
     rows,
     changes: listCommercialGoalChanges(selectedVersion.id, 100),
+    monthPlans: listCommercialGoalMonths(selectedVersion.id),
   };
 }
 
@@ -1672,6 +1997,7 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
   const actor = input.actor?.trim().slice(0, 120) || 'Oficina Salice';
   const name = input.name.trim().slice(0, 120) || `Plan comercial v${versionNumber}`;
   const sourceRows = listCommercialGoals(source.id);
+  const sourceMonths = listCommercialGoalMonths(source.id);
   const insertGoal = store.prepare(`
     INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1690,6 +2016,14 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
     for (const row of sourceRows) {
       insertGoal.run(randomUUID(), id, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
     }
+    const insertMonth = store.prepare(`
+      INSERT INTO commercial_goal_months (
+        version_id, month, name, source_file, source_sheet, imported_at, imported_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const month of sourceMonths) {
+      insertMonth.run(id, month.month, month.name, month.sourceFile, month.sourceSheet, month.importedAt, month.importedBy);
+    }
     addGoalChange(store, {
       versionId: id, eventType: 'created', actor,
       comment: `Versión creada desde ${source.name} · v${source.version}.`,
@@ -1701,6 +2035,161 @@ export function createCommercialGoalVersion(input: { name: string; notes?: strin
     throw error;
   }
   return getCommercialGoalVersion(id)!;
+}
+
+interface ReplaceCommercialGoalMonthInput {
+  month: string;
+  name: string;
+  sourceFile: string;
+  sourceSheet: string;
+  rows: Array<Omit<CommercialGoalRow, 'id'>>;
+  dimensions: Array<'kilos' | 'accounts' | 'invoicing'>;
+  actor: string;
+  sourceKind: 'excel' | 'web';
+}
+
+function replaceCommercialGoalMonth(input: ReplaceCommercialGoalMonthInput) {
+  if (!/^\d{4}-\d{2}$/.test(input.month)) throw new Error('El mes seleccionado no es válido.');
+  const name = input.name.trim().slice(0, 120);
+  if (!name) throw new Error('Escribí un nombre para estos objetivos mensuales.');
+  if (!input.rows.length || !input.dimensions.length) throw new Error('El mes seleccionado no contiene objetivos para importar.');
+  if (input.rows.some((row) => row.month !== input.month)) throw new Error('El archivo mezcla filas de otro mes en la selección.');
+  if (input.rows.some((row) => [row.kilos, row.accounts, row.invoicing].every((value) => value == null))) {
+    throw new Error('Cada fila debe contener al menos un objetivo.');
+  }
+  if (input.rows.some((row) => [row.kilos, row.accounts, row.invoicing].some((value) => value != null && (!Number.isFinite(value) || value < 0)))) {
+    throw new Error('Los objetivos deben ser números positivos o cero.');
+  }
+  if (input.sourceKind === 'web' && input.rows.some((row) => !isCommercialGoalSeller(row.seller))) {
+    throw new Error('Los objetivos sólo pueden usar vendedores del alcance comercial vigente.');
+  }
+  if (input.sourceKind === 'web' && input.rows.some((row) => row.product && !isCommercialGoalProduct(row.product))) {
+    throw new Error('Los objetivos sólo pueden usar productos o rubros disponibles en Reporte General.');
+  }
+  const rowKeys = input.rows.map((row) => `${row.product.trim()}\u0000${row.seller.trim()}`);
+  if (new Set(rowKeys).size !== rowKeys.length) throw new Error('Hay vendedores repetidos dentro del mismo producto.');
+  const active = getCommercialGoalVersion();
+  if (!active) throw new Error('No existe un plan activo para actualizar.');
+  const sourceRows = listCommercialGoals(active.id);
+  const sourceMonths = listCommercialGoalMonths(active.id);
+  const actor = input.actor.trim().slice(0, 120) || 'Oficina Salice';
+  const sourceFile = input.sourceFile.trim().slice(0, 240);
+  const sourceSheet = input.sourceSheet.trim().slice(0, 120);
+  const store = db();
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const insertGoal = store.prepare(`
+    INSERT INTO commercial_goals (id, version_id, month, product, seller, kilos, accounts, invoicing)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  store.exec('BEGIN IMMEDIATE');
+  try {
+    const versionNumber = Number(store.prepare('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM commercial_goal_versions').get()?.next ?? 1);
+    store.prepare(`
+      INSERT INTO commercial_goal_versions (
+        id, version_number, name, status, source_label, coverage_from, coverage_through,
+        notes, created_at, created_by, activated_at
+      ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      id, versionNumber, name, input.sourceKind === 'excel' ? 'Migración histórica desde Excel' : 'Editor web de objetivos', active.coverageFrom, active.coverageThrough,
+      input.sourceKind === 'excel' ? `Actualización de ${input.month} desde ${sourceFile || 'archivo Excel'}.` : `Objetivos de ${input.month} creados o editados desde la web.`, createdAt, actor,
+    );
+    for (const row of sourceRows) {
+      insertGoal.run(randomUUID(), id, row.month, row.product, row.seller, row.kilos, row.accounts, row.invoicing);
+    }
+    const insertMonth = store.prepare(`
+      INSERT INTO commercial_goal_months (
+        version_id, month, name, source_file, source_sheet, imported_at, imported_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const month of sourceMonths) {
+      insertMonth.run(id, month.month, month.name, month.sourceFile, month.sourceSheet, month.importedAt, month.importedBy);
+    }
+    for (const dimension of input.dimensions) {
+      store.prepare(`UPDATE commercial_goals SET ${dimension} = NULL WHERE version_id = ? AND month = ?`).run(id, input.month);
+    }
+    store.prepare(`
+      DELETE FROM commercial_goals
+      WHERE version_id = ? AND month = ? AND kilos IS NULL AND accounts IS NULL AND invoicing IS NULL
+    `).run(id, input.month);
+    for (const row of input.rows) {
+      insertGoal.run(
+        randomUUID(), id, input.month, row.product.trim().slice(0, 160), row.seller.trim().slice(0, 120),
+        input.dimensions.includes('kilos') ? row.kilos : null,
+        input.dimensions.includes('accounts') ? row.accounts : null,
+        input.dimensions.includes('invoicing') ? row.invoicing : null,
+      );
+    }
+    store.prepare('DELETE FROM commercial_goal_months WHERE version_id = ? AND month = ?').run(id, input.month);
+    insertMonth.run(id, input.month, name, sourceFile, sourceSheet, createdAt, actor);
+    const coverage = store.prepare(`
+      SELECT MIN(month) AS first, MAX(month) AS last, COUNT(*) AS total
+      FROM commercial_goals WHERE version_id = ?
+    `).get(id) as { first?: string; last?: string; total?: number };
+    if (!coverage.total || !coverage.first || !coverage.last) throw new Error('La actualización dejaría el plan sin objetivos.');
+    addGoalChange(store, {
+      versionId: id, eventType: 'created', actor,
+      comment: `Versión creada desde ${active.name} · v${active.version}.`,
+      after: { sourceVersionId: active.id, rows: sourceRows.length }, createdAt,
+    });
+    addGoalChange(store, {
+      versionId: id, eventType: input.sourceKind === 'excel' ? 'imported' : 'saved', entityKey: input.month, actor,
+      comment: input.sourceKind === 'excel'
+        ? `Objetivos “${name}” importados desde ${sourceFile}${sourceSheet ? ` · ${sourceSheet}` : ''}.`
+        : `Objetivos “${name}” guardados desde la web.`,
+      after: { month: input.month, name, rows: input.rows.length, dimensions: input.dimensions, sourceKind: input.sourceKind, sourceFile, sourceSheet }, createdAt,
+    });
+    const revisionRows = store.prepare('SELECT * FROM commercial_goals WHERE version_id = ? AND month = ? ORDER BY product, seller, id')
+      .all(id, input.month).map((row) => commercialGoalFromRow(row));
+    insertGoalMonthRevision(store, {
+      month: input.month,
+      name,
+      sourceKind: input.sourceKind,
+      sourceFile,
+      sourceSheet,
+      createdAt,
+      createdBy: actor,
+      rows: revisionRows,
+    });
+    store.prepare("UPDATE commercial_goal_versions SET status = 'archived' WHERE status = 'active'").run();
+    store.prepare(`
+      UPDATE commercial_goal_versions
+      SET status = 'active', coverage_from = ?, coverage_through = ?, activated_at = ?
+      WHERE id = ?
+    `).run(coverage.first, coverage.last, createdAt, id);
+    addGoalChange(store, {
+      versionId: id, eventType: 'activated', actor,
+      comment: `Objetivos “${name}” activados para Reporte General.`,
+      after: { coverageFrom: coverage.first, coverageThrough: coverage.last, rows: Number(coverage.total) }, createdAt,
+    });
+    store.exec('COMMIT');
+  } catch (error) {
+    store.exec('ROLLBACK');
+    throw error;
+  }
+  return {
+    version: getCommercialGoalVersion(id)!,
+    monthPlan: listCommercialGoalMonths(id).find((item) => item.month === input.month)!,
+  };
+}
+
+export function importCommercialGoalMonth(input: Omit<ReplaceCommercialGoalMonthInput, 'sourceKind'>) {
+  return replaceCommercialGoalMonth({ ...input, sourceKind: 'excel' });
+}
+
+export function saveCommercialGoalMonth(input: {
+  month: string;
+  name: string;
+  rows: Array<Omit<CommercialGoalRow, 'id'>>;
+  actor: string;
+}) {
+  return replaceCommercialGoalMonth({
+    ...input,
+    sourceKind: 'web',
+    sourceFile: '',
+    sourceSheet: '',
+    dimensions: ['kilos', 'accounts', 'invoicing'],
+  });
 }
 
 function requireDraftGoalVersion(versionId: string) {

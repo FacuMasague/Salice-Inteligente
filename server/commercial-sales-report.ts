@@ -320,10 +320,14 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
     const end = iso(cutoffDate(value.year, value.month, rowCutoff));
     const previousYearStart = iso(monthStart(value.year - 1, value.month));
     const previousYearEnd = iso(cutoffDate(value.year - 1, value.month, rowCutoff));
+    const currentMetric = metric(database, buildWhere(filters, start, end));
+    const previousYearMetric = metric(database, buildWhere(filters, previousYearStart, previousYearEnd));
     return {
       month: `${value.year}-${String(value.month + 1).padStart(2, '0')}`,
-      current: metric(database, buildWhere(filters, start, end)).netAmount,
-      previousYear: metric(database, buildWhere(filters, previousYearStart, previousYearEnd)).netAmount,
+      current: currentMetric.netAmount,
+      previousYear: previousYearMetric.netAmount,
+      currentKilos: currentMetric.kilos,
+      previousYearKilos: previousYearMetric.kilos,
     };
   });
 

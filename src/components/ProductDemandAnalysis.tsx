@@ -124,7 +124,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
 
     {payload && <>
       <section className="demand-kpis">
-        <article><Gauge size={18} /><span>Unidades · {windowDays} días</span><strong>{number(payload.summary.current.units, 2)}</strong><small>{number(payload.summary.previous.units, 2)} en el período anterior</small></article>
+        <article><Gauge size={18} /><span>Facturación / unidades · {windowDays} días</span><strong>{money(payload.summary.current.sales, true)}</strong><small>{number(payload.summary.current.units, 2)} U1 · anterior {money(payload.summary.previous.sales, true)}</small></article>
         <article><PackageSearch size={18} /><span>Kilos estimados · {windowDays} días</span><strong>{number(payload.summary.current.kilos, 2)} kg</strong><small>{payload.summary.kiloVariationPercent == null ? 'Sin base comparable' : `${payload.summary.kiloVariationPercent > 0 ? '+' : ''}${number(payload.summary.kiloVariationPercent, 1)}% frente al período anterior`}</small></article>
         <article className={(payload.summary.variationPercent ?? 0) < 0 ? 'negative' : ''}>{(payload.summary.variationPercent ?? 0) < 0 ? <TrendingDown size={18} /> : <TrendingUp size={18} />}<span>Variación equivalente</span><strong>{payload.summary.variationPercent == null ? 'Sin base' : `${payload.summary.variationPercent > 0 ? '+' : ''}${payload.summary.variationPercent.toLocaleString('es-AR')}%`}</strong><small>{compactDate(payload.previousRange.from)} → {compactDate(payload.previousRange.through)}</small></article>
         <article><Users size={18} /><span>Compradores únicos</span><strong>{number(payload.summary.current.buyers)}</strong><small>No se suman compradores repetidos</small></article>
@@ -172,7 +172,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
         <td><button className="demand-entity" onClick={() => openEntity(row)}><strong>{row.label}</strong><small>{row.detail}</small></button></td>
         <td title={`${number(row.current.units, 2)} U1 · ${money(row.current.sales)}`}><strong>{number(row.current.units, 2)}</strong><small>{money(row.current.sales, true)}</small></td>
         <td title={row.kiloDataStatus !== 'unavailable' ? `${number(row.current.kilos, 2)} kg estimados` : 'La presentación no permite inferir kilos'}><strong>{row.kiloDataStatus !== 'unavailable' ? number(row.current.kilos, 2) : '—'}</strong><small>{row.kiloDataStatus !== 'unavailable' ? 'kg estimados' : 'Sin conversión'}</small></td>
-        <td title={`${number(row.previous.units, 2)} U1 · ${money(row.previous.sales)}`}><strong>{number(row.previous.units, 2)}</strong><small>{number(row.previous.buyers)} compradores</small></td>
+        <td title={`${number(row.previous.units, 2)} U1 · ${money(row.previous.sales)}`}><strong>{number(row.previous.units, 2)}</strong><small>{money(row.previous.sales, true)} · {number(row.previous.buyers)} compradores</small></td>
         <td><span className={`demand-trend-chip ${row.trend}`}>{variationLabel(row)}</span><small>{trendLabels[row.trend]}</small></td>
         <td><strong>{number(row.current.buyers)}</strong><small>{row.current.activeDays} {row.current.activeDays === 1 ? 'día' : 'días'} con venta</small></td>
         <td title={`${number(row.rotationPer30Days, 2)} U1 cada 30 días`}><strong>{number(row.rotationPer30Days, 2)}</strong><small>U1 normalizadas</small></td>

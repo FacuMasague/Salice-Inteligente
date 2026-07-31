@@ -47,6 +47,14 @@ describe('persistencia administrativa v0.4.0', () => {
     const initial = store.getCommercialGoalsPayload();
     expect(initial.selectedVersion.status).toBe('active');
     expect(initial.selectedVersion.rowCount).toBe(STATUS_TARGETS.length);
+    expect(initial.sellers).not.toContain('Alejandro Lurbe');
+    expect(initial.sellers).not.toContain('Luciano Payba');
+    expect(initial.rows.some((row) => ['Alejandro Lurbe', 'Luciano Payba'].includes(row.seller))).toBe(false);
+    expect(initial.rows.reduce((sum, row) => sum + Number(row.accounts ?? 0), 0)).toBe(2_632);
+    const initialJulyRevision = store.listCommercialGoalMonthRevisions('2026-07')[0];
+    expect(store.getCommercialGoalMonthRevision(initialJulyRevision.id)?.rows
+      .filter((row) => row.seller === 'Luciano Payba')
+      .reduce((sum, row) => sum + Number(row.accounts ?? 0), 0)).toBe(510);
 
     const draft = store.createCommercialGoalVersion({
       name: 'Plan de prueba administrable',
@@ -85,6 +93,93 @@ describe('persistencia administrativa v0.4.0', () => {
       ...first,
       actor: 'Prueba oficina',
     })).toThrow(/Sólo se pueden modificar versiones en borrador/);
+  });
+
+  it('actualiza un mes desde Excel, conserva dimensiones ausentes y guarda el nombre elegido', () => {
+    const before = store.getActiveCommercialGoalPlan();
+    const previousInvoicing = store.listCommercialGoals(before.version.id, '2026-07')
+      .reduce((sum, row) => sum + Number(row.invoicing ?? 0), 0);
+    const result = store.importCommercialGoalMonth({
+      month: '2026-07',
+      name: 'Plan julio acordado',
+      sourceFile: 'Objetivos Julio.xlsx',
+      sourceSheet: 'Julio 26',
+      dimensions: ['kilos', 'accounts'],
+      actor: 'Prueba oficina',
+      rows: [{
+        month: '2026-07', product: 'C&T', seller: 'Ana Ottaviano',
+        kilos: 125, accounts: 25, invoicing: null,
+      }],
+    });
+
+    expect(result.version.status).toBe('active');
+    expect(result.version.name).toBe('Plan julio acordado');
+    expect(result.monthPlan).toMatchObject({
+      month: '2026-07', name: 'Plan julio acordado', sourceFile: 'Objetivos Julio.xlsx', sourceSheet: 'Julio 26',
+    });
+    const importedRows = store.listCommercialGoals(result.version.id, '2026-07');
+    expect(importedRows.reduce((sum, row) => sum + Number(row.kilos ?? 0), 0)).toBe(125);
+    expect(importedRows.reduce((sum, row) => sum + Number(row.accounts ?? 0), 0)).toBe(25);
+    expect(importedRows.reduce((sum, row) => sum + Number(row.invoicing ?? 0), 0)).toBe(previousInvoicing);
+    expect(store.getActiveCommercialGoalPlan().source.monthPlans.find((item) => item.month === '2026-07')?.name).toBe('Plan julio acordado');
+    expect(store.listCommercialGoalChanges(result.version.id).map((change) => change.eventType)).toEqual(expect.arrayContaining(['created', 'imported', 'activated']));
+  });
+
+  it('conserva el historial del Excel por mes y cada edición posterior hecha desde la web', () => {
+    const historical = store.listCommercialGoalMonthRevisions();
+    expect(historical.length).toBeGreaterThanOrEqual(19);
+    expect(historical.find((revision) => revision.month === '2025-01')).toMatchObject({
+      sourceKind: 'excel', sourceFile: 'Status Salice 2025.xlsx', sourceSheet: 'Power BI',
+    });
+
+    const first = store.saveCommercialGoalMonth({
+      month: '2026-08',
+      name: 'Plan agosto acordado',
+      actor: 'Prueba oficina',
+      rows: [
+        { month: '2026-08', product: 'Raza', seller: 'Andres Dominguez', kilos: 1_500, accounts: 18, invoicing: null },
+        { month: '2026-08', product: '', seller: 'Ana Ottaviano', kilos: null, accounts: null, invoicing: 5_000_000 },
+      ],
+    });
+    expect(first.monthPlan.name).toBe('Plan agosto acordado');
+
+    store.saveCommercialGoalMonth({
+      month: '2026-08',
+      name: 'Plan agosto revisado',
+      actor: 'Prueba oficina',
+      rows: [
+        { month: '2026-08', product: 'Raza', seller: 'Andres Dominguez', kilos: 1_700, accounts: 20, invoicing: null },
+        { month: '2026-08', product: '', seller: 'Ana Ottaviano', kilos: null, accounts: null, invoicing: 5_500_000 },
+      ],
+    });
+
+    const revisions = store.listCommercialGoalMonthRevisions('2026-08');
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ name: 'Plan agosto revisado', sourceKind: 'web', active: true });
+    expect(revisions[0].totals).toEqual({ kilos: 1_700, accounts: 20, invoicing: 5_500_000 });
+    expect(revisions[1]).toMatchObject({ name: 'Plan agosto acordado', sourceKind: 'web', active: false });
+    expect(store.getCommercialGoalMonthRevision(revisions[1].id)?.rows[0]?.month).toBe('2026-08');
+    expect(store.listCommercialGoalChanges(store.getActiveCommercialGoalPlan().version.id).map((change) => change.eventType)).toContain('saved');
+  });
+
+  it('exporta el plan actual y todos los registros con las columnas compatibles con Power BI', async () => {
+    const { createGoalsHistoryWorkbook } = await import('./admin-exports');
+    const workbook = createGoalsHistoryWorkbook();
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Power BI', 'Historial']);
+    expect(workbook.getWorksheet('Power BI')?.getRow(1).values).toEqual([
+      undefined, 'Mes', 'Producto', 'Vendedor', 'Objetivo', 'Obj. Ctas', 'Obj. Fact',
+    ]);
+    expect(workbook.getWorksheet('Historial')?.rowCount).toBeGreaterThan(workbook.getWorksheet('Power BI')?.rowCount ?? 0);
+    expect(workbook.getWorksheet('Power BI')?.getCell('A2').value).toBeInstanceOf(Date);
+    const currentSellers = workbook.getWorksheet('Power BI')?.getColumn('seller').values ?? [];
+    const historicalSellers = workbook.getWorksheet('Historial')?.getColumn('seller').values ?? [];
+    expect(currentSellers).not.toContain('Alejandro Lurbe');
+    expect(currentSellers).not.toContain('Luciano Payba');
+    expect(historicalSellers).toContain('Alejandro Lurbe');
+    expect(historicalSellers).toContain('Luciano Payba');
+    const reopened = new (await import('exceljs')).default.Workbook();
+    await reopened.xlsx.load(await workbook.xlsx.writeBuffer());
+    expect(reopened.getWorksheet('Historial')?.getCell('I2').numFmt).toBe('#,##0.00');
   });
 
   it('guarda vistas frecuentes sin mezclar las superficies', () => {

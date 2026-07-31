@@ -1,6 +1,12 @@
-# Salice Inteligente · v1.3.0
+# Salice Inteligente · v1.4.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.3.0 mejora la continuidad, calidad y control de costo de la asistencia con IA y agrega lecturas operativas en Bandeja comercial y demanda de productos.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.4.0 simplifica la operación diaria con densidad compacta predeterminada, navegación adaptable, tablas legibles en resoluciones desde 720 px y fichas emergentes para productos y marcas, sin separar los datos ni las reglas de negocio del programa.
+
+La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
+
+Los objetivos reutilizan el alcance comercial común del programa: vendedores vigentes o altas futuras válidas de GESI y los mismos productos/rubros publicados por Reporte General. Las carteras antiguas del Excel quedan disponibles sólo en el historial auditable.
+
+Cada producto o rubro admite objetivos mensuales de kilos y de clientes. Reporte General calcula el cumplimiento de clientes con compradores únicos por producto y vendedor usando exclusivamente movimientos GESI del mismo mes; una cuenta puede integrar más de un producto.
 
 ## Abrir el programa
 
@@ -145,7 +151,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v1.3
+## Alcance deliberadamente fuera de v1.4
 
 - Empaquetado instalable.
 - Rediseño móvil completo.
@@ -173,3 +179,5 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.2.2.md`
 - `docs/release-v1.2.3.md`
 - `docs/release-v1.3.0.md`
+- `docs/release-v1.3.1.md`
+- `docs/release-v1.4.0.md`

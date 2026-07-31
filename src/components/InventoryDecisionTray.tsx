@@ -208,14 +208,14 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
       <div className="data-card-header"><div><span className="section-kicker"><AlertTriangle size={14} /> Productos para revisar</span><h2>{number(sorted.length)} productos</h2><p>Pendientes primero; dentro de cada estado se prioriza el mayor impacto.</p></div><span className="count-badge">{currentPage} / {pageCount}</span></div>
       <div className="table-wrap"><table className="data-table inventory-decision-table"><thead><tr>
         <th><SortButton label="Producto" direction={direction('product')} onClick={() => changeSort('product')} /></th>
-        <th><SortButton label="Estado y explicación" direction={direction('status')} onClick={() => changeSort('status')} /></th>
+        <th><SortButton label="Estado" direction={direction('status')} onClick={() => changeSort('status')} /></th>
         <th><SortButton label="Stock U1" direction={direction('stock')} onClick={() => changeSort('stock')} /></th>
         <th><SortButton label="Rotación/mes" direction={direction('rotation')} onClick={() => changeSort('rotation')} /></th>
         <th><SortButton label="Cobertura" direction={direction('coverage')} onClick={() => changeSort('coverage')} /></th>
         <th><SortButton label="Revisión" direction={direction('review')} onClick={() => changeSort('review')} /></th>
       </tr></thead><tbody>{visible.map((row) => <tr key={row.product.id} className={row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'inventory-reopened-row' : row.review?.status === 'reviewed' ? 'inventory-reviewed-row' : row.review?.status === 'in_review' ? 'inventory-in-review-row' : ''}>
         <td><button className="entity-link inventory-product-link" onClick={() => onOpenProduct(row.product)}><strong>{row.product.name}</strong><small>{row.product.sku} · {useful(row.product.brand)} · {useful(row.product.family)}</small></button></td>
-        <td><span className={`inventory-status-badge ${statusTone(row.decision.status)}`}>{row.decision.label}</span><small className="inventory-explanation">{row.decision.explanation}</small>{row.review?.exceptionType && row.review.exceptionType !== 'none' && <span className="inventory-exception">Excepción: {INVENTORY_EXCEPTION_LABELS[row.review.exceptionType]}</span>}</td>
+        <td><span className={`inventory-status-badge ${statusTone(row.decision.status)}`}>{row.decision.label}</span></td>
         <td><strong>{row.product.inventory.rawAvailableUnit1 == null ? 'Sin dato' : row.product.inventory.rawAvailableUnit1.toLocaleString('es-AR')}</strong><small>{row.product.unit || 'U1 no informada'}</small></td>
         <td><strong>{row.product.monthlyUnits.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong><small>{row.product.units90d.toLocaleString('es-AR')} en 90d</small></td>
         <td><strong>{row.product.stockCoverageMonths == null ? 'No calculable' : `${row.product.stockCoverageMonths.toLocaleString('es-AR', { maximumFractionDigits: 2 })} meses`}</strong><small>umbral {row.decision.thresholdSource === 'general' ? 'general' : 'familiar'}</small></td>

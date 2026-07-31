@@ -4,6 +4,7 @@ import type { Client, Product, Recommendation, RecommendationConfidence, Recomme
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number } from '../lib/format';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { SavedViewsBar } from './SavedViewsBar';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
@@ -19,8 +20,9 @@ const confidenceLabels: Record<RecommendationConfidence, string> = {
   reliable: 'Confianza alta', exploratory: 'Confianza media', insufficient: 'Confianza limitada',
 };
 
-export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onOpenClient, onOpenSeller, onOpenBrand, onOpenProduct }: {
+export function CommercialOpportunitiesWorkspace({ clients, products, initialClientId, onOpenClient, onOpenSeller, onOpenBrand, onOpenProduct }: {
   clients: Client[];
+  products: Product[];
   initialClientId?: number | null;
   onOpenClient: (client: Client) => void;
   onOpenSeller: (seller: string) => void;
@@ -30,6 +32,7 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
   const activeClients = useMemo(() => clients
     .filter((client) => isCommercialOpportunityEligible(client) && client.purchases.length > 0)
     .sort((a, b) => b.commercialOpportunity - a.commercialOpportunity || b.sales90d - a.sales90d), [clients]);
+  const productContent = useMemo(() => productContentById(products), [products]);
   const [selectedId, setSelectedId] = useState(() => initialClientId && activeClients.some((client) => client.id === initialClientId) ? initialClientId : activeClients[0]?.id ?? null);
   const [query, setQuery] = useState('');
   const [clientType, setClientType] = useState('');
@@ -62,6 +65,7 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
     && `${clientPrimaryName(client)} ${clientSecondaryName(client)} ${client.seller} ${client.locality} ${client.segment}`.toLocaleLowerCase('es').includes(normalized)
   ));
   const selected = filteredClients.find((client) => client.id === selectedId) ?? filteredClients[0];
+  const selectedKilos = selected ? clientKilos90d(selected, productContent) : null;
 
   useEffect(() => {
     if (!selected) return;
@@ -120,7 +124,7 @@ export function CommercialOpportunitiesWorkspace({ clients, initialClientId, onO
     <section className="opportunity-workspace-main">
       <header className="data-card opportunity-hero">
         <div><span className="section-kicker"><Sparkles size={15} /> Oportunidades explicables · 90 días</span><h2>{clientPrimaryName(selected)}</h2>{clientSecondaryName(selected) && <p>{clientSecondaryName(selected)}</p>}<div className="opportunity-entity-links"><button onClick={() => onOpenClient(selected)}><Users size={13} /> Abrir cliente</button><button onClick={() => onOpenSeller(selected.seller)}><Users size={13} /> {selected.seller}</button></div></div>
-        <div className="opportunity-hero-score"><span>Oportunidad comercial</span><strong>{selected.commercialOpportunity}/100</strong><small>{money(selected.sales90d, true)} vendidos en 90 días</small></div>
+        <div className="opportunity-hero-score"><span>Oportunidad comercial</span><strong>{selected.commercialOpportunity}/100</strong><small>{money(selected.sales90d, true)} · {number(selectedKilos?.kilos ?? 0, 2)} kg{selectedKilos?.complete ? '' : ' parciales'} en 90 días</small></div>
       </header>
       <div className="data-card opportunity-controls"><label><span>TIPO</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="all">Todas las oportunidades</option>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>CONFIANZA</span><select value={confidence} onChange={(event) => setConfidence(event.target.value as typeof confidence)}><option value="all">Todos los niveles</option>{Object.entries(confidenceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><p><PackageCheck size={15} /> Sólo productos comercializables con stock positivo. Los incompatibles quedan excluidos.</p></div>
       {loading && <div className="data-card opportunity-status">Calculando mix, pares comparables, quiebres y cobertura…</div>}

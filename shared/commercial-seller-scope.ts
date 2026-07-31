@@ -62,6 +62,7 @@ export const EXCLUDED_HISTORICAL_SELLERS = [
   'LM',
   'Luciano Rebagliati',
   'Luciano Rebagliatti',
+  'Luciano Payba',
   'Lucas Morales',
   'Luján',
   'MP',

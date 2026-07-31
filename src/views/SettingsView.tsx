@@ -1,18 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BookOpen, BrainCircuit, CheckCircle2, ClipboardCheck, Clock3, Database, HardDrive, Info, Map, MessageSquareText, MonitorCog, PlayCircle, RefreshCcw, Search, ShieldCheck, SlidersHorizontal, WalletCards } from 'lucide-react';
+import { AlertTriangle, BarChart3, BookOpen, BrainCircuit, Clock3, Database, HardDrive, Info, Map, MessageSquareText, MonitorCog, RefreshCcw, Search, ShieldCheck, SlidersHorizontal, WalletCards } from 'lucide-react';
 import { APP_VERSION, type DashboardData } from '../../shared/models';
 import type { AiSystemStatus } from '../../shared/ai';
 import type { DataHealthPayload } from '../../shared/data-health';
 import type { MetricDefinition, ReportUniverseDefinition } from '../../shared/metrics';
-import { TUTORIALS, type TutorialSection } from '../components/TutorialOverlay';
 import { longDate, number } from '../lib/format';
 import { readPreferences, savePreferences, type AppPreferences } from '../lib/preferences';
-
-const tutorialCards: { id: TutorialSection; icon: typeof Map }[] = [
-  { id: 'operations', icon: Map },
-  { id: 'administration', icon: ClipboardCheck },
-  { id: 'reports', icon: BarChart3 },
-];
 
 interface SystemStatus {
   storage: string;
@@ -51,12 +44,11 @@ const aiFunctionLabels = {
   report_coherence: 'Coherencia global',
 };
 
-type SettingsTab = 'preferences' | 'ai' | 'data' | 'help' | 'diagnostics' | 'about';
+type SettingsTab = 'preferences' | 'ai' | 'data' | 'diagnostics' | 'about';
 const settingsTabs: Array<{ id: SettingsTab; label: string; icon: typeof Map }> = [
   { id: 'preferences', label: 'Preferencias', icon: SlidersHorizontal },
   { id: 'ai', label: 'Inteligencia artificial', icon: BrainCircuit },
   { id: 'data', label: 'Datos y actualizaciones', icon: Database },
-  { id: 'help', label: 'Ayuda', icon: BookOpen },
   { id: 'diagnostics', label: 'Diagnóstico avanzado', icon: MonitorCog },
   { id: 'about', label: 'Acerca del programa', icon: Info },
 ];
@@ -72,7 +64,7 @@ function refreshTriggerLabel(value: string) {
   return 'Manual';
 }
 
-export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutorial }: { data: DashboardData; dataHealth: DataHealthPayload | null; tutorialCompleted: Record<TutorialSection, boolean>; onStartTutorial: (section: TutorialSection) => void }) {
+export function SettingsView({ data, dataHealth }: { data: DashboardData; dataHealth: DataHealthPayload | null }) {
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [catalog, setCatalog] = useState<MetricCatalogPayload | null>(null);
   const [metricQuery, setMetricQuery] = useState('');
@@ -104,8 +96,8 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
         <section className="data-card settings-card">
           <div className="data-card-header"><div><span className="section-kicker"><SlidersHorizontal size={14} /> Apariencia</span><h2>Densidad de la interfaz</h2><p>Elegí cuánto espacio ocupan tarjetas y tablas.</p></div></div>
           <div className="settings-choice-grid">
-            <button className={preferences.density === 'comfortable' ? 'active' : ''} onClick={() => updatePreferences({ ...preferences, density: 'comfortable' })}><strong>Cómoda</strong><span>Más aire y lectura pausada.</span></button>
-            <button className={preferences.density === 'compact' ? 'active' : ''} onClick={() => updatePreferences({ ...preferences, density: 'compact' })}><strong>Compacta</strong><span>Más información visible a la vez.</span></button>
+            <button className={preferences.density === 'compact' ? 'active' : ''} onClick={() => updatePreferences({ ...preferences, density: 'compact' })}><strong>Compacta · predeterminada</strong><span>Optimizada para trabajar desde 720 px.</span></button>
+            <button className={preferences.density === 'wide' ? 'active' : ''} onClick={() => updatePreferences({ ...preferences, density: 'wide' })}><strong>Amplia</strong><span>Más aire para pantallas grandes.</span></button>
           </div>
         </section>
         <section className="data-card settings-card">
@@ -113,25 +105,6 @@ export function SettingsView({ data, dataHealth, tutorialCompleted, onStartTutor
           <p className="settings-card-copy">Las guías completas permanecen disponibles en la sección Ayuda, aun si ocultás el acceso contextual.</p>
         </section>
       </div>}
-
-      {activeTab === 'help' && <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
-        <div className="settings-tutorial-copy">
-          <div className="settings-icon"><BookOpen size={28} /></div>
-          <div><span className="section-kicker">Guías interactivas</span><h2>Elegí qué sección querés aprender</h2><p>Cada recorrido explica una parte concreta del programa, cambia de pantalla automáticamente y no modifica ningún dato.</p></div>
-        </div>
-        <div className="tutorial-selector-grid">
-          {tutorialCards.map(({ id, icon: Icon }) => {
-            const definition = TUTORIALS[id];
-            const completed = tutorialCompleted[id];
-            return <article key={id}>
-              <div className="tutorial-selector-icon"><Icon size={21} /></div>
-              <div><span>{definition.label}</span><strong>{definition.title}</strong><p>{definition.description}</p><small>{definition.steps.length} pasos · recorrido independiente</small></div>
-              {completed && <em><CheckCircle2 size={14} /> Completado</em>}
-              <button className={`button ${completed ? 'secondary' : 'primary'}`} onClick={() => onStartTutorial(id)}><PlayCircle size={16} /> {completed ? 'Repetir' : 'Comenzar'}</button>
-            </article>;
-          })}
-        </div>
-      </section>}
 
       {activeTab === 'data' && <section className={`data-card data-health-card ${dataHealth?.overall ?? 'unavailable'}`}>
         <div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Estado de los datos</span><h2>Frescura, fuentes y última validación</h2><p>La pantalla siempre conserva la última foto aprobada; una captura fallida no reemplaza estos datos.</p></div><span className={`data-health-badge ${dataHealth?.freshness.level ?? 'unknown'}`}>{dataHealth ? freshnessLabels[dataHealth.freshness.level] : 'Consultando…'}</span></div>

@@ -205,7 +205,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
 
   if (mode === 'prices') return <div className="page-view products-workspace">{modeNavigation}<ProductPriceAnalysis products={products} onOpenProduct={onOpenProduct} /></div>;
 
-  if (mode === 'opportunities') return <div className="page-view products-workspace">{modeNavigation}<CommercialOpportunitiesWorkspace clients={clients} onOpenClient={onOpenClient} onOpenSeller={onOpenSeller} onOpenBrand={onOpenBrand} onOpenProduct={onOpenProduct} /></div>;
+  if (mode === 'opportunities') return <div className="page-view products-workspace">{modeNavigation}<CommercialOpportunitiesWorkspace clients={clients} products={products} onOpenClient={onOpenClient} onOpenSeller={onOpenSeller} onOpenBrand={onOpenBrand} onOpenProduct={onOpenProduct} /></div>;
 
   if (mode === 'compare') return <div className="page-view products-workspace">{modeNavigation}<ProductComparisonWorkspace products={products} selectedIds={comparisonProductIds} onSelectionChange={onComparisonChange} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} /></div>;
 
@@ -228,13 +228,15 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
           </section>
           <section className="data-card vector-ranking-card">
             <div className="data-card-header"><div><span className="section-kicker">Ranking completo · 100 → 0</span><h2>{VECTOR_LABELS[selectedVector]}</h2><p>{VECTOR_DESCRIPTIONS[selectedVector]}</p></div><span className="count-badge">{matchingProducts} con afinidad</span></div>
-            <div className="vector-ranking-head"><span>#</span><span>Producto</span><span>Familia</span><span>Afinidad</span><span>Rotación</span><span /></div>
-            <div className="vector-ranking-list">
-              {visibleRanking.map((product, index) => {
-                const score = product.vector[selectedVector];
-                const rank = (currentVectorPage - 1) * vectorPageSize + index + 1;
-                return <article key={product.id} className={score ? '' : 'zero-score'}><strong className="vector-rank-number">{rank}</strong><div className="vector-ranked-product"><button className="entity-link" onClick={() => openProduct(product.id)}>{product.name}</button><span>{product.sku} · <button className="entity-link inline-entity" onClick={() => onOpenBrand(product.brand)}>{product.brand}</button></span></div><span>{product.family}</span><div className="vector-ranking-score" title={product.vectorMeta.evidence[selectedVector]?.join(' · ') || 'Sin evidencia asignada'}><div><i style={{ width: `${score}%` }} /></div><strong>{score}%</strong></div><span>{product.monthlyUnits} u./mes</span><button className="icon-button" aria-label={`Ver ${product.name}`} onClick={() => openProduct(product.id)}><ChevronRight size={16} /></button></article>;
-              })}
+            <div className="vector-ranking-table-scroll">
+              <div className="vector-ranking-head"><span>#</span><span>Producto</span><span>Familia</span><span>Afinidad</span><span>Rotación</span><span /></div>
+              <div className="vector-ranking-list">
+                {visibleRanking.map((product, index) => {
+                  const score = product.vector[selectedVector];
+                  const rank = (currentVectorPage - 1) * vectorPageSize + index + 1;
+                  return <article key={product.id} className={score ? '' : 'zero-score'}><strong className="vector-rank-number">{rank}</strong><div className="vector-ranked-product"><button className="entity-link" onClick={() => openProduct(product.id)}>{product.name}</button><span>{product.sku} · <button className="entity-link inline-entity" onClick={() => onOpenBrand(product.brand)}>{product.brand}</button></span></div><span>{product.family}</span><div className="vector-ranking-score" title={product.vectorMeta.evidence[selectedVector]?.join(' · ') || 'Sin evidencia asignada'}><div><i style={{ width: `${score}%` }} /></div><strong>{score}%</strong></div><span>{product.monthlyUnits} u./mes</span><button className="icon-button" aria-label={`Ver ${product.name}`} onClick={() => openProduct(product.id)}><ChevronRight size={16} /></button></article>;
+                })}
+              </div>
             </div>
             <div className="table-pagination"><span>Mostrando {(currentVectorPage - 1) * vectorPageSize + 1}–{(currentVectorPage - 1) * vectorPageSize + visibleRanking.length} de {ranking.length}</span><div><button className="button secondary" disabled={currentVectorPage === 1} onClick={() => setVectorPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentVectorPage} / {vectorPageCount}</strong><button className="button secondary" disabled={currentVectorPage === vectorPageCount} onClick={() => setVectorPage((value) => Math.min(vectorPageCount, value + 1))}>Siguiente</button></div></div>
           </section>

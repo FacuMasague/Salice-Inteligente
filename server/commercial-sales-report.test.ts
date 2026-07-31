@@ -56,6 +56,8 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(report!.monthly).toHaveLength(Number(meta.latestMonth.slice(5, 7)));
     expect(report!.monthly[0].month).toBe(`${meta.latestYear}-01`);
     expect(report!.monthly.at(-1)?.month).toBe(meta.latestMonth);
+    expect(report!.monthly.every((row) => row.currentKilos >= 0 && row.previousYearKilos >= 0)).toBe(true);
+    expect(report!.monthly.reduce((sum, row) => sum + row.currentKilos, 0)).toBeCloseTo(report!.current.kilos, 4);
     expect(report!.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
   }, 15_000);
 

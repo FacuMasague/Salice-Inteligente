@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Check, ChevronRight, EyeOff, Search, Users } from 'lucide-react';
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
-import type { Client, ClientTrendDirection, ClientTrendReview } from '../../shared/models';
+import type { Client, ClientTrendDirection, ClientTrendReview, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { clientInitials, clientPrimaryName, clientSecondaryName } from '../lib/client-name';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { creditTermLabel, money, number, paymentDelay, shortDate, zoneLabel } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 
-type ClientSortKey = 'client' | 'status' | 'zone' | 'sales' | 'risk' | 'opportunity' | 'term' | 'visit';
+type ClientSortKey = 'client' | 'zone' | 'sales' | 'priority' | 'term' | 'visit';
 
-export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: { clients: Client[]; query: string; onQuery: (value: string) => void; onOpen: (client: Client) => void; onOpenSeller: (seller: string) => void }) {
+export function ClientsView({ clients, products, query, onQuery, onOpen, onOpenSeller }: { clients: Client[]; products: Product[]; query: string; onQuery: (value: string) => void; onOpen: (client: Client) => void; onOpenSeller: (seller: string) => void }) {
   const pageSize = 50;
   const [page, setPage] = useState(1);
   const [commercialStatus, setCommercialStatus] = useState('');
@@ -38,6 +39,7 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
   const activeCount = clients.filter((client) => client.active).length;
   const inactiveCount = clients.length - activeCount;
   const sellers = useMemo(() => [...new Set(clients.filter((client) => client.active).map((client) => client.seller))].sort((a, b) => a.localeCompare(b, 'es')), [clients]);
+  const contentByProduct = useMemo(() => productContentById(products), [products]);
   const baseFiltered = clients
     .filter((client) => matchesMultiFilter(client.active ? 'active' : 'inactive', commercialStatus))
     .filter((client) => matchesMultiFilter(client.portfolioStatus, portfolio))
@@ -57,11 +59,9 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
           : b.visitPriority - a.visitPriority);
   const tableSorted = sortItems(baseFiltered, tableSort, (client, key) => {
     if (key === 'client') return clientPrimaryName(client);
-    if (key === 'status') return client.active;
     if (key === 'zone') return `${client.zone} ${client.seller}`;
     if (key === 'sales') return client.sales90d;
-    if (key === 'risk') return client.collectionRisk;
-    if (key === 'opportunity') return isCommercialOpportunityEligible(client) ? client.commercialOpportunity : -1;
+    if (key === 'priority') return client.visitPriority;
     if (key === 'term') return client.creditDays;
     return client.nextVisitAt;
   });
@@ -121,21 +121,22 @@ export function ClientsView({ clients, query, onQuery, onOpen, onOpenSeller }: {
         <div className="data-card-header"><div><span className="section-kicker">{decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? <EyeOff size={14} /> : <Users size={14} />} Cartera comercial</span><h2>{trendMode === 'growth' ? 'Clientes con crecimiento de 30% o más' : trendMode === 'decline' ? 'Clientes con caída de 30% o más' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'active' ? 'Clientes activos' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? 'Histórico de clientes inactivos' : 'Universo completo de clientes'}</h2><p>{trendMode ? 'Los pendientes de revisar aparecen primero; el tilde mueve el cliente al final de esta lista.' : 'Riesgo de cobranza y oportunidad comercial se calculan por separado.'}</p>{reviewError && <small className="form-error">{reviewError}</small>}</div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table clients-data-table">
-            <thead><tr><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('status')}><SortButton label="GESI / Salice" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('zone')}><SortButton label="Zona y vendedor" direction={direction('zone')} onClick={() => changeTableSort('zone')} /></th><th aria-sort={ariaSort('sales')}><SortButton label="Ventas 90d" direction={direction('sales')} onClick={() => changeTableSort('sales')} /></th><th aria-sort={ariaSort('risk')}><SortButton label="Cobranza" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th aria-sort={ariaSort('opportunity')}><SortButton label="Oportunidad" direction={direction('opportunity')} onClick={() => changeTableSort('opportunity')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo / pago" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('visit')}><SortButton label="Revisión sugerida" direction={direction('visit')} onClick={() => changeTableSort('visit')} /></th><th>{trendMode ? 'Revisado' : ''}</th></tr></thead>
+            <thead><tr><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('zone')}><SortButton label="Zona y vendedor" direction={direction('zone')} onClick={() => changeTableSort('zone')} /></th><th aria-sort={ariaSort('sales')}><SortButton label="Facturación / kilos · 90d" direction={direction('sales')} onClick={() => changeTableSort('sales')} /></th><th aria-sort={ariaSort('priority')}><SortButton label="Prioridad" direction={direction('priority')} onClick={() => changeTableSort('priority')} /></th><th className="clients-compact-hide" aria-sort={ariaSort('term')}><SortButton label="Plazo / pago" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th className="clients-compact-hide" aria-sort={ariaSort('visit')}><SortButton label="Revisión sugerida" direction={direction('visit')} onClick={() => changeTableSort('visit')} /></th><th>{trendMode ? 'Revisado' : ''}</th></tr></thead>
             <tbody>
-              {visible.map((client) => (
+              {visible.map((client) => {
+                const kiloMetric = clientKilos90d(client, contentByProduct);
+                return (
                 <tr key={client.id} className={`${client.active ? '' : 'inactive-client-row'} ${trendMode && reviewed(client.id) ? 'trend-reviewed-row' : ''}`} onClick={() => onOpen(client)}>
                   <td><div className="table-client client-legal-identity"><div className="mini-avatar">{clientInitials(client)}</div><div><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span className="client-trade-name">{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment}{client.locationStatus === 'corrected' ? ' · Ubicación corregida' : client.locationStatus === 'review' ? ' · Ubicación a revisar' : ''}</span></div></div></td>
-                  <td><span className={`gesi-status-badge ${client.active ? 'active' : 'inactive'}`}>{client.active ? 'Activo' : 'Inactivo'}</span><span className={`portfolio-badge ${client.portfolioStatus}`}>{client.portfolioStatus === 'confirmed' ? 'Sucursal confirmada' : 'Revisar cartera'}</span></td>
                   <td><strong className="normal-weight">{zoneLabel(client.zone, client.locality)}</strong><button className="entity-link cell-sub" onClick={(event) => { event.stopPropagation(); onOpenSeller(client.seller); }}>{client.seller}</button></td>
-                  <td><strong>{money(client.sales90d, true)}</strong><span title="Compara los últimos 90 días contra los 90 días inmediatamente anteriores" className={`cell-sub inline-delta ${client.salesDelta > 0 ? 'positive' : client.salesDelta < 0 ? 'negative' : ''}`}>{client.salesDelta > 0 ? <ArrowUpRight size={12} /> : client.salesDelta < 0 ? <ArrowDownRight size={12} /> : null}{client.salesDelta === 0 ? 'sin cambio vs. 90d previos' : `${client.salesDelta > 0 ? '+' : '-'}${Math.abs(client.salesDelta)}% vs. 90d previos`}</span></td>
-                  <td>{client.active ? <><span className={`score-badge ${client.health}`}>{client.collectionRisk}</span><span className="cell-sub">{money(client.overdueOutstanding, true)} vencido</span></> : <span className="muted">—</span>}</td>
-                  <td>{isCommercialOpportunityEligible(client) ? <><span className="score-badge opportunity">{client.commercialOpportunity}</span><span className="cell-sub">prioridad {client.visitPriority}/100</span></> : <><span className="muted">—</span><span className="cell-sub">{client.salesBlocked ? 'Bloqueo de ventas' : client.active ? 'Sin compras 90d' : 'Cliente inactivo'}</span></>}</td>
-                  <td><strong>{creditTermLabel(client)}</strong><span className="cell-sub">{client.paymentSampleSize ? `${paymentDelay(client.avgPaymentDelayDays)} · ${client.onTimePaymentRate}% en término` : client.paymentMethod}</span></td>
-                  <td>{client.active ? <><strong>{shortDate(client.nextVisitAt)}</strong><span className="cell-sub">referencia algorítmica</span></> : <span className="muted">Fuera de la bandeja</span>}</td>
+                  <td><strong>{money(client.sales90d, true)}</strong><span className="cell-sub" title={kiloMetric.complete ? 'Conversión según presentación de producto' : 'Conversión parcial: hay compras sin presentación convertible'}>{number(kiloMetric.kilos, 2)} kg{kiloMetric.complete ? '' : ' · parcial'}</span><span title="Compara los últimos 90 días contra los 90 días inmediatamente anteriores" className={`cell-sub inline-delta ${client.salesDelta > 0 ? 'positive' : client.salesDelta < 0 ? 'negative' : ''}`}>{client.salesDelta > 0 ? <ArrowUpRight size={12} /> : client.salesDelta < 0 ? <ArrowDownRight size={12} /> : null}{client.salesDelta === 0 ? 'sin cambio vs. 90d previos' : `${client.salesDelta > 0 ? '+' : '-'}${Math.abs(client.salesDelta)}% vs. 90d previos`}</span></td>
+                  <td>{client.active ? <><span className={`score-badge ${client.health}`}>{client.visitPriority}</span><span className="cell-sub">riesgo {client.collectionRisk} · oportunidad {isCommercialOpportunityEligible(client) ? client.commercialOpportunity : '—'}</span></> : <><span className="muted">—</span><span className="cell-sub">Cliente inactivo</span></>}</td>
+                  <td className="clients-compact-hide"><strong>{creditTermLabel(client)}</strong><span className="cell-sub">{client.paymentSampleSize ? `${paymentDelay(client.avgPaymentDelayDays)} · ${client.onTimePaymentRate}% en término` : client.paymentMethod}</span></td>
+                  <td className="clients-compact-hide">{client.active ? <><strong>{shortDate(client.nextVisitAt)}</strong><span className="cell-sub">referencia algorítmica</span></> : <span className="muted">Fuera de la bandeja</span>}</td>
                   <td>{trendMode ? <button className={`trend-review-button ${reviewed(client.id) ? 'active' : ''}`} aria-label={`${reviewed(client.id) ? 'Marcar como pendiente' : 'Marcar como revisado'} a ${clientPrimaryName(client)}`} title={reviewed(client.id) ? 'Volver a pendientes' : 'Marcar como revisado'} disabled={reviewPending === client.id} onClick={(event) => { event.stopPropagation(); toggleReviewed(client.id); }}><Check size={16} /></button> : <button className="icon-button"><ChevronRight size={17} /></button>}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

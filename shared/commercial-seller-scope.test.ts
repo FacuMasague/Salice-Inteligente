@@ -17,6 +17,8 @@ describe('alcance comercial de vendedores', () => {
     expect(isExcludedHistoricalSeller('administracion')).toBe(true);
     expect(isExcludedHistoricalSeller('Telemarketing')).toBe(true);
     expect(isExcludedHistoricalSeller('Sin vendedor')).toBe(true);
+    expect(isExcludedHistoricalSeller('Alejandro Lurbe')).toBe(true);
+    expect(isExcludedHistoricalSeller('Luciano Payba')).toBe(true);
   });
 
   it('incluye automáticamente un vendedor nuevo', () => {

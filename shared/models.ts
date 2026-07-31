@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -457,7 +457,9 @@ export interface SptBreakdownRow extends SptPeriodMetrics {
 export interface SptQuarterPoint {
   quarter: number;
   current: number;
+  currentNetAmount: number;
   previousYear: number;
+  previousYearNetAmount: number;
 }
 
 export interface SptReportPayload {
@@ -529,6 +531,8 @@ export interface CommercialSalesMonthlyPoint {
   month: string;
   current: number;
   previousYear: number;
+  currentKilos: number;
+  previousYearKilos: number;
 }
 
 export interface CommercialSalesProductRow extends CommercialSalesMetrics {
@@ -636,6 +640,7 @@ export interface MarsReportMeta {
 
 export interface MarsMetrics {
   kilos: number;
+  netAmount: number;
   clients: number;
   accounts: number;
   clientBranches: number;
@@ -660,6 +665,7 @@ export interface MarsPeriodPoint extends MarsMetrics {
 export interface MarsQuarterPoint {
   quarter: string;
   kilos: number;
+  netAmount: number;
   previousYearKilos: number;
 }
 
@@ -901,6 +907,7 @@ export interface GeneralReportMeta {
     capturedAt: string;
     coverageFrom: string;
     coverageThrough: string;
+    monthPlans: CommercialGoalMonth[];
   };
   universe: {
     companies: number[];
@@ -959,6 +966,15 @@ export interface GeneralReportPayload {
   sellers: GeneralPerformanceRow[];
   categories: GeneralPerformanceRow[];
   brands: GeneralPerformanceRow[];
+  clientGoals: {
+    actual: number;
+    target: number;
+    completion: number | null;
+    gap: number;
+    products: GeneralPerformanceRow[];
+    sellers: GeneralPerformanceRow[];
+    countingRule: string;
+  };
 }
 
 export type SalesExplorerFilterKey = 'seller' | 'client' | 'product' | 'brand' | 'category' | 'productGroup' | 'channel' | 'zone';
@@ -1315,6 +1331,15 @@ export interface CommercialGoalVersion {
   rowCount: number;
 }
 
+export interface CommercialGoalMonth {
+  month: string;
+  name: string;
+  sourceFile: string;
+  sourceSheet: string;
+  importedAt: string;
+  importedBy: string;
+}
+
 export interface CommercialGoalRow {
   id: string;
   month: string;
@@ -1328,13 +1353,35 @@ export interface CommercialGoalRow {
 export interface CommercialGoalChange {
   id: string;
   versionId: string;
-  eventType: 'created' | 'row_created' | 'row_updated' | 'row_deleted' | 'activated';
+  eventType: 'created' | 'row_created' | 'row_updated' | 'row_deleted' | 'imported' | 'saved' | 'activated';
   entityKey: string;
   actor: string;
   comment: string;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export interface CommercialGoalMonthRevision {
+  id: string;
+  month: string;
+  name: string;
+  sourceKind: 'excel' | 'web';
+  sourceFile: string;
+  sourceSheet: string;
+  createdAt: string;
+  createdBy: string;
+  rowCount: number;
+  totals: {
+    kilos: number;
+    accounts: number;
+    invoicing: number;
+  };
+  active: boolean;
+}
+
+export interface CommercialGoalMonthRevisionDetail extends CommercialGoalMonthRevision {
+  rows: CommercialGoalRow[];
 }
 
 export interface CommercialGoalsPayload {
@@ -1346,6 +1393,27 @@ export interface CommercialGoalsPayload {
   products: string[];
   rows: CommercialGoalRow[];
   changes: CommercialGoalChange[];
+  monthPlans: CommercialGoalMonth[];
+}
+
+export interface CommercialGoalImportMonthPreview {
+  month: string;
+  sourceSheet: string;
+  rows: number;
+  dimensions: Array<'kilos' | 'accounts' | 'invoicing'>;
+  totals: {
+    coreKilos: number;
+    strategicKilos: number;
+    accounts: number;
+    invoicing: number;
+  };
+  warnings: string[];
+}
+
+export interface CommercialGoalImportPreview {
+  fileName: string;
+  format: 'normalized_table' | 'monthly_template';
+  months: CommercialGoalImportMonthPreview[];
 }
 
 export interface CommercialGoalProgressPayload {

@@ -6,6 +6,7 @@ import { ClientMap } from '../components/ClientMap';
 import { ClientPanel } from '../components/ClientPanel';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
+import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { money, number, zoneLabel } from '../lib/format';
 
 interface MapDashboardProps {
@@ -33,6 +34,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
   const [portfolioStatus, setPortfolioStatus] = useState('');
   const [locationStatus, setLocationStatus] = useState('');
   const [scope, setScope] = useState('regional');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const visibleByStatus = useMemo(() => clients.filter((client) => (
     matchesMultiFilter(client.active ? 'active' : 'inactive', clientVisibility)
@@ -53,6 +55,11 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
     && matchesMultiFilter(client.portfolioStatus, portfolioStatus)
     && matchesMultiFilter(client.locationStatus ?? 'original', locationStatus));
   const portfolio = activeClients.reduce((sum, client) => sum + client.sales90d, 0);
+  const contentByProduct = useMemo(() => productContentById(products), [products]);
+  const portfolioKiloMetric = useMemo(() => activeClients.reduce((total, client) => {
+    const metric = clientKilos90d(client, contentByProduct);
+    return { kilos: total.kilos + metric.kilos, complete: total.complete && metric.complete };
+  }, { kilos: 0, complete: true }), [activeClients, contentByProduct]);
   const debt = activeClients.reduce((sum, client) => sum + client.balance, 0);
   const critical = activeClients.filter((client) => client.health === 'critical').length;
   const trend = activeClients.reduce((totals, client) => totals.map((total, index) => total + (client.salesTrend[index] || 0)), [0, 0, 0, 0, 0, 0]);
@@ -75,7 +82,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
     <div className="map-dashboard">
       <div className="kpi-strip" data-tour="map-kpis">
         <article className="kpi-card"><div className="kpi-icon green"><Users size={20} /></div><div><span>Clientes activos</span><strong>{number(activeClients.length)}</strong><small>{number(activeClients.filter((client) => client.portfolioStatus === 'confirmed').length)} confirmados en sucursal · {number(activeClients.filter((client) => client.portfolioStatus === 'review').length)} a revisar</small></div></article>
-        <article className="kpi-card"><div className="kpi-icon ochre"><TrendingUp size={20} /></div><div><span>Facturación · 90 días</span><strong>{money(portfolio, true)}</strong><small className={portfolioDelta >= 0 ? 'positive' : 'negative'}>{portfolioDelta >= 0 ? '↑' : '↓'} {Math.abs(portfolioDelta)}% vs. trimestre anterior</small></div></article>
+        <article className="kpi-card"><div className="kpi-icon ochre"><TrendingUp size={20} /></div><div><span>Facturación / kilos · 90 días</span><strong>{money(portfolio, true)}</strong><small>{number(portfolioKiloMetric.kilos, 2)} kg{portfolioKiloMetric.complete ? '' : ' · conversión parcial'}</small><small className={portfolioDelta >= 0 ? 'positive' : 'negative'}>{portfolioDelta >= 0 ? '↑' : '↓'} {Math.abs(portfolioDelta)}% en facturación vs. trimestre anterior</small></div></article>
         <article className="kpi-card"><div className="kpi-icon blue"><WalletCards size={20} /></div><div><span>Saldo neto en cuenta corriente</span><strong>{money(debt, true)}</strong><small>{number(activeClients.filter((client) => client.balance > 0).length)} clientes activos con saldo deudor</small></div></article>
         <article className="kpi-card"><div className="kpi-icon red"><AlertCircle size={20} /></div><div><span>Riesgo de cobranza alto</span><strong>{critical}</strong><small>puntaje 55 o superior · revisar antes de vender</small></div></article>
       </div>
@@ -83,10 +90,11 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
       <SavedViewsBar viewKey="map" filters={savedFilters} onApply={applySaved} />
 
       <div className={`map-workspace ${selected ? 'with-panel' : ''}`}>
-        <section className="map-stage">
+        <section className={`map-stage ${filtersOpen ? 'filters-open' : ''}`}>
           <div className="map-toolbar">
             <div className="map-heading"><div className="live-dot" /><span><strong>{number(filtered.length)}</strong> {filtered.length === 1 ? 'cliente visible' : 'clientes visibles'}</span></div>
-            <div className="filter-group" data-tour="map-filters">
+            <button className="map-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><Filter size={15} /> Filtros</button>
+            <div className={`filter-group ${filtersOpen ? 'open' : ''}`} data-tour="map-filters">
               <MultiSelectFilter label="Alcance" value={scope} options={[{ value: 'regional', label: 'Mar del Plata y zona' }, { value: 'outside', label: 'Resto de Argentina' }]} onChange={(value) => { setScope(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Estado comercial" value={clientVisibility} options={[{ value: 'active', label: 'Activos' }, { value: 'inactive', label: 'Inactivos' }]} onChange={(value) => { onClientVisibilityChange(value); setZone(''); onSelect(null); }} />
               <MultiSelectFilter label="Cartera Salice" value={portfolioStatus} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolioStatus(value); onSelect(null); }} />
@@ -95,8 +103,8 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
               <MultiSelectFilter label="Riesgo" value={health} options={[{ value: 'healthy', label: 'Riesgo bajo' }, { value: 'attention', label: 'Atención' }, { value: 'critical', label: 'Riesgo alto' }]} onChange={setHealth} />
             </div>
           </div>
-          <ClientMap clients={filtered} selectedId={selected?.id ?? null} onSelect={onSelect} />
-          <div className="map-legend"><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Cliente inactivo</span>}<span>Los grupos se separan al acercar el mapa</span></div>
+          <ClientMap clients={filtered} products={products} selectedId={selected?.id ?? null} onSelect={onSelect} />
+          <details className="map-legend"><summary><MapPinned size={14} /> Leyenda del mapa <ChevronDown size={14} /></summary><div><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Cliente inactivo</span>}<span>Los grupos se separan al acercar el mapa</span></div></details>
         </section>
         {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
       </div>

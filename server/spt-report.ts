@@ -246,10 +246,10 @@ export function buildSptReport(input: Partial<Record<string, unknown>>): SptRepo
     const startMonth = index * 3;
     const endMonth = startMonth + 2;
     const currentQuarterEnd = index === Math.floor(month / 3) ? cutoffDate(year, month, cutoffDay) : monthEnd(year, endMonth);
-    const currentValue = startMonth > month ? 0 : metric(database, buildWhere(filters, iso(monthStart(year, startMonth)), iso(currentQuarterEnd), page)).kilos;
+    const currentMetric = startMonth > month ? null : metric(database, buildWhere(filters, iso(monthStart(year, startMonth)), iso(currentQuarterEnd), page));
     const previousQuarterEnd = index === Math.floor(month / 3) ? cutoffDate(year - 1, month, cutoffDay) : monthEnd(year - 1, endMonth);
-    const previousValue = metric(database, buildWhere(filters, iso(monthStart(year - 1, startMonth)), iso(previousQuarterEnd), page)).kilos;
-    return { quarter: index + 1, current: currentValue, previousYear: previousValue };
+    const previousMetric = metric(database, buildWhere(filters, iso(monthStart(year - 1, startMonth)), iso(previousQuarterEnd), page));
+    return { quarter: index + 1, current: currentMetric?.kilos ?? 0, currentNetAmount: currentMetric?.netAmount ?? 0, previousYear: previousMetric.kilos, previousYearNetAmount: previousMetric.netAmount };
   });
 
   return {
