@@ -5,6 +5,10 @@ import { resolveActiveDataPaths } from './data-bundle';
 
 const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
+function latestGoalMonth() {
+  return getGeneralReportMeta().targetSource.coverageThrough;
+}
+
 describeWithDatabase('Reporte General construido desde GESI', () => {
   it('separa movimientos reales y objetivos comerciales', () => {
     const meta = getGeneralReportMeta();
@@ -21,7 +25,7 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
   });
 
   it('reconcilia el tablero de objetivos generales con sus desgloses', () => {
-    const report = buildGeneralReport({ mode: 'core' });
+    const report = buildGeneralReport({ mode: 'core', month: latestGoalMonth() });
     expect(report).not.toBeNull();
     expect(report?.target).toBeGreaterThan(0);
     expect(report?.actual).toBeGreaterThan(0);
@@ -35,12 +39,13 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
   });
 
   it('concilia estratégicas y facturación de autoservicio con sus desgloses', () => {
-    const strategic = buildGeneralReport({ mode: 'strategic' });
+    const month = latestGoalMonth();
+    const strategic = buildGeneralReport({ mode: 'strategic', month });
     expect(strategic?.actual).toBeGreaterThan(0);
     expect(strategic?.target).toBeGreaterThan(0);
     expect(strategic?.brands.reduce((sum, row) => sum + row.actual, 0)).toBeCloseTo(strategic?.actual ?? 0, 6);
 
-    const autoservice = buildGeneralReport({ mode: 'autoservice' });
+    const autoservice = buildGeneralReport({ mode: 'autoservice', month });
     expect(autoservice?.actual).toBeGreaterThan(0);
     expect(autoservice?.target).toBeGreaterThan(0);
     expect(autoservice?.sellers).toHaveLength(2);
@@ -48,13 +53,14 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
   });
 
   it('recalcula metas, tablas y tendencia con los filtros publicados', () => {
-    const seller = buildGeneralReport({ mode: 'core', seller: 'Reventas' });
+    const month = latestGoalMonth();
+    const seller = buildGeneralReport({ mode: 'core', month, seller: 'Reventas' });
     expect(seller?.actual).toBeGreaterThanOrEqual(0);
     expect(seller?.target).toBeGreaterThan(0);
     expect(seller?.sellers).toHaveLength(1);
     expect(seller?.sellers[0]?.actual).toBeCloseTo(seller?.actual ?? 0, 6);
 
-    const strategicBrand = buildGeneralReport({ mode: 'strategic', brand: 'MaxPet' });
+    const strategicBrand = buildGeneralReport({ mode: 'strategic', month, brand: 'MaxPet' });
     expect(strategicBrand?.target).toBeGreaterThan(0);
     expect(strategicBrand?.brands).toHaveLength(1);
     expect(strategicBrand?.brands[0]?.actual).toBeCloseTo(strategicBrand?.actual ?? 0, 6);

@@ -12,7 +12,7 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(meta.sourceSystem).toContain('GESI API');
     expect(meta.rowCount).toBeGreaterThan(0);
     expect(meta.maxDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(meta.latestYear).toBe(meta.maxDate.slice(0, 4));
+    expect(meta.latestYear).toBe(meta.reportingDate.slice(0, 4));
     expect(meta.years).toContain(meta.latestYear);
     expect(meta.universe.companies).toEqual([3]);
     expect(meta.universe.branches).toEqual([3]);
@@ -25,7 +25,7 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     const meta = getCommercialSalesReportMeta();
     const report = buildCommercialSalesReport({ month: meta.latestMonth });
     expect(report).not.toBeNull();
-    expect(report!.cutoffDay).toBe(Number(meta.maxDate.slice(8, 10)));
+    expect(report!.cutoffDay).toBe(Number(meta.reportingDate.slice(8, 10)));
     expect(report!.current.netAmount).toBeGreaterThan(0);
     expect(report!.current.kilos).toBeGreaterThan(0);
     expect(report!.periodMode).toBe('month');
@@ -46,9 +46,9 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(report!.periodMode).toBe('year');
     expect(report!.selectedPeriod).toBe(meta.latestYear);
     expect(report!.periodStart).toBe(`${meta.latestYear}-01-01`);
-    expect(report!.periodEnd).toBe(meta.maxDate);
+    expect(report!.periodEnd).toBe(meta.reportingDate);
     expect(report!.comparisonStart).toBe(`${Number(meta.latestYear) - 1}-01-01`);
-    expect(report!.comparisonEnd).toBe(`${Number(meta.latestYear) - 1}${meta.maxDate.slice(4)}`);
+    expect(report!.comparisonEnd).toBe(`${Number(meta.latestYear) - 1}${meta.reportingDate.slice(4)}`);
     expect(report!.elapsedDays).toBeGreaterThan(0);
     expect(report!.comparisonAvailable).toBe(true);
     expect(report!.current.netAmount).toBeGreaterThan(0);

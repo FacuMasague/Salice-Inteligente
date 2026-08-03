@@ -86,7 +86,7 @@ const movementValues = (row: Movement) => [
   row.sourceDocumentKey, row.sourceItemId, row.sourceKind, row.sourceEnteredAt,
 ];
 
-function createCommercialDatabase(path: string) {
+function createCommercialDatabase(path: string, capturedAt: string) {
   const database = new DatabaseSync(path);
   database.exec(`
     CREATE TABLE movements (
@@ -129,7 +129,7 @@ function createCommercialDatabase(path: string) {
     source_file: 'fixture://synthetic-commercial-v1',
     source_system: 'GESI API · fixture sintético sin datos reales',
     source_kind: 'synthetic_fixture',
-    captured_at: '2026-07-20T13:05:02.525Z',
+    captured_at: capturedAt,
     row_count: String(sourceRows.length),
     min_date: '2025-07-10',
     max_date: '2026-07-20',
@@ -184,11 +184,11 @@ function createPendingBalancesDatabase(path: string) {
   database.close();
 }
 
-export function createSyntheticReportFixture() {
+export function createSyntheticReportFixture(capturedAt = '2026-07-20T13:05:02.525Z') {
   const directory = mkdtempSync(join(tmpdir(), 'salice-report-fixture-'));
   const commercial = join(directory, 'commercial.sqlite');
   const pendingBalances = join(directory, 'pending-balances.sqlite');
-  createCommercialDatabase(commercial);
+  createCommercialDatabase(commercial, capturedAt);
   createPendingBalancesDatabase(pendingBalances);
   return {
     directory,

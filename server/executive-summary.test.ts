@@ -15,8 +15,12 @@ describeWithSources('Resumen inicial ¿Cómo estamos?', () => {
     expect(summary?.sales.netAmount).toBeGreaterThan(0);
     expect(summary?.sales.kilos).toBeGreaterThan(0);
     expect(summary?.sales.buyers).toBeGreaterThan(0);
-    expect(summary?.goals.target).toBeGreaterThan(0);
-    expect(summary?.goals.completion).toBeCloseTo((summary!.goals.actual / summary!.goals.target) * 100, 6);
+    expect(summary?.goals.target).toBeGreaterThanOrEqual(0);
+    if (summary!.goals.target > 0) {
+      expect(summary?.goals.completion).toBeCloseTo((summary!.goals.actual / summary!.goals.target) * 100, 6);
+    } else {
+      expect(summary?.goals.completion).toBeNull();
+    }
     expect(summary?.nonBuyers.accounts).toBeGreaterThanOrEqual(0);
     expect(summary?.balances.pending).toBeGreaterThanOrEqual(summary?.balances.overdue ?? 0);
     expect(summary?.sellerVariations.rows.length).toBeGreaterThan(0);

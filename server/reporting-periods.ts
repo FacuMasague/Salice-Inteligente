@@ -1,4 +1,38 @@
 const dayMilliseconds = 86_400_000;
+const REPORTING_TIME_ZONE = 'America/Argentina/Buenos_Aires';
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function localDate(value: string, timeZone: string) {
+  if (!value) return '';
+  if (isoDatePattern.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/**
+ * Fecha hasta la que un paquete permite informar actividad, aunque todavía no
+ * existan movimientos en ese día o mes. Nunca retrocede respecto de la última
+ * venta y usa el huso horario operativo de Salice.
+ */
+export function reportingDate(maxMovementDate: string, capturedAt: string, timeZone = REPORTING_TIME_ZONE) {
+  const capturedDate = localDate(capturedAt, timeZone);
+  const movementDate = isoDatePattern.test(maxMovementDate) ? maxMovementDate : '';
+  return [movementDate, capturedDate].filter(Boolean).sort().at(-1) ?? '';
+}
+
+export function includeReportingMonth(months: string[], date: string, order: 'asc' | 'desc' = 'desc') {
+  const reportingMonth = date.slice(0, 7);
+  const values = [...new Set([...months.filter((month) => /^\d{4}-\d{2}$/.test(month)), reportingMonth].filter(Boolean))];
+  return values.sort((left, right) => order === 'asc' ? left.localeCompare(right) : right.localeCompare(left));
+}
 
 export function utcDate(year: number, month: number, day: number) {
   return new Date(Date.UTC(year, month, day, 12));

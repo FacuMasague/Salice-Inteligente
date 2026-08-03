@@ -14,7 +14,7 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import { CURRENT_COMMERCIAL_SELLERS, isCommercialSellerIncluded } from '../shared/commercial-seller-scope.js';
-import { cutoffDate, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
+import { cutoffDate, includeReportingMonth, isoDate as iso, monthEnd, monthStart, reportingDate, shiftedMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
@@ -91,6 +91,7 @@ export function getSptReportMeta(): SptReportMeta {
       unavailableDocumentCount: 0,
       minDate: '',
       maxDate: '',
+      reportingDate: '',
       latestMonth: '',
       months: [],
       options: Object.fromEntries(Object.keys(FILTER_COLUMNS).map((key) => [key, []])) as unknown as Record<SptFilterKey, string[]>,
@@ -98,7 +99,9 @@ export function getSptReportMeta(): SptReportMeta {
     };
   }
   const meta = metadata(database);
-  const months = rows<{ month: string }>(database.prepare("SELECT DISTINCT substr(sale_date, 1, 7) AS month FROM movements ORDER BY month DESC")).map((row) => row.month);
+  const maxDate = meta.get('max_date') ?? '';
+  const reportDate = reportingDate(maxDate, meta.get('captured_at') ?? '');
+  const months = includeReportingMonth(rows<{ month: string }>(database.prepare("SELECT DISTINCT substr(sale_date, 1, 7) AS month FROM movements ORDER BY month DESC")).map((row) => row.month), reportDate);
   cachedMeta = {
     available: true,
     sourceFile: meta.get('source_file') ?? '',
@@ -108,8 +111,9 @@ export function getSptReportMeta(): SptReportMeta {
     sourceDocumentCount: Number(meta.get('source_document_count') ?? 0),
     unavailableDocumentCount: Number(meta.get('unavailable_document_count') ?? 0),
     minDate: meta.get('min_date') ?? '',
-    maxDate: meta.get('max_date') ?? '',
-    latestMonth: (meta.get('max_date') ?? '').slice(0, 7),
+    maxDate,
+    reportingDate: reportDate,
+    latestMonth: reportDate.slice(0, 7),
     months,
     options: Object.fromEntries((Object.keys(FILTER_COLUMNS) as SptFilterKey[]).map((key) => [
       key,
@@ -185,7 +189,7 @@ export function buildSptReport(input: Partial<Record<string, unknown>>): SptRepo
   const [yearText, monthText] = filters.month.split('-');
   const year = Number(yearText);
   const month = Number(monthText) - 1;
-  const sourceMax = new Date(`${meta.maxDate}T12:00:00Z`);
+  const sourceMax = new Date(`${meta.reportingDate}T12:00:00Z`);
   const selectedIsLatest = filters.month === meta.latestMonth;
   const cutoffDay = selectedIsLatest ? sourceMax.getUTCDate() : monthEnd(year, month).getUTCDate();
   const currentStart = iso(monthStart(year, month));
@@ -254,7 +258,7 @@ export function buildSptReport(input: Partial<Record<string, unknown>>): SptRepo
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMaxDate: meta.maxDate,
+    sourceMaxDate: meta.reportingDate,
     page,
     selectedMonth: filters.month,
     cutoffDay,

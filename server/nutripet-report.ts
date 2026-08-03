@@ -12,7 +12,7 @@ import type {
   NutriPetReportPayload,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
-import { cutoffDate as dateAtCutoff, daysInclusive, isoDate as iso, monthEnd, monthKey, monthStart, shiftedMonth as shiftMonth, utcDate } from './reporting-periods.js';
+import { cutoffDate as dateAtCutoff, daysInclusive, includeReportingMonth, isoDate as iso, monthEnd, monthKey, monthStart, reportingDate, shiftedMonth as shiftMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
@@ -119,7 +119,7 @@ function monthlyPoint(value: DatabaseSync, filters: NutriPetFilters, year: numbe
   const key = monthKey(year, month);
   const start = iso(monthStart(year, month));
   const naturalEnd = iso(monthEnd(year, month));
-  const end = key === meta.latestMonth ? meta.maxDate : naturalEnd;
+  const end = key === meta.latestMonth ? meta.reportingDate : naturalEnd;
   const cutoffDay = Number(end.slice(8, 10));
   const previous = shiftMonth(year, month, -1);
   const previousStart = iso(monthStart(previous.year, previous.month));
@@ -212,7 +212,7 @@ export function getNutriPetReportMeta(): NutriPetReportMeta {
   const unavailable: NutriPetReportMeta = {
     available: false,
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
-    rowCount: 0, coverageFrom: '', minDate: '', maxDate: '', capturedAt: '', latestYear: '', latestMonth: '',
+    rowCount: 0, coverageFrom: '', minDate: '', maxDate: '', reportingDate: '', capturedAt: '', latestYear: '', latestMonth: '',
     years: [], monthsByYear: {}, sourceDocumentCount: 0, unavailableDocumentCount: 0,
     options: { channelGroup: [], brand: [], product: [], line: [], client: [], grouping: [], category: [] },
     universe: { companies: COMPANIES, branches: BRANCHES, allowedIssuers: ALLOWED_ISSUERS, productGroup: PRODUCT_GROUP, excludedCategories: EXCLUDED_CATEGORIES, excludedClients: EXCLUDED_CLIENTS },
@@ -227,18 +227,19 @@ export function getNutriPetReportMeta(): NutriPetReportMeta {
   const minDate = profile.minDate ?? '';
   const maxDate = profile.maxDate ?? '';
   if (!minDate || !maxDate) return unavailable;
-  const monthValues = rows<{ month: string }>(value.prepare(`
+  const meta = metadata(value);
+  const reportDate = reportingDate(maxDate, meta.get('captured_at') ?? '');
+  const monthValues = includeReportingMonth(rows<{ month: string }>(value.prepare(`
     SELECT DISTINCT substr(sale_date, 1, 7) AS month FROM movements
     WHERE ${base.sql} ORDER BY month DESC
-  `), base.parameters).map((row) => row.month);
+  `), base.parameters).map((row) => row.month), reportDate);
   const allYears = [...new Set(monthValues.map((month) => month.slice(0, 4)))];
-  const years = allYears.filter((year) => year === maxDate.slice(0, 4) || monthValues.includes(`${year}-01`));
+  const years = allYears.filter((year) => year === reportDate.slice(0, 4) || monthValues.includes(`${year}-01`));
   const monthsByYear = Object.fromEntries(years.map((year) => [year, monthValues.filter((month) => month.startsWith(`${year}-`)).map((month) => month.slice(5, 7)).sort()]));
   const optionQuery = (expression: string) => rows<{ value: string }>(value.prepare(`
     SELECT DISTINCT TRIM(${expression}) AS value FROM movements
     WHERE ${base.sql} AND TRIM(${expression}) <> '' ORDER BY value COLLATE NOCASE
   `), base.parameters).map((row) => row.value);
-  const meta = metadata(value);
   cachedMeta = {
     available: true,
     sourceSystem: meta.get('source_system') ?? unavailable.sourceSystem,
@@ -246,9 +247,10 @@ export function getNutriPetReportMeta(): NutriPetReportMeta {
     coverageFrom: meta.get('coverage_from') ?? minDate,
     minDate,
     maxDate,
+    reportingDate: reportDate,
     capturedAt: meta.get('captured_at') ?? '',
-    latestYear: maxDate.slice(0, 4),
-    latestMonth: maxDate.slice(0, 7),
+    latestYear: reportDate.slice(0, 4),
+    latestMonth: reportDate.slice(0, 7),
     years,
     monthsByYear,
     sourceDocumentCount: Number(meta.get('source_document_count') ?? profile.sourceDocumentCount ?? 0),
@@ -284,7 +286,7 @@ export function buildNutriPetReport(input: Partial<Record<string, unknown>>): Nu
   const selectedMonth = monthKey(year, month);
   const periodStart = iso(monthStart(year, month));
   const naturalEnd = iso(monthEnd(year, month));
-  const periodEnd = selectedMonth === meta.latestMonth ? meta.maxDate : naturalEnd;
+  const periodEnd = selectedMonth === meta.latestMonth ? meta.reportingDate : naturalEnd;
   const isPartial = periodEnd < naturalEnd;
   const cutoffDay = Number(periodEnd.slice(8, 10));
   const previous = shiftMonth(year, month, -1);
@@ -305,7 +307,7 @@ export function buildNutriPetReport(input: Partial<Record<string, unknown>>): Nu
     const startMonth = index * 3;
     const start = iso(monthStart(year, startMonth));
     const naturalQuarterEnd = iso(monthEnd(year, startMonth + 2));
-    const end = filters.year === meta.latestYear && meta.maxDate < naturalQuarterEnd ? meta.maxDate : naturalQuarterEnd;
+    const end = filters.year === meta.latestYear && meta.reportingDate < naturalQuarterEnd ? meta.reportingDate : naturalQuarterEnd;
     if (end < start) return null;
     return {
       ...metric(value, filters, start, end),
@@ -316,7 +318,7 @@ export function buildNutriPetReport(input: Partial<Record<string, unknown>>): Nu
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMaxDate: meta.maxDate,
+    sourceMaxDate: meta.reportingDate,
     selectedMonth,
     periodStart,
     periodEnd,

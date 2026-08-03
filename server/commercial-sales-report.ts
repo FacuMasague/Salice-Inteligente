@@ -14,7 +14,7 @@ import type {
   CommercialSellerVariationRow,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
-import { cutoffDate, daysInclusive, isoDate as iso, monthEnd, monthStart, shiftedMonth, utcDate } from './reporting-periods.js';
+import { cutoffDate, daysInclusive, includeReportingMonth, isoDate as iso, monthEnd, monthStart, reportingDate, shiftedMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
@@ -83,6 +83,7 @@ export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
       coverageFrom: '',
       minDate: '',
       maxDate: '',
+      reportingDate: '',
       latestMonth: '',
       latestYear: '',
       months: [],
@@ -103,7 +104,8 @@ export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
     sourceDocumentCount: number;
   };
   const maxDate = dateRow.maxDate ?? '';
-  const months = rows<{ month: string }>(database.prepare(`SELECT DISTINCT substr(sale_date, 1, 7) AS month FROM movements WHERE ${universe.sql} ORDER BY month DESC`), universe.parameters).map((row) => row.month);
+  const reportDate = reportingDate(maxDate, meta.get('captured_at') ?? '');
+  const months = includeReportingMonth(rows<{ month: string }>(database.prepare(`SELECT DISTINCT substr(sale_date, 1, 7) AS month FROM movements WHERE ${universe.sql} ORDER BY month DESC`), universe.parameters).map((row) => row.month), reportDate);
   const years = [...new Set(months.map((month) => month.slice(0, 4)))];
   const options = Object.fromEntries((Object.entries(FILTER_COLUMNS) as [CommercialSalesFilterKey, string][]).map(([key, column]) => [
     key,
@@ -117,8 +119,9 @@ export function getCommercialSalesReportMeta(): CommercialSalesReportMeta {
     coverageFrom: meta.get('coverage_from') ?? dateRow.minDate ?? '',
     minDate: dateRow.minDate ?? '',
     maxDate,
-    latestMonth: maxDate.slice(0, 7),
-    latestYear: maxDate.slice(0, 4),
+    reportingDate: reportDate,
+    latestMonth: reportDate.slice(0, 7),
+    latestYear: reportDate.slice(0, 4),
     months,
     years,
     sourceDocumentCount: Number(meta.get('source_document_count') ?? dateRow.sourceDocumentCount ?? 0),
@@ -280,18 +283,18 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
   const [yearText, monthText] = filters.month.split('-');
   const anchorYear = filters.periodMode === 'year' ? Number(filters.year) : Number(yearText);
   const anchorMonth = filters.periodMode === 'year' ? 0 : Number(monthText) - 1;
-  const latestDate = new Date(`${meta.maxDate}T12:00:00Z`);
+  const latestDate = new Date(`${meta.reportingDate}T12:00:00Z`);
   const cutoffDay = filters.periodMode === 'month'
     ? filters.month === meta.latestMonth ? latestDate.getUTCDate() : monthEnd(anchorYear, anchorMonth).getUTCDate()
     : filters.year === meta.latestYear ? latestDate.getUTCDate() : 31;
   const currentStart = filters.periodMode === 'year' ? `${anchorYear}-01-01` : iso(monthStart(anchorYear, anchorMonth));
   const currentEnd = filters.periodMode === 'year'
-    ? filters.year === meta.latestYear ? meta.maxDate : `${anchorYear}-12-31`
+    ? filters.year === meta.latestYear ? meta.reportingDate : `${anchorYear}-12-31`
     : iso(cutoffDate(anchorYear, anchorMonth, cutoffDay));
   const previous = shiftedMonth(anchorYear, anchorMonth, -1);
   const previousStart = filters.periodMode === 'year' ? `${anchorYear - 1}-01-01` : iso(monthStart(previous.year, previous.month));
   const previousEnd = filters.periodMode === 'year'
-    ? filters.year === meta.latestYear ? `${anchorYear - 1}${meta.maxDate.slice(4)}` : `${anchorYear - 1}-12-31`
+    ? filters.year === meta.latestYear ? `${anchorYear - 1}${meta.reportingDate.slice(4)}` : `${anchorYear - 1}-12-31`
     : iso(cutoffDate(previous.year, previous.month, cutoffDay));
   const elapsedDays = daysInclusive(currentStart, currentEnd);
 
@@ -333,7 +336,7 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMaxDate: meta.maxDate,
+    sourceMaxDate: meta.reportingDate,
     periodMode: filters.periodMode,
     selectedPeriod: filters.periodMode === 'year' ? filters.year : filters.month,
     selectedMonth: filters.month,

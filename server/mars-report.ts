@@ -12,7 +12,7 @@ import type {
   MarsReportPayload,
 } from '../shared/models.js';
 import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
-import { daysInclusive, shiftDays as addDays } from './reporting-periods.js';
+import { daysInclusive, reportingDate, shiftDays as addDays } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, metricVariation } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
@@ -303,7 +303,7 @@ export function getMarsReportMeta(): MarsReportMeta {
     sourceSystem: 'GESI API · facturas, notas de crédito y maestros Salice',
     clientTypeCatalogSource: 'unavailable',
     rowCount: 0,
-    coverageFrom: '', minDate: '', maxDate: '', capturedAt: '', latestYear: '', latestPeriod: '',
+    coverageFrom: '', minDate: '', maxDate: '', reportingDate: '', capturedAt: '', latestYear: '', latestPeriod: '',
     years: [], periods: {}, sourceDocumentCount: 0, unavailableDocumentCount: 0,
     options: { branch: [], clientType: [], channelGroup: [], brand: [], subcategoryGroup: [] },
     universe: { companies: COMPANIES, branches: BRANCHES, productGroup: PRODUCT_GROUP, excludedClients: EXCLUDED_CLIENTS },
@@ -321,8 +321,9 @@ export function getMarsReportMeta(): MarsReportMeta {
   const minDate = profile.minDate ?? '';
   const maxDate = profile.maxDate ?? '';
   if (!minDate || !maxDate) return unavailable;
+  const reportDate = reportingDate(maxDate, meta.get('captured_at') ?? '');
   const first = marsPeriodForDate(minDate);
-  const latest = marsPeriodForDate(maxDate);
+  const latest = marsPeriodForDate(reportDate);
   const years = Array.from({ length: latest.year - first.year + 1 }, (_, index) => String(latest.year - index));
   const periods = Object.fromEntries(years.map((yearText) => {
     const year = Number(yearText);
@@ -342,6 +343,7 @@ export function getMarsReportMeta(): MarsReportMeta {
     coverageFrom: meta.get('coverage_from') ?? minDate,
     minDate,
     maxDate,
+    reportingDate: reportDate,
     capturedAt: meta.get('captured_at') ?? '',
     latestYear: String(latest.year),
     latestPeriod: latest.label,
@@ -374,14 +376,14 @@ export function buildMarsReport(input: Partial<Record<string, unknown>>): MarsRe
   }
 
   const selected = definitions.find((period) => period.label === filters.period) ?? definitions.at(-1)!;
-  const currentEnd = meta.maxDate >= selected.start && meta.maxDate < selected.end ? meta.maxDate : selected.end;
+  const currentEnd = meta.reportingDate >= selected.start && meta.reportingDate < selected.end ? meta.reportingDate : selected.end;
   const isPartial = currentEnd < selected.end;
   const priorPeriod = previousPeriod(selected);
   const priorYear = previousYearPeriod(selected);
   const comparablePriorYearEnd = addDays(priorYear.start, Math.min(daysInclusive(selected.start, currentEnd), priorYear.days) - 1);
   const yearStart = marsPeriodsForYear(selected.year)[0].start;
   const previousYearStart = marsPeriodsForYear(selected.year - 1)[0].start;
-  const points = definitions.map((period) => periodPoint(database, filters, period, meta.maxDate));
+  const points = definitions.map((period) => periodPoint(database, filters, period, meta.reportingDate));
   const quarters: MarsQuarterPoint[] = ['Q1', 'Q2', 'Q3', 'Q4'].map((quarter) => {
     const quarterRows = points.filter((point) => point.quarter === quarter);
     return {
@@ -394,7 +396,7 @@ export function buildMarsReport(input: Partial<Record<string, unknown>>): MarsRe
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMaxDate: meta.maxDate,
+    sourceMaxDate: meta.reportingDate,
     filters,
     selected,
     isPartial,

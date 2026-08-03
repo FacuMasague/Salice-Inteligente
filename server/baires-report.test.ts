@@ -12,7 +12,7 @@ describeWithDatabase('Reporte Baires construido desde GESI', () => {
     expect(meta.sourceSystem).toContain('GESI API');
     expect(meta.rowCount).toBeGreaterThan(0);
     expect(meta.maxDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(meta.latestMonth).toBe(meta.maxDate.slice(0, 7));
+    expect(meta.latestMonth).toBe(meta.reportingDate.slice(0, 7));
     expect(meta.universe).toEqual({
       companies: [3],
       branches: [3],

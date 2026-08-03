@@ -4,6 +4,8 @@ import { createSyntheticReportFixture } from './test-support/report-fixtures';
 let fixture: ReturnType<typeof createSyntheticReportFixture>;
 let reports: {
   commercial: typeof import('./commercial-sales-report');
+  general: typeof import('./general-report');
+  spt: typeof import('./spt-report');
   mars: typeof import('./mars-report');
   nutripet: typeof import('./nutripet-report');
   baires: typeof import('./baires-report');
@@ -12,11 +14,13 @@ let reports: {
 };
 
 beforeAll(async () => {
-  fixture = createSyntheticReportFixture();
+  fixture = createSyntheticReportFixture('2026-08-03T13:05:02.525Z');
   process.env.SALICE_SPT_DB_PATH = fixture.commercial;
   process.env.SALICE_PENDING_BALANCES_DB_PATH = fixture.pendingBalances;
   reports = {
     commercial: await import('./commercial-sales-report'),
+    general: await import('./general-report'),
+    spt: await import('./spt-report'),
     mars: await import('./mars-report'),
     nutripet: await import('./nutripet-report'),
     baires: await import('./baires-report'),
@@ -32,9 +36,33 @@ afterAll(() => {
 });
 
 describe('contratos de reportes sobre un fixture sintético estable', () => {
+  it('abre el mes del paquete aunque no tenga ventas ni objetivos', () => {
+    const commercialMeta = reports.commercial.getCommercialSalesReportMeta();
+    const generalMeta = reports.general.getGeneralReportMeta();
+    const sptMeta = reports.spt.getSptReportMeta();
+    expect(commercialMeta).toMatchObject({ maxDate: '2026-07-20', reportingDate: '2026-08-03', latestMonth: '2026-08' });
+    expect(generalMeta.latestMonth).toBe('2026-08');
+    expect(generalMeta.months).toContain('2026-08');
+    expect(sptMeta.latestMonth).toBe('2026-08');
+
+    const monthlyReports = [
+      reports.commercial.buildCommercialSalesReport({}),
+      reports.spt.buildSptReport({}),
+      reports.nutripet.buildNutriPetReport({}),
+      reports.baires.buildBairesReport({}),
+    ];
+    for (const report of monthlyReports) {
+      expect(report?.selectedMonth).toBe('2026-08');
+      expect(report?.sourceMaxDate).toBe('2026-08-03');
+      expect(report?.current).toMatchObject({ kilos: 0, netAmount: 0 });
+    }
+    const general = reports.general.buildGeneralReport({}, []);
+    expect(general).toMatchObject({ selectedMonth: '2026-08', sourceMaxDate: '2026-08-03', actual: 0, netAmount: 0, target: 0, completion: null });
+  });
+
   it('calcula cortes equivalentes y composición comercial sin depender del snapshot activo', () => {
     const report = reports.commercial.buildCommercialSalesReport({ month: '2026-07' });
-    expect(report?.cutoffDay).toBe(20);
+    expect(report?.cutoffDay).toBe(31);
     expect(report?.current.netAmount).toBe(8_200);
     expect(report?.difference).toBeCloseTo((report?.current.netAmount ?? 0) - (report?.comparison.netAmount ?? 0), 6);
     expect(report?.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report?.current.netAmount ?? 0, 6);
@@ -43,7 +71,7 @@ describe('contratos de reportes sobre un fixture sintético estable', () => {
   it('respeta el calendario Mars y reconcilia marca, período y quarter', () => {
     const report = reports.mars.buildMarsReport({ year: '2026', period: 'P08', brand: 'Whiskas' });
     expect(report?.current.kilos).toBe(11);
-    expect(report?.elapsedDays).toBe(3);
+    expect(report?.elapsedDays).toBe(23);
     expect(report?.brands).toHaveLength(1);
     expect(report?.brands[0].kilos).toBe(report?.current.kilos);
   });

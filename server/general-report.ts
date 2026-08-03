@@ -16,7 +16,7 @@ import {
   commercialGoalSellerOptions,
   isCommercialGoalSeller,
 } from '../shared/commercial-goals-scope.js';
-import { daysInclusive } from './reporting-periods.js';
+import { daysInclusive, includeReportingMonth, reportingDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
@@ -293,12 +293,15 @@ export function getGeneralReportMeta(): GeneralReportMeta {
   const value = db();
   const goalPlan = getActiveCommercialGoalPlan();
   const targetMonths = [...new Set(goalPlan.rows.map((row) => row.month))].sort();
-  const enrichTargets = (meta: GeneralReportMeta): GeneralReportMeta => ({
-    ...meta,
-    latestMonth: targetMonths.filter((month) => !meta.maxDate || month <= meta.maxDate.slice(0, 7)).at(-1) ?? targetMonths.at(-1) ?? '',
-    months: targetMonths,
-    targetSource: goalPlan.source,
-  });
+  const enrichTargets = (meta: GeneralReportMeta): GeneralReportMeta => {
+    const latestMonth = meta.reportingDate.slice(0, 7) || goalPlan.source.coverageThrough;
+    return {
+      ...meta,
+      latestMonth,
+      months: includeReportingMonth(targetMonths.filter((month) => !latestMonth || month <= latestMonth), meta.reportingDate, 'asc'),
+      targetSource: goalPlan.source,
+    };
+  };
   if (cachedMeta) return enrichTargets(cachedMeta);
   const fallbackSellers = commercialGoalSellerOptions();
   const unavailable: GeneralReportMeta = {
@@ -308,6 +311,7 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     coverageFrom: '',
     minDate: '',
     maxDate: '',
+    reportingDate: '',
     capturedAt: '',
     latestMonth: goalPlan.source.coverageThrough,
     months: targetMonths,
@@ -335,6 +339,7 @@ export function getGeneralReportMeta(): GeneralReportMeta {
   `).get(...base.parameters) as { minDate: string | null; maxDate: string | null; rowCount: number; sourceDocumentCount: number };
   if (!profile.minDate || !profile.maxDate) return enrichTargets(unavailable);
   const meta = metadata(value);
+  const reportDate = reportingDate(profile.maxDate, meta.get('captured_at') ?? '');
   const sellers = commercialGoalSellerOptions(rows<{ seller: string }>(value.prepare(`
     SELECT DISTINCT TRIM(seller) AS seller FROM movements WHERE ${base.sql}
   `), base.parameters).map((row) => row.seller));
@@ -346,6 +351,7 @@ export function getGeneralReportMeta(): GeneralReportMeta {
     coverageFrom: meta.get('coverage_from') ?? profile.minDate,
     minDate: profile.minDate,
     maxDate: profile.maxDate,
+    reportingDate: reportDate,
     capturedAt: meta.get('captured_at') ?? '',
     latestMonth: '',
     months: [],
@@ -365,7 +371,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>, goal
   const filters = normalizeFilters(input, meta);
   const start = monthStart(filters.month);
   const naturalEnd = monthEnd(filters.month);
-  const end = filters.month === meta.maxDate.slice(0, 7) ? meta.maxDate : naturalEnd;
+  const end = filters.month === meta.latestMonth ? meta.reportingDate : naturalEnd;
   const isPartial = end < naturalEnd;
   const elapsedDays = daysInclusive(start, end);
   const daysInMonth = Number(naturalEnd.slice(8, 10));
@@ -380,7 +386,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>, goal
 
   const trend: GeneralTrendPoint[] = Array.from({ length: 13 }, (_, index) => shiftMonth(filters.month, index - 12)).map((month) => {
     const monthNaturalEnd = monthEnd(month);
-    const monthPeriodEnd = month === meta.maxDate.slice(0, 7) ? meta.maxDate : monthNaturalEnd;
+    const monthPeriodEnd = month === meta.latestMonth ? meta.reportingDate : monthNaturalEnd;
     const actual = metric(value, filters, monthStart(month), monthPeriodEnd).primary;
     const monthTarget = targetValue(goals, filters, month);
     return { month, actual, target: monthTarget, completion: ratio(actual, monthTarget), isPartial: monthPeriodEnd < monthNaturalEnd };
@@ -396,7 +402,7 @@ export function buildGeneralReport(input: Partial<Record<string, unknown>>, goal
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMaxDate: meta.maxDate,
+    sourceMaxDate: meta.reportingDate,
     selectedMonth: filters.month,
     periodStart: start,
     periodEnd: end,

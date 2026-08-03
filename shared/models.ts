@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.4.1';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -419,6 +419,7 @@ export interface SptReportMeta {
   unavailableDocumentCount: number;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   latestMonth: string;
   months: string[];
   options: Record<SptFilterKey, string[]>;
@@ -500,6 +501,7 @@ export interface CommercialSalesReportMeta {
   coverageFrom: string;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   latestMonth: string;
   latestYear: string;
   months: string[];
@@ -622,6 +624,7 @@ export interface MarsReportMeta {
   coverageFrom: string;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   capturedAt: string;
   latestYear: string;
   latestPeriod: string;
@@ -708,6 +711,7 @@ export interface NutriPetReportMeta {
   coverageFrom: string;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   capturedAt: string;
   latestYear: string;
   latestMonth: string;
@@ -801,6 +805,7 @@ export interface BairesReportMeta {
   coverageFrom: string;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   capturedAt: string;
   latestYear: string;
   latestMonth: string;
@@ -891,6 +896,7 @@ export interface GeneralReportMeta {
   coverageFrom: string;
   minDate: string;
   maxDate: string;
+  reportingDate: string;
   capturedAt: string;
   latestMonth: string;
   months: string[];

@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.4.0
+# Salice Inteligente · v1.4.1
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.4.0 simplifica la operación diaria con densidad compacta predeterminada, navegación adaptable, tablas legibles en resoluciones desde 720 px y fichas emergentes para productos y marcas, sin separar los datos ni las reglas de negocio del programa.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.4.1 mantiene los reportes alineados con el mes calendario del paquete actualizado aunque todavía no existan ventas u objetivos, sobre la base adaptable y compacta incorporada en v1.4.0.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -180,4 +180,5 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.2.3.md`
 - `docs/release-v1.3.0.md`
 - `docs/release-v1.3.1.md`
+- `docs/release-v1.4.1.md`
 - `docs/release-v1.4.0.md`
