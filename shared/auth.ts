@@ -27,7 +27,16 @@ export interface UserChangeRecord {
   method: string;
   path: string;
   action: string;
+  detail: string;
   occurredAt: string;
+}
+
+export interface UserViewActivityRecord {
+  userId: string;
+  viewId: string;
+  activeSeconds: number;
+  visitCount: number;
+  lastActiveAt: string;
 }
 
 export interface UserActivitySummary {
@@ -35,14 +44,18 @@ export interface UserActivitySummary {
   accessCount: number;
   activeSeconds: number;
   activeSecondsToday: number;
+  activeDays: number;
   lastActiveAt: string | null;
   changeCount: number;
+  topViewId: string | null;
 }
 
 export interface DeveloperActivityPayload {
   generatedAt: string;
   antiAfkMinutes: number;
+  periodDays: number;
   users: UserActivitySummary[];
+  views: UserViewActivityRecord[];
   accesses: UserAccessRecord[];
   changes: UserChangeRecord[];
 }

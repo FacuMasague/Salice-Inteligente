@@ -87,19 +87,37 @@ describe('seguridad de usuarios y sesiones', () => {
     const { store } = setup();
     const developer = store.bootstrapAdmin('Developer Salice', 'ClaveDeveloper2026', 'developer')!;
     const session = store.createSession(developer.id, { ipAddress: '127.0.0.1', userAgent: 'Navegador de prueba' });
-    expect(store.recordActivity(store.getSession(session.token)!.id, developer.id, 30)).toBe(30);
+    expect(store.recordActivity(store.getSession(session.token)!.id, developer.id, 30, 'reports')).toBe(30);
     store.recordChange({
       userId: developer.id,
       sessionId: store.getSession(session.token)!.id,
       method: 'PATCH',
       path: '/api/account/preferences',
       action: 'Actualizó preferencias personales',
+      detail: 'Preferencias: recentReports',
     });
-    const activity = store.developerActivity();
+    const activity = store.developerActivity(30);
     expect(activity.antiAfkMinutes).toBe(5);
     expect(activity.users[0]).toMatchObject({ accessCount: 1, activeSeconds: 30, changeCount: 1 });
+    expect(activity.users[0]).toMatchObject({ activeDays: 1, topViewId: 'reports' });
+    expect(activity.views[0]).toMatchObject({ userId: developer.id, viewId: 'reports', activeSeconds: 30, visitCount: 1 });
     expect(activity.accesses[0]).toMatchObject({ ipAddress: '127.0.0.1', userAgent: 'Navegador de prueba' });
-    expect(activity.changes[0]).toMatchObject({ method: 'PATCH', action: 'Actualizó preferencias personales' });
+    expect(activity.changes[0]).toMatchObject({ method: 'PATCH', action: 'Actualizó preferencias personales', detail: 'Preferencias: recentReports' });
+    store.close();
+  });
+
+  it('normaliza vistas desconocidas y evita contar una visita nueva en cada heartbeat', () => {
+    const { store } = setup();
+    const developer = store.bootstrapAdmin('Developer Salice', 'ClaveDeveloper2026', 'developer')!;
+    const token = store.createSession(developer.id).token;
+    const sessionId = store.getSession(token)!.id;
+    expect(store.recordActivity(sessionId, developer.id, 20, 'clients')).toBe(20);
+    expect(store.recordActivity(sessionId, developer.id, 20, 'clients')).toBeLessThanOrEqual(20);
+    expect(store.recordActivity(sessionId, developer.id, 20, 'inventada')).toBeLessThanOrEqual(20);
+    const activity = store.developerActivity(7);
+    expect(activity.periodDays).toBe(7);
+    expect(activity.views.find((item) => item.viewId === 'clients')?.visitCount).toBe(1);
+    expect(activity.views.find((item) => item.viewId === 'unknown')?.visitCount).toBe(1);
     store.close();
   });
 

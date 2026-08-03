@@ -81,6 +81,7 @@ function changeAction(method: string, path: string) {
     [/^\/api\/system\/refresh/, 'Solicitó una actualización de datos'],
     [/^\/api\/saved-views/, 'Modificó una vista guardada'],
     [/^\/api\/commercial-notes/, 'Registró una nota comercial'],
+    [/^\/api\/client-trend-reviews/, 'Actualizó una revisión de tendencia'],
     [/^\/api\/clients\/[^/]+\/note/, 'Actualizó la nota de un cliente'],
     [/^\/api\/clients\/[^/]+\/opportunity-notes/, 'Modificó una nota de oportunidad'],
     [/^\/api\/admin\/receivables/, 'Actualizó una gestión de cobranza'],
@@ -94,6 +95,53 @@ function changeAction(method: string, path: string) {
     [/^\/api\/auth\/logout/, 'Cerró sesión'],
   ];
   return routes.find(([pattern]) => pattern.test(path))?.[1] ?? `${method} ${path}`;
+}
+
+function safeText(value: unknown, maxLength = 100) {
+  return typeof value === 'string' || typeof value === 'number'
+    ? String(value).trim().replace(/\s+/g, ' ').slice(0, maxLength)
+    : '';
+}
+
+function changeDetail(req: express.Request) {
+  const path = req.originalUrl.split('?')[0];
+  const id = safeText(req.params?.id, 80);
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const safe = safeText(value);
+    if (safe) parts.push(`${label}: ${safe}`);
+  };
+  if (/^\/api\/system\/users\//.test(path)) {
+    add('Usuario', id); add('Estado', req.body?.status); add('Rol', req.body?.role);
+  } else if (/^\/api\/admin\/goals/.test(path)) {
+    add('Mes', req.body?.month ?? req.query?.month); add('Nombre', req.body?.name ?? req.query?.name);
+    add('Versión', req.params?.versionId); add('Fila', req.params?.rowId);
+    add('Producto', req.body?.product); add('Vendedor', req.body?.seller);
+  } else if (/^\/api\/saved-views/.test(path)) {
+    add('Registro', id); add('Vista', req.body?.view ?? req.body?.viewKey); add('Nombre', req.body?.name);
+  } else if (/^\/api\/commercial-notes/.test(path)) {
+    add('Cliente', req.body?.clientId); add('Tipo', req.body?.type); add('Fecha', req.body?.occurredAt);
+  } else if (/^\/api\/client-trend-reviews/.test(path)) {
+    add('Cliente', req.params?.clientId); add('Tendencia', req.params?.direction); add('Revisado', req.body?.reviewed);
+  } else if (/^\/api\/clients\//.test(path)) {
+    add('Cliente', req.params?.id ?? req.params?.clientId); add('Actividad', req.params?.activityId);
+  } else if (/^\/api\/admin\/receivables/.test(path)) {
+    add('Cliente', req.params?.clientId ?? req.body?.clientId); add('Estado', req.body?.status);
+    add('Seguimiento', req.body?.nextFollowUpAt); add('Evento', req.params?.eventId);
+  } else if (/^\/api\/inventory-alert-reviews/.test(path)) {
+    add('Producto', req.params?.productId ?? (id || req.body?.productId)); add('Estado', req.body?.status); add('Excepción', req.body?.exceptionType);
+  } else if (/^\/api\/product-vector-corrections/.test(path)) {
+    add('Producto', req.params?.productId ?? (id || req.body?.productId)); add('Campo', req.params?.key ?? req.body?.vectorKey); add('Valor', req.body?.value);
+  } else if (/^\/api\/ai\/artifacts/.test(path)) {
+    add('Artefacto', req.params?.artifactId ?? (id || req.body?.artifactId)); add('Valoración', req.body?.rating);
+  } else if (/^\/api\/promises/.test(path)) {
+    add('Promesa', id); add('Estado', req.body?.status); add('Fecha', req.body?.dueDate);
+  } else if (/^\/api\/commercial-opportunity-links/.test(path)) {
+    add('Cliente', req.body?.clientId); add('Producto', req.body?.productId);
+  } else if (/^\/api\/account\/preferences/.test(path) && req.body && typeof req.body === 'object') {
+    parts.push(`Preferencias: ${Object.keys(req.body).slice(0, 10).join(', ')}`);
+  }
+  return parts.join(' · ').slice(0, 500);
 }
 
 export function currentAuth(res: express.Response) {
@@ -127,7 +175,7 @@ export function installPublicAuthRoutes(app: express.Express) {
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, version: process.env.npm_package_version ?? '1.4.1' });
+    res.json({ ok: true, version: process.env.npm_package_version ?? '1.5.0' });
   });
 
   app.get('/api/auth/session', (req, res) => {
@@ -214,6 +262,7 @@ export function requireAuthenticatedApi(req: express.Request, res: express.Respo
           method: req.method,
           path: req.originalUrl.split('?')[0],
           action: changeAction(req.method, req.originalUrl.split('?')[0]),
+          detail: changeDetail(req),
         });
       } catch (error) {
         console.warn(`No se pudo registrar una acción de usuario: ${error instanceof Error ? error.message : String(error)}`);
@@ -248,7 +297,12 @@ export function installPrivateAuthRoutes(app: express.Express) {
   app.get('/api/account/preferences', (_req, res) => res.json({ preferences: store.getPreferences(currentAuth(res).user.id) }));
   app.post('/api/account/activity', (req, res) => {
     const auth = currentAuth(res);
-    const acceptedSeconds = store.recordActivity(auth.sessionId, auth.user.id, Number(req.body?.activeSeconds));
+    const acceptedSeconds = store.recordActivity(
+      auth.sessionId,
+      auth.user.id,
+      Number(req.body?.activeSeconds),
+      String(req.body?.viewId ?? ''),
+    );
     return res.json({ acceptedSeconds });
   });
   app.patch('/api/account/preferences', (req, res) => {
@@ -264,7 +318,10 @@ export function installPrivateAuthRoutes(app: express.Express) {
     }
   });
   app.get('/api/system/users', requireAdmin, (_req, res) => res.json({ users: store.listUsers() }));
-  app.get('/api/system/user-activity', requireDeveloper, (_req, res) => res.json(store.developerActivity()));
+  app.get('/api/system/user-activity', requireDeveloper, (req, res) => {
+    const days = Number(req.query.days ?? 30);
+    return res.json(store.developerActivity(days));
+  });
   app.patch('/api/system/users/:id', requireAdmin, (req, res) => {
     const status = String(req.body?.status ?? '') as UserStatus;
     const role = String(req.body?.role ?? '') as UserRole;

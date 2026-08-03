@@ -20,7 +20,7 @@ import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportVi
 import { replaceViewInLocation, reportViewFromLocation } from './lib/report-links';
 import { PREFERENCES_CHANGED_EVENT, readPreferences, type AppPreferences } from './lib/preferences';
 import type { ClientVisibility } from './views/MapDashboard';
-import { useAuth } from './auth';
+import { ACTIVE_VIEW_CHANGED_EVENT, useAuth } from './auth';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
 const ClientsView = lazy(() => import('./views/ClientsView').then((module) => ({ default: module.ClientsView })));
@@ -326,6 +326,8 @@ export default function App() {
   useEffect(() => {
     const section = viewSection[view];
     setSidebarSections((current) => current[section] ? current : { ...current, [section]: true });
+    document.documentElement.dataset.saliceActiveView = view;
+    window.dispatchEvent(new CustomEvent(ACTIVE_VIEW_CHANGED_EVENT, { detail: { viewId: view } }));
   }, [view]);
 
   useEffect(() => {

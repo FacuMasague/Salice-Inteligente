@@ -22,10 +22,12 @@ No se crea un Cron Job separado. Render no permite adjuntar discos persistentes 
    - `GESI_PASSWORD`;
    - `OPENAI_API_KEY`;
    - `SALICE_INITIAL_ADMIN_USERNAME`;
-   - `SALICE_INITIAL_ADMIN_PASSWORD`.
+   - `SALICE_INITIAL_ADMIN_PASSWORD`;
+   - `SALICE_ALERT_SMTP_PASS`.
 5. Aplicar el Blueprint y esperar a que el Web Service quede `Live`.
 
 El Blueprint define build, start, plan, región, disco, health check, horarios, zona horaria, rol inicial Developer y presupuestos de IA. Las credenciales no se guardan en Git. La contraseña inicial debe tener al menos 8 caracteres y combinar letras y números.
+La v1.5 también define Gmail como servidor SMTP, `facumasague@gmail.com` como usuario, remitente y destinatario, puerto 587 y STARTTLS obligatorio. En `SALICE_ALERT_SMTP_PASS` debe guardarse exclusivamente una contraseña de aplicación del proveedor, nunca la contraseña normal de la cuenta. Si más adelante se usa otro proveedor o el puerto 465, actualizar host, usuario y `SALICE_ALERT_SMTP_SECURE` según corresponda.
 También fija el inicio del histórico comercial SPT de bootstrap en `2025-01-01`: la auditoría requiere los doce meses de 2025 y una instalación nueva no puede depender de un archivo histórico preexistente. Una vez creada la captura persistente, las actualizaciones ordinarias descargan sólo la ventana móvil y conservan el histórico anterior.
 
 ## Capacidad y costo

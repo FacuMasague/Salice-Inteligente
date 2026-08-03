@@ -63,8 +63,10 @@ import {
   installPublicAuthRoutes,
   installSecurityHeaders,
   requireAdmin,
+  requireDeveloper,
   requireAuthenticatedApi,
 } from './auth-http.js';
+import { developerAlertStatus, sendDeveloperAlert } from './developer-alerts.js';
 import {
   activateCommercialGoalVersion,
   addReceivableComment,
@@ -126,6 +128,13 @@ const savedViewKeys = new Set<SavedViewKey>(SAVED_VIEW_KEYS);
 const savedViewPurposes = new Set<SavedViewPurpose>(['general', 'client_recovery', 'collections', 'product_opportunities']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
+process.on('uncaughtExceptionMonitor', (error) => {
+  void sendDeveloperAlert({
+    kind: 'process-error', severity: 'critical', title: 'Error crítico del proceso de Salice',
+    detail: error.message, source: 'proceso Node.js',
+  }).catch(() => undefined);
+});
+
 function localDate(value = new Date()) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(value);
 }
@@ -161,6 +170,10 @@ async function sendDownload(response: express.Response, action: () => void | Pro
     await action();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    void sendDeveloperAlert({
+      kind: 'export-error', severity: 'error', title: 'Falló una exportación del programa',
+      detail: message, source: 'generador de exportaciones',
+    }).catch(() => undefined);
     if (!response.headersSent) response.status(500).json({ error: message });
     else response.end();
   }
@@ -1168,6 +1181,29 @@ app.patch('/api/clients/:id/note', async (req, res) => {
   return res.json({ ok: true, note });
 });
 
+app.get('/api/system/developer-alerts', requireDeveloper, (_req, res) => {
+  return res.json(developerAlertStatus());
+});
+
+app.post('/api/system/developer-alerts/test', requireDeveloper, async (_req, res) => {
+  const result = await sendDeveloperAlert({
+    kind: 'email-test', severity: 'warning', title: 'Prueba de alertas de Salice Inteligente',
+    detail: 'El canal de correo para Developer está funcionando correctamente.', source: 'prueba manual de Developer',
+  });
+  return res.status(result.delivery === 'failed' || result.delivery === 'not_configured' ? 503 : 200).json(result);
+});
+
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Error no controlado en ${req.method} ${req.path}: ${message}`);
+  void sendDeveloperAlert({
+    kind: 'api-error', severity: 'error', title: 'Error no controlado en la API',
+    detail: `${req.method} ${req.path}: ${message}`, source: 'servidor web',
+  }).catch(() => undefined);
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Ocurrió un error interno. Developer fue notificado.' });
+});
+
 if (process.env.NODE_ENV === 'production') {
   const dist = resolve(process.cwd(), 'dist');
   app.use('/api', (_req, res) => res.status(404).json({
@@ -1192,6 +1228,10 @@ acquireServerLock();
 const recoveredRefreshes = recoverInterruptedRefreshRuns();
 if (recoveredRefreshes) {
   console.warn(`Se cerraron ${recoveredRefreshes} actualizaciones interrumpidas para permitir su recuperación.`);
+  void sendDeveloperAlert({
+    kind: 'interrupted-refresh', severity: 'warning', title: 'Se recuperó una actualización interrumpida',
+    detail: `Ejecuciones recuperadas: ${recoveredRefreshes}.`, source: 'inicio del servidor',
+  }).catch(() => undefined);
 }
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 app.listen(port, host, () => {

@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
+import { sendDeveloperAlert } from './developer-alerts.js';
+import { listRefreshRuns } from './operational-store.js';
 
 let activeProcess: ChildProcess | null = null;
 let startedAt = '';
@@ -33,10 +35,34 @@ export function startManualRefresh(workspace = process.cwd(), requestedTrigger =
     console.error(`No se pudo iniciar la actualización manual: ${error.message}`);
     lastExit = { at: new Date().toISOString(), code: null, signal: null };
     activeProcess = null;
+    void sendDeveloperAlert({
+      kind: 'refresh-process', severity: 'critical', title: 'No se pudo iniciar la actualización de datos',
+      detail: error.message, source: `controlador de actualización · ${requestedTrigger}`,
+    }).catch(() => undefined);
   });
   child.once('exit', (code, signal) => {
     lastExit = { at: new Date().toISOString(), code, signal };
     activeProcess = null;
+    if (code !== 0 || signal) {
+      try {
+        const lastAttempt = listRefreshRuns(1)[0];
+        const alreadyReported = lastAttempt?.status === 'failed'
+          && new Date(lastAttempt.startedAt).getTime() >= new Date(startedAt).getTime() - 5_000;
+        if (!alreadyReported) {
+          void sendDeveloperAlert({
+            kind: 'refresh-process', severity: 'error', title: 'La actualización de datos terminó de forma anormal',
+            detail: signal ? `Señal: ${signal}` : `Código de salida: ${code ?? 'desconocido'}`,
+            source: `controlador de actualización · ${requestedTrigger}`,
+          }).catch(() => undefined);
+        }
+      } catch {
+        void sendDeveloperAlert({
+          kind: 'refresh-process', severity: 'error', title: 'La actualización de datos terminó de forma anormal',
+          detail: signal ? `Señal: ${signal}` : `Código de salida: ${code ?? 'desconocido'}`,
+          source: `controlador de actualización · ${requestedTrigger}`,
+        }).catch(() => undefined);
+      }
+    }
   });
   return { started: true as const, ...manualRefreshProcessStatus() };
 }
