@@ -63,3 +63,15 @@ services:
         value: "30"
       - key: SALICE_AI_MONTHLY_BUDGET_WARNING_PERCENT
         value: "80"
+      - key: SALICE_ALERT_EMAIL_TO
+        value: facumasague@gmail.com
+      - key: SALICE_ALERT_SMTP_HOST
+        value: smtp.gmail.com
+      - key: SALICE_ALERT_SMTP_PORT
+        value: "587"
+      - key: SALICE_ALERT_SMTP_SECURE
+        value: "false"
+      - key: SALICE_ALERT_SMTP_USER
+        value: facumasague@gmail.com
+      - key: SALICE_ALERT_SMTP_PASS
+        sync: false

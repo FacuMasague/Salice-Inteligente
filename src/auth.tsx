@@ -9,6 +9,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+export const ACTIVE_VIEW_CHANGED_EVENT = 'salice:active-view-changed';
 
 function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -100,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const heartbeatMs = 30_000;
     let lastInteractionAt = Date.now();
     let lastHeartbeatAt = Date.now();
+    let activeViewId = document.documentElement.dataset.saliceActiveView ?? 'unknown';
     const markInteraction = () => { lastInteractionAt = Date.now(); };
     const sendHeartbeat = () => {
       const now = Date.now();
@@ -109,17 +111,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void fetch('/api/account/activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activeSeconds }),
+        body: JSON.stringify({ activeSeconds, viewId: activeViewId }),
       });
+    };
+    const changeView = (event: Event) => {
+      sendHeartbeat();
+      const next = (event as CustomEvent<{ viewId?: string }>).detail?.viewId;
+      activeViewId = typeof next === 'string' ? next : 'unknown';
     };
     const interactionEvents: Array<keyof WindowEventMap> = ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart'];
     interactionEvents.forEach((eventName) => window.addEventListener(eventName, markInteraction, { passive: true }));
     document.addEventListener('visibilitychange', markInteraction);
+    window.addEventListener(ACTIVE_VIEW_CHANGED_EVENT, changeView);
     const interval = window.setInterval(sendHeartbeat, heartbeatMs);
     return () => {
       window.clearInterval(interval);
       interactionEvents.forEach((eventName) => window.removeEventListener(eventName, markInteraction));
       document.removeEventListener('visibilitychange', markInteraction);
+      window.removeEventListener(ACTIVE_VIEW_CHANGED_EVENT, changeView);
     };
   }, [state.user]);
 

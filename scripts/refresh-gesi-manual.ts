@@ -18,6 +18,7 @@ import {
   resolveActiveDataPaths,
 } from '../server/data-bundle.js';
 import { runAiEnrichment } from '../server/ai-enrichment.js';
+import { sendDeveloperAlert } from '../server/developer-alerts.js';
 import { prepareAiSchema } from '../server/ai-store.js';
 import type { DashboardData } from '../shared/models.js';
 import { MANUAL_REFRESH_STAGES } from '../shared/refresh-plan.js';
@@ -157,8 +158,24 @@ try {
       workspace,
     });
     console.log(`Enriquecimiento IA: ${aiRun.status} · ${aiRun.completed} nuevos · ${aiRun.reused} reutilizados · USD ${aiRun.estimatedCostUsd.toFixed(4)}.`);
+    if (aiRun.status === 'partial' || aiRun.status === 'failed') {
+      await sendDeveloperAlert({
+        kind: 'ai-enrichment',
+        severity: 'warning',
+        title: `La IA terminó con estado ${aiRun.status}`,
+        detail: `Ejecución ${run.id}. Completados: ${aiRun.completed}; reutilizados: ${aiRun.reused}; fallidos: ${aiRun.failed}. ${aiRun.error ?? ''}`,
+        source: 'actualización de datos · enriquecimiento IA',
+      }).catch(() => undefined);
+    }
   } catch (error) {
     console.warn(`El snapshot quedó aprobado, pero el enriquecimiento IA no pudo completarse: ${error instanceof Error ? error.message : String(error)}`);
+    await sendDeveloperAlert({
+      kind: 'ai-enrichment',
+      severity: 'error',
+      title: 'La IA no pudo completar el enriquecimiento',
+      detail: error instanceof Error ? error.message : String(error),
+      source: 'actualización de datos · enriquecimiento IA',
+    }).catch(() => undefined);
   }
   completeRefreshRun(run.id, snapshot, warnings, platformAudit.status ?? 'passed');
   console.log('Actualización manual completada con el resumen ejecutivo listo para cargar.');
@@ -167,6 +184,13 @@ try {
     ? `\nLa actualización falló en ${currentStage} después de activar el paquete. Los datos permanecen activos, pero falló el registro operativo posterior.`
     : `\nLa actualización falló en ${currentStage}. El manifiesto activo no fue reemplazado.`);
   failRefreshRun(run.id, currentStage, error);
+  await sendDeveloperAlert({
+    kind: 'data-refresh',
+    severity: bundleActivated ? 'critical' : 'error',
+    title: `Falló la actualización de datos en ${currentStage}`,
+    detail: `${bundleActivated ? 'El paquete ya había sido activado. ' : 'El paquete anterior continúa activo. '}${error instanceof Error ? error.message : String(error)}`,
+    source: `actualización ${runTrigger} · ejecución ${run.id}`,
+  }).catch(() => undefined);
   if (!bundleActivated) {
     await rm(bundlePaths.directory, { recursive: true, force: true }).catch(() => undefined);
   }

@@ -99,7 +99,7 @@ describe('protección HTTP de los datos privados', () => {
     const health = await fetch(`${baseUrl}/api/health`);
     const healthPayload = await health.json() as Record<string, unknown>;
     expect(health.status).toBe(200);
-    expect(healthPayload).toEqual({ ok: true, version: '1.4.1' });
+    expect(healthPayload).toEqual({ ok: true, version: '1.5.0' });
     expect(healthPayload).not.toHaveProperty('generatedAt');
     expect(healthPayload).not.toHaveProperty('source');
     expect(health.headers.get('content-security-policy')).toContain('https://*.tile.openstreetmap.org');
@@ -128,19 +128,27 @@ describe('protección HTTP de los datos privados', () => {
     const heartbeat = await fetch(`${baseUrl}/api/account/activity`, {
       method: 'POST',
       headers: { Cookie: adminCookie, 'X-Salice-CSRF': adminCsrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activeSeconds: 30 }),
+      body: JSON.stringify({ activeSeconds: 30, viewId: 'reports' }),
     });
     expect(heartbeat.status).toBe(200);
 
     const activity = await fetch(`${baseUrl}/api/system/user-activity`, { headers: { Cookie: adminCookie } });
     expect(activity.status).toBe(200);
     const activityPayload = await activity.json() as {
-      users: Array<{ activeSeconds: number; accessCount: number }>;
-      changes: Array<{ path: string }>;
+      users: Array<{ activeSeconds: number; accessCount: number; topViewId: string | null }>;
+      views: Array<{ viewId: string; activeSeconds: number }>;
+      changes: Array<{ path: string; detail: string }>;
     };
-    expect(activityPayload.users[0]).toMatchObject({ activeSeconds: 30, accessCount: 1 });
+    expect(activityPayload.users[0]).toMatchObject({ activeSeconds: 30, accessCount: 1, topViewId: 'reports' });
+    expect(activityPayload.views[0]).toMatchObject({ viewId: 'reports', activeSeconds: 30 });
     expect(activityPayload.changes.some((change) => change.path === '/api/account/preferences')).toBe(true);
     expect(activityPayload.changes.some((change) => change.path === '/api/account/activity')).toBe(false);
+    const preferenceChange = activityPayload.changes.find((change) => change.path === '/api/account/preferences');
+    expect(preferenceChange?.detail).toContain('favoriteReports');
+    expect(preferenceChange?.detail).not.toContain('reports');
+    const alerts = await fetch(`${baseUrl}/api/system/developer-alerts`, { headers: { Cookie: adminCookie } });
+    expect(alerts.status).toBe(200);
+    expect(await alerts.json()).toMatchObject({ recipient: 'facumasague@gmail.com' });
   });
 
   it('admite el proxy local conocido y rechaza orígenes externos', async () => {
@@ -201,6 +209,7 @@ describe('protección HTTP de los datos privados', () => {
     expect((await fetch(`${baseUrl}/api/dashboard`, { headers: { Cookie: officeCookie } })).status).toBe(200);
     expect((await fetch(`${baseUrl}/api/system/users`, { headers: { Cookie: officeCookie } })).status).toBe(403);
     expect((await fetch(`${baseUrl}/api/system/user-activity`, { headers: { Cookie: officeCookie } })).status).toBe(403);
+    expect((await fetch(`${baseUrl}/api/system/developer-alerts`, { headers: { Cookie: officeCookie } })).status).toBe(403);
 
     const promotion = await fetch(`${baseUrl}/api/system/users/${registered.user.id}`, {
       method: 'PATCH',

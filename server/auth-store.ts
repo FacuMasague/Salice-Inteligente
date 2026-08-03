@@ -5,6 +5,7 @@ import type {
   DeveloperActivityPayload,
   UserAccessRecord,
   UserChangeRecord,
+  UserViewActivityRecord,
   UserRole,
   UserStatus,
 } from '../shared/auth.js';
@@ -13,6 +14,12 @@ import { getOperationalDatabasePath } from './operational-store.js';
 const SESSION_DAYS = 30;
 const PASSWORD_MIN_LENGTH = 8;
 export const ANTI_AFK_MINUTES = 5;
+const ACTIVITY_VIEWS = new Set([
+  'map', 'routes', 'clients', 'sellers', 'products', 'brands', 'finance', 'agenda',
+  'sales-explorer', 'receivables', 'report-center', 'reports', 'spt', 'commercial-sales',
+  'mars', 'nutripet', 'baires', 'non-buyers', 'pending-balances', 'settings', 'help',
+  'users', 'user-activity',
+]);
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 type Row = Record<string, unknown>;
@@ -132,8 +139,21 @@ export class AuthStore {
         session_id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         last_recorded_at TEXT NOT NULL,
+        last_view TEXT NOT NULL DEFAULT '',
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS user_activity_by_view (
+        user_id TEXT NOT NULL,
+        activity_date TEXT NOT NULL,
+        view_id TEXT NOT NULL,
+        active_seconds INTEGER NOT NULL DEFAULT 0,
+        heartbeat_count INTEGER NOT NULL DEFAULT 0,
+        visit_count INTEGER NOT NULL DEFAULT 0,
+        last_active_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, activity_date, view_id),
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_activity_by_view_time ON user_activity_by_view(activity_date, last_active_at DESC);
       CREATE TABLE IF NOT EXISTS user_change_log (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -141,12 +161,15 @@ export class AuthStore {
         method TEXT NOT NULL,
         path TEXT NOT NULL,
         action TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
         occurred_at TEXT NOT NULL,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_user_change_log_user ON user_change_log(user_id, occurred_at DESC);
       CREATE INDEX IF NOT EXISTS idx_user_change_log_time ON user_change_log(occurred_at DESC);
     `);
+    this.ensureColumn('user_activity_heartbeats', 'last_view', "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn('user_change_log', 'detail', "TEXT NOT NULL DEFAULT ''");
   }
 
   close() {
@@ -360,20 +383,22 @@ export class AuthStore {
     }
   }
 
-  recordActivity(sessionId: string, userId: string, requestedSeconds: number) {
+  recordActivity(sessionId: string, userId: string, requestedSeconds: number, requestedView = '') {
     const seconds = Math.max(0, Math.min(60, Math.round(requestedSeconds)));
     if (!seconds) return 0;
+    const viewId = ACTIVITY_VIEWS.has(requestedView) ? requestedView : 'unknown';
     const now = new Date();
-    const previous = this.database.prepare('SELECT last_recorded_at FROM user_activity_heartbeats WHERE session_id = ? AND user_id = ?')
+    const previous = this.database.prepare('SELECT last_recorded_at, last_view FROM user_activity_heartbeats WHERE session_id = ? AND user_id = ?')
       .get(sessionId, userId) as Row | undefined;
     const elapsed = previous
       ? Math.max(0, Math.floor((now.getTime() - new Date(String(previous.last_recorded_at)).getTime()) / 1000) + 2)
       : seconds;
     const accepted = Math.min(seconds, elapsed);
     this.database.prepare(`
-      INSERT INTO user_activity_heartbeats (session_id, user_id, last_recorded_at) VALUES (?, ?, ?)
-      ON CONFLICT(session_id) DO UPDATE SET user_id = excluded.user_id, last_recorded_at = excluded.last_recorded_at
-    `).run(sessionId, userId, now.toISOString());
+      INSERT INTO user_activity_heartbeats (session_id, user_id, last_recorded_at, last_view) VALUES (?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        user_id = excluded.user_id, last_recorded_at = excluded.last_recorded_at, last_view = excluded.last_view
+    `).run(sessionId, userId, now.toISOString(), viewId);
     if (!accepted) return 0;
     this.database.prepare(`
       INSERT INTO user_activity_daily (user_id, activity_date, active_seconds, heartbeat_count, last_active_at)
@@ -383,35 +408,50 @@ export class AuthStore {
         heartbeat_count = user_activity_daily.heartbeat_count + 1,
         last_active_at = excluded.last_active_at
     `).run(userId, localDate(now), accepted, now.toISOString());
+    this.database.prepare(`
+      INSERT INTO user_activity_by_view (
+        user_id, activity_date, view_id, active_seconds, heartbeat_count, visit_count, last_active_at
+      ) VALUES (?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(user_id, activity_date, view_id) DO UPDATE SET
+        active_seconds = user_activity_by_view.active_seconds + excluded.active_seconds,
+        heartbeat_count = user_activity_by_view.heartbeat_count + 1,
+        visit_count = user_activity_by_view.visit_count + excluded.visit_count,
+        last_active_at = excluded.last_active_at
+    `).run(userId, localDate(now), viewId, accepted, previous?.last_view === viewId ? 0 : 1, now.toISOString());
     return accepted;
   }
 
-  recordChange(input: { userId: string; sessionId: string; method: string; path: string; action: string }) {
+  recordChange(input: { userId: string; sessionId: string; method: string; path: string; action: string; detail?: string }) {
     this.database.prepare(`
-      INSERT INTO user_change_log (id, user_id, session_id, method, path, action, occurred_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO user_change_log (id, user_id, session_id, method, path, action, detail, occurred_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), input.userId, input.sessionId, input.method.slice(0, 10),
-      input.path.slice(0, 500), input.action.slice(0, 200), new Date().toISOString(),
+      input.path.slice(0, 500), input.action.slice(0, 200), String(input.detail ?? '').slice(0, 500), new Date().toISOString(),
     );
   }
 
-  developerActivity(): DeveloperActivityPayload {
+  developerActivity(periodDays = 30): DeveloperActivityPayload {
+    const days = [0, 7, 30, 90, 365].includes(periodDays) ? periodDays : 30;
+    const since = days ? localDate(new Date(Date.now() - (days - 1) * 86_400_000)) : '0000-01-01';
+    const sinceTime = days ? new Date(`${since}T00:00:00-03:00`).toISOString() : '0000-01-01T00:00:00.000Z';
     const users = this.listUsers();
     const metrics = this.database.prepare(`
       SELECT users.id,
-        (SELECT COUNT(*) FROM user_access_events access WHERE access.user_id = users.id) AS access_count,
-        COALESCE((SELECT SUM(active_seconds) FROM user_activity_daily activity WHERE activity.user_id = users.id), 0) AS active_seconds,
+        (SELECT COUNT(*) FROM user_access_events access WHERE access.user_id = users.id AND access.occurred_at >= ?) AS access_count,
+        COALESCE((SELECT SUM(active_seconds) FROM user_activity_daily activity WHERE activity.user_id = users.id AND activity.activity_date >= ?), 0) AS active_seconds,
         COALESCE((SELECT active_seconds FROM user_activity_daily activity WHERE activity.user_id = users.id AND activity.activity_date = ?), 0) AS active_seconds_today,
-        (SELECT MAX(last_active_at) FROM user_activity_daily activity WHERE activity.user_id = users.id) AS last_active_at,
-        (SELECT COUNT(*) FROM user_change_log changes WHERE changes.user_id = users.id) AS change_count
+        (SELECT COUNT(*) FROM user_activity_daily activity WHERE activity.user_id = users.id AND activity.activity_date >= ?) AS active_days,
+        (SELECT MAX(last_active_at) FROM user_activity_daily activity WHERE activity.user_id = users.id AND activity.activity_date >= ?) AS last_active_at,
+        (SELECT COUNT(*) FROM user_change_log changes WHERE changes.user_id = users.id AND changes.occurred_at >= ?) AS change_count,
+        (SELECT view_id FROM user_activity_by_view view_activity WHERE view_activity.user_id = users.id AND view_activity.activity_date >= ? GROUP BY view_id ORDER BY SUM(active_seconds) DESC LIMIT 1) AS top_view_id
       FROM users
-    `).all(localDate()) as Row[];
+    `).all(sinceTime, since, localDate(), since, since, sinceTime, since) as Row[];
     const metricsByUser = new Map(metrics.map((row) => [String(row.id), row]));
     const accesses = (this.database.prepare(`
       SELECT id, user_id, occurred_at, ip_address, user_agent
-      FROM user_access_events ORDER BY occurred_at DESC
-    `).all() as Row[]).map((row): UserAccessRecord => ({
+      FROM user_access_events WHERE occurred_at >= ? ORDER BY occurred_at DESC LIMIT 2000
+    `).all(sinceTime) as Row[]).map((row): UserAccessRecord => ({
       id: String(row.id),
       userId: String(row.user_id),
       occurredAt: String(row.occurred_at),
@@ -419,19 +459,33 @@ export class AuthStore {
       userAgent: String(row.user_agent),
     }));
     const changes = (this.database.prepare(`
-      SELECT id, user_id, method, path, action, occurred_at
-      FROM user_change_log ORDER BY occurred_at DESC
-    `).all() as Row[]).map((row): UserChangeRecord => ({
+      SELECT id, user_id, method, path, action, detail, occurred_at
+      FROM user_change_log WHERE occurred_at >= ? ORDER BY occurred_at DESC LIMIT 3000
+    `).all(sinceTime) as Row[]).map((row): UserChangeRecord => ({
       id: String(row.id),
       userId: String(row.user_id),
       method: String(row.method),
       path: String(row.path),
       action: String(row.action),
+      detail: String(row.detail ?? ''),
       occurredAt: String(row.occurred_at),
+    }));
+    const views = (this.database.prepare(`
+      SELECT user_id, view_id, SUM(active_seconds) AS active_seconds,
+        SUM(visit_count) AS visit_count, MAX(last_active_at) AS last_active_at
+      FROM user_activity_by_view WHERE activity_date >= ?
+      GROUP BY user_id, view_id ORDER BY active_seconds DESC
+    `).all(since) as Row[]).map((row): UserViewActivityRecord => ({
+      userId: String(row.user_id),
+      viewId: String(row.view_id),
+      activeSeconds: Number(row.active_seconds),
+      visitCount: Number(row.visit_count),
+      lastActiveAt: String(row.last_active_at),
     }));
     return {
       generatedAt: new Date().toISOString(),
       antiAfkMinutes: ANTI_AFK_MINUTES,
+      periodDays: days,
       users: users.map((user) => {
         const metric = metricsByUser.get(user.id) ?? {};
         return {
@@ -439,13 +493,23 @@ export class AuthStore {
           accessCount: Number(metric.access_count ?? 0),
           activeSeconds: Number(metric.active_seconds ?? 0),
           activeSecondsToday: Number(metric.active_seconds_today ?? 0),
+          activeDays: Number(metric.active_days ?? 0),
           lastActiveAt: metric.last_active_at == null ? null : String(metric.last_active_at),
           changeCount: Number(metric.change_count ?? 0),
+          topViewId: metric.top_view_id == null ? null : String(metric.top_view_id),
         };
       }),
+      views,
       accesses,
       changes,
     };
+  }
+
+  private ensureColumn(table: string, column: string, definition: string) {
+    const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as Row[];
+    if (!columns.some((item) => String(item.name) === column)) {
+      this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   private ensureDeveloperRoleConstraint() {

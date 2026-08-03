@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.4.1
+# Salice Inteligente · v1.5.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.4.1 mantiene los reportes alineados con el mes calendario del paquete actualizado aunque todavía no existan ventas u objetivos, sobre la base adaptable y compacta incorporada en v1.4.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.5.0 agrega supervisión privada para Developer: uso por sección y usuario, auditoría contextual segura y alertas de errores por correo, sin alterar el funcionamiento para Oficina o Administrador.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -32,8 +32,8 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 - El health check público informa únicamente disponibilidad y versión.
 - Una persona sin cuenta puede solicitar acceso sólo con usuario y contraseña, pero permanece pendiente y no puede ingresar.
 - Un administrador aprueba, rechaza o deshabilita cuentas desde **Sistema → Usuarios**.
-- Los roles disponibles son Administrador y Oficina.
-- Developer conserva las funciones administrativas y agrega una vista privada de accesos, tiempo activo y cambios.
+- Los roles disponibles son Developer, Administrador y Oficina.
+- Developer conserva las funciones administrativas y agrega una vista privada de accesos, tiempo activo por sección, días de uso, cambios con contexto seguro y alertas técnicas.
 - El tiempo de uso deja de acumularse después de cinco minutos sin interacción.
 - Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.
 - Deshabilitar una cuenta invalida inmediatamente sus sesiones.
@@ -128,6 +128,8 @@ Configuración se divide en:
 
 Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los tutoriales independientes de Centro operativo, Administración y Reportes explican qué mirar, cómo trabajar y qué salvedades respetar en cada módulo. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
+Developer puede comparar la adopción durante 7, 30, 90 o 365 días y consultar el histórico. La medición por sección respeta el control anti-AFK y no registra contraseñas, textos de notas ni contenido libre de formularios. Las fallas de actualización, IA y errores no controlados quedan auditados y, si SMTP está configurado, se notifican por correo sin bloquear el flujo principal.
+
 ## Datos y recuperación
 
 La aplicación conserva la última actualización aprobada si un intento posterior falla. Notas, gestiones, promesas, vistas, objetivos, correcciones y feedback se almacenan por separado de los datos comerciales.
@@ -182,3 +184,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.3.1.md`
 - `docs/release-v1.4.1.md`
 - `docs/release-v1.4.0.md`
+- `docs/release-v1.5.0.md`
