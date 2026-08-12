@@ -209,7 +209,11 @@ async function fetchPrices(productIDs: string[]) {
   const prices: GesiRow[] = [];
   for (let index = 0; index < batches.length; index += 1) {
     const codes = encodeURIComponent(batches[index].join(','));
-    const rows = await client.getAll<GesiRow>(`/api/Maestros/Productos/GetPrecios?codigos=${codes}`, 'precios', 1000);
+    // GetPrecios anuncia en totalElementos la cantidad de códigos consultados,
+    // aunque omite de `precios` los productos que no tienen una definición.
+    // No debe tratarse como una página truncada: la auditoría posterior informa
+    // explícitamente qué productos del catálogo quedaron sin precio.
+    const rows = await client.getSparseAll<GesiRow>(`/api/Maestros/Productos/GetPrecios?codigos=${codes}`, 'precios', 1000);
     prices.push(...rows);
     console.log(`Precios: lote ${index + 1}/${batches.length} (${prices.length} definiciones)`);
   }

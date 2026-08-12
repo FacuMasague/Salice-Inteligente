@@ -138,6 +138,15 @@ export class GesiClient {
     });
   }
 
+  /**
+   * Recorre endpoints cuya paginación anuncia la cantidad de claves consultadas,
+   * no la cantidad real de filas disponibles. Conserva reintentos HTTP/transporte
+   * y todas las páginas anunciadas, pero no exige una fila por cada clave.
+   */
+  async getSparseAll<T>(path: string, collectionKey: string, pageSize = 1000): Promise<T[]> {
+    return this.collectPages<T>(path, collectionKey, pageSize, {}, false);
+  }
+
   private async collectWithCompletenessRetry<T>(
     path: string,
     collectionKey: string,
@@ -163,6 +172,7 @@ export class GesiClient {
     collectionKey: string,
     pageSize: number,
     init: RequestInit = {},
+    requireCompletePages = true,
   ): Promise<T[]> {
     const all: T[] = [];
     let pageNumber = 1;
@@ -174,7 +184,8 @@ export class GesiClient {
       let pageItems: T[] = [];
       let pagination: { totalPaginas?: number; totalElementos?: number } | undefined;
       let expectedOnPage = 0;
-      for (let completenessAttempt = 1; completenessAttempt <= 5; completenessAttempt += 1) {
+      const completenessAttempts = requireCompletePages ? 5 : 1;
+      for (let completenessAttempt = 1; completenessAttempt <= completenessAttempts; completenessAttempt += 1) {
         const payload = await this.request<Record<string, unknown>>(pagePath, init);
         pageItems = Array.isArray(payload[collectionKey]) ? payload[collectionKey] as T[] : [];
         pagination = payload.paginacion as { totalPaginas?: number; totalElementos?: number } | undefined;
@@ -191,13 +202,13 @@ export class GesiClient {
         const acceptableOnPage = pageNumber === advertisedPages
           ? Math.max(0, expectedOnPage - allowedLiveDrift)
           : expectedOnPage;
-        if (pageItems.length >= acceptableOnPage) {
-          if (pageItems.length < expectedOnPage) {
+        if (!requireCompletePages || pageItems.length >= acceptableOnPage) {
+          if (requireCompletePages && pageItems.length < expectedOnPage) {
             console.warn(`${pagePath} anunció ${expectedOnPage} registros finales y entregó ${pageItems.length}; diferencia dentro de la tolerancia de datos vivos (${allowedLiveDrift}).`);
           }
           break;
         }
-        if (completenessAttempt === 5) {
+        if (completenessAttempt === completenessAttempts) {
           throw new Error(`${pagePath} devolvió ${pageItems.length} de ${expectedOnPage} registros esperados en la página`);
         }
         await new Promise((resolve) => setTimeout(resolve, completenessAttempt * 750));
@@ -212,7 +223,7 @@ export class GesiClient {
       pageNumber += 1;
     } while (pageNumber <= totalPages);
     const allowedLiveDrift = Math.max(2, Math.ceil(expectedTotal * 0.0001));
-    if (expectedTotal && all.length < expectedTotal - allowedLiveDrift) {
+    if (requireCompletePages && expectedTotal && all.length < expectedTotal - allowedLiveDrift) {
       throw new Error(`${path} devolvió ${all.length} de ${expectedTotal} registros anunciados`);
     }
     return all;
