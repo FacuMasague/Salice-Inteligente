@@ -114,4 +114,36 @@ describe('GesiClient.request', () => {
     await expect(client.request('/api/inexistente')).rejects.toThrow('falló luego de 1 intento');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('acepta colecciones dispersas cuando la paginación cuenta claves consultadas y no filas disponibles', async () => {
+    const sparsePrices = Array.from({ length: 24 }, (_, index) => ({
+      productoID: `producto-${index + 1}`,
+      precio: 100 + index,
+    }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'token-ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        precios: sparsePrices,
+        paginacion: { totalPaginas: 1, totalElementos: 40 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GesiClient(credentials);
+    await client.login();
+    const prices = await client.getSparseAll<{ productoID: string; precio: number }>(
+      '/api/Maestros/Productos/GetPrecios?codigos=40-productos',
+      'precios',
+      1000,
+    );
+
+    expect(prices).toEqual(sparsePrices);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('pageNumber=1&pageSize=1000');
+  });
 });

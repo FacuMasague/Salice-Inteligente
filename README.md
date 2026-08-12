@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.5.0
+# Salice Inteligente · v1.5.1
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.5.0 agrega supervisión privada para Developer: uso por sección y usuario, auditoría contextual segura y alertas de errores por correo, sin alterar el funcionamiento para Oficina o Administrador.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.5.1 corrige la captura de precios cuando GESI cuenta códigos consultados pero devuelve definiciones sólo para los productos que efectivamente tienen precio. Conserva las herramientas privadas de supervisión Developer incorporadas en v1.5.0.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -185,3 +185,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.4.1.md`
 - `docs/release-v1.4.0.md`
 - `docs/release-v1.5.0.md`
+- `docs/release-v1.5.1.md`
