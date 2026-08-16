@@ -8,7 +8,7 @@ interface AnimatedLayerProps {
 }
 
 /** Keeps a transient layer mounted long enough to render its closing motion. */
-export function AnimatedLayer({ open, className, children, exitDuration = 220 }: AnimatedLayerProps) {
+export function AnimatedLayer({ open, className, children, exitDuration = 320 }: AnimatedLayerProps) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const lastOpenChildren = useRef<ReactNode>(children);

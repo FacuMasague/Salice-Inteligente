@@ -19,6 +19,7 @@ import {
 } from '../../shared/inventory-decisions';
 import type { Product } from '../../shared/models';
 import { encodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
+import { AnimatedLayer } from './AnimatedLayer';
 import { MobileFilterSheet } from './MobileFilterSheet';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
@@ -234,7 +235,8 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
       {!visible.length && <div className="empty-state"><Info size={22} /><h2>No hay productos para estos filtros</h2><p>Probá ampliar estado, actividad o rotación.</p></div>}
       <div className="table-pagination"><span>Mostrando {visible.length ? (currentPage - 1) * pageSize + 1 : 0}–{(currentPage - 1) * pageSize + visible.length} de {sorted.length}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentPage} / {pageCount}</strong><button className="button secondary" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div></div>
     </section>
-    {editing && <div className="inventory-review-layer">
+    <AnimatedLayer open={Boolean(editing)} className="inventory-review-layer">
+      {editing && <>
       <button className="inventory-review-backdrop" aria-label="Cerrar revisión" onClick={() => setEditing(null)} />
       <section className="data-card inventory-review-panel" role="dialog" aria-modal="true" aria-label={`Revisar ${editing.product.name}`}>
         <header><div><span className="section-kicker">Revisión local de oficina · incidencia {editing.review?.incidentNumber ?? 1}</span><h2>{editing.product.name}</h2><p>{editing.decision.label}</p></div><button className="icon-button" aria-label="Cerrar" onClick={() => setEditing(null)}><X size={18} /></button></header>
@@ -260,6 +262,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
         </div>
         <footer><span>{editing.review?.updatedAt ? `Última actualización ${shortDate(editing.review.updatedAt.slice(0, 10))}` : 'Todavía sin revisión local'}</span><button className="button primary" disabled={saving} onClick={saveReview}>{saving ? 'Guardando…' : 'Guardar revisión'}</button></footer>
       </section>
-    </div>}
+      </>}
+    </AnimatedLayer>
   </div>;
 }

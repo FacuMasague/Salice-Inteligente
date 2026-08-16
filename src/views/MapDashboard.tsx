@@ -4,6 +4,7 @@ import type { Client, LogisticsSnapshot, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { ClientMap } from '../components/ClientMap';
 import { ClientPanel } from '../components/ClientPanel';
+import { AnimatedLayer } from '../components/AnimatedLayer';
 import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -15,6 +16,7 @@ interface MapDashboardProps {
   products: Product[];
   logistics: LogisticsSnapshot;
   selected: Client | null;
+  quickViewOpen: boolean;
   onSelect: (client: Client | null) => void;
   onPlanRoute: (clientId: number) => void;
   onNoteSaved: (clientId: number, note: string) => void;
@@ -29,7 +31,7 @@ interface MapDashboardProps {
 
 export type ClientVisibility = string;
 
-export function MapDashboard({ clients, products, logistics, selected, onSelect, onPlanRoute, onNoteSaved, onExpandClient, onOpenSeller, onOpenProduct, onOpenInvoice, snapshotDate, clientVisibility, onClientVisibilityChange }: MapDashboardProps) {
+export function MapDashboard({ clients, products, logistics, selected, quickViewOpen, onSelect, onPlanRoute, onNoteSaved, onExpandClient, onOpenSeller, onOpenProduct, onOpenInvoice, snapshotDate, clientVisibility, onClientVisibilityChange }: MapDashboardProps) {
   const [zone, setZone] = useState('');
   const [health, setHealth] = useState('');
   const [portfolioStatus, setPortfolioStatus] = useState('');
@@ -93,7 +95,7 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
 
       <SavedViewsBar viewKey="map" filters={savedFilters} onApply={applySaved} />
 
-      <div className={`map-workspace ${selected ? 'with-panel' : ''}`}>
+      <div className={`map-workspace ${quickViewOpen && selected ? 'with-panel' : ''}`}>
         <section className="map-stage">
           <div className="map-toolbar">
             <div className="map-heading"><div className="live-dot" /><span><strong>{number(filtered.length)}</strong> {filtered.length === 1 ? 'cliente visible' : 'clientes visibles'}</span></div>
@@ -117,7 +119,9 @@ export function MapDashboard({ clients, products, logistics, selected, onSelect,
           <ClientMap clients={filtered} products={products} selectedId={selected?.id ?? null} onSelect={onSelect} />
           <details className="map-legend"><summary><MapPinned size={14} /> Leyenda del mapa <ChevronDown size={14} /></summary><div><span><i className="legend-dot depot" /> Depósito · Bradley 1450</span><span><i className="legend-dot healthy" /> Riesgo bajo</span><span><i className="legend-dot attention" /> Atención</span><span><i className="legend-dot critical" /> Riesgo alto</span><span><i className="legend-dot corrected" /> Ubicación aproximada corregida</span>{(decodeMultiFilter(clientVisibility).length === 0 || decodeMultiFilter(clientVisibility).includes('inactive')) && <span><i className="legend-dot inactive" /> Cliente inactivo</span>}<span>Los grupos se separan al acercar el mapa</span></div></details>
         </section>
-        {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
+        <AnimatedLayer open={quickViewOpen && Boolean(selected)} className="map-client-quick-layer">
+          {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
+        </AnimatedLayer>
       </div>
     </div>
   );

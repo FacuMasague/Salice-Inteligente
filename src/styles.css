@@ -3674,18 +3674,30 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 
 /* Los paneles transitorios conservan el contenido durante la salida. */
 .animated-layer.is-closing { pointer-events:none; }
-.animated-layer.is-opening > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
-  animation:salice-panel-enter .22s cubic-bezier(.22,.82,.28,1) both;
+.map-client-quick-layer { display:contents; }
+.map-workspace:has(> .map-client-quick-layer) { grid-template-columns:minmax(420px,1fr) minmax(370px,420px); }
+.animated-layer.is-opening > :is(.client-profile,.client-panel,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer,.inventory-review-panel) {
+  animation:salice-panel-enter .3s cubic-bezier(.22,.82,.28,1) both;
 }
-.animated-layer.is-closing > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
-  animation:salice-panel-exit .2s ease both;
+.animated-layer.is-closing > :is(.client-profile,.client-panel,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer,.inventory-review-panel) {
+  animation:salice-panel-exit .3s cubic-bezier(.72,0,.78,.18) both;
 }
-.animated-layer.is-opening > [class$="-backdrop"] { animation:salice-backdrop-enter .18s ease both; }
-.animated-layer.is-closing > [class$="-backdrop"] { animation:salice-backdrop-exit .2s ease both; }
+.animated-layer.is-opening > [class$="-backdrop"],
+.animated-layer.is-opening > :is(button[class$="-backdrop"],.inventory-review-backdrop) { animation:salice-backdrop-enter .3s ease both; }
+.animated-layer.is-closing > [class$="-backdrop"],
+.animated-layer.is-closing > :is(button[class$="-backdrop"],.inventory-review-backdrop) { animation:salice-backdrop-exit .3s ease both; }
 @keyframes salice-panel-enter { from { opacity:0; transform:translate3d(34px,0,0); } to { opacity:1; transform:translate3d(0,0,0); } }
 @keyframes salice-panel-exit { from { opacity:1; transform:translate3d(0,0,0); } to { opacity:0; transform:translate3d(34px,0,0); } }
 @keyframes salice-backdrop-enter { from { opacity:0; } to { opacity:1; } }
 @keyframes salice-backdrop-exit { from { opacity:1; } to { opacity:0; } }
+@keyframes salice-mobile-panel-enter { from { opacity:.75; transform:translate3d(100%,0,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+@keyframes salice-mobile-panel-exit { from { opacity:1; transform:translate3d(0,0,0); } to { opacity:.75; transform:translate3d(100%,0,0); } }
+@keyframes salice-mobile-sheet-enter { from { opacity:.75; transform:translate3d(0,100%,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+@keyframes salice-mobile-sheet-exit { from { opacity:1; transform:translate3d(0,0,0); } to { opacity:.75; transform:translate3d(0,100%,0); } }
+
+@media (min-width:901px) and (max-width:1180px) {
+  .map-workspace:has(> .map-client-quick-layer) { grid-template-columns:minmax(380px,1fr) 380px; }
+}
 
 @media (max-width:900px) {
   :root { --mobile-topbar-height:60px; --mobile-page-gap:10px; }
@@ -3754,10 +3766,19 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     flex-basis:min(320px,88vw);
     padding:calc(18px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
     visibility:hidden;
-    transition:transform .2s,visibility 0s linear .2s;
+    transition:transform .3s cubic-bezier(.72,0,.78,.18),visibility 0s linear .3s;
   }
-  .sidebar.open { visibility:visible; transition-delay:0s; }
-  .sidebar-backdrop { z-index:2000; padding:0; border:0; }
+  .sidebar.open { visibility:visible; transition:transform .3s cubic-bezier(.22,.82,.28,1),visibility 0s; }
+  .sidebar-backdrop {
+    z-index:2000;
+    padding:0;
+    border:0;
+    visibility:hidden;
+    opacity:0;
+    pointer-events:none;
+    transition:visibility 0s linear .3s,opacity .3s ease;
+  }
+  .sidebar-backdrop.open { visibility:visible; opacity:1; pointer-events:auto; transition-delay:0s; }
   .sidebar-section-label { min-height:42px; font-size:11px; }
   .main-nav { gap:4px; }
   .main-nav button { min-height:46px; padding:0 12px; border-radius:10px; font-size:13px; }
@@ -3822,7 +3843,7 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     visibility:hidden;
     opacity:0;
     pointer-events:none;
-    transition:visibility 0s linear .22s,opacity .18s ease;
+    transition:visibility 0s linear .3s,opacity .3s ease;
   }
   .mobile-filter-layer.open,
   .mobile-filter-shell.mobile-only .mobile-filter-layer.open {
@@ -3839,7 +3860,7 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     border:0;
     backdrop-filter:blur(2px);
     opacity:0;
-    transition:opacity .18s ease;
+    transition:opacity .3s ease;
   }
   .mobile-filter-layer.open .mobile-filter-backdrop { opacity:1; }
   .mobile-filter-sheet {
@@ -3855,9 +3876,10 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     border-radius:20px 20px 0 0;
     box-shadow:0 -18px 55px rgba(9,31,23,.26);
     transform:translateY(102%);
-    transition:transform .22s cubic-bezier(.22,.82,.28,1);
+    transition:transform .3s cubic-bezier(.22,.82,.28,1);
   }
   .mobile-filter-layer.open .mobile-filter-sheet { transform:translateY(0); }
+  .mobile-filter-layer:not(.open) .mobile-filter-sheet { transition-timing-function:cubic-bezier(.72,0,.78,.18); }
   .mobile-filter-sheet > header {
     display:flex;
     flex:0 0 auto;
@@ -3964,7 +3986,8 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .density-compact .map-dashboard { height:calc(100dvh - var(--mobile-topbar-height)); min-height:0; padding:0; }
   .map-dashboard > .kpi-strip,
   .map-dashboard > .saved-views-bar { display:none; }
-  .map-workspace { height:100%; border:0; border-radius:0; box-shadow:none; }
+  .map-workspace,
+  .map-workspace:has(> .map-client-quick-layer) { height:100%; grid-template-columns:1fr; border:0; border-radius:0; box-shadow:none; }
   .map-stage,
   .leaflet-map { height:100%; min-height:0; }
   .client-marker-shell { display:grid !important; place-items:center; }
@@ -3975,7 +3998,7 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .density-compact .map-filter-toggle { min-height:42px; margin-left:auto; font-size:12px; }
   .map-legend { bottom:calc(10px + env(safe-area-inset-bottom)); left:10px; }
   .map-legend > summary { min-height:42px; font-size:11px; }
-  .map-workspace.with-panel .client-panel {
+  .map-client-quick-layer > .client-panel {
     position:fixed;
     z-index:1800;
     top:auto;
@@ -3988,6 +4011,14 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     border-left:0;
     border-radius:20px 20px 0 0;
     box-shadow:0 -18px 55px rgba(10,36,26,.24);
+  }
+  .map-client-quick-layer.is-opening > .client-panel { animation-name:salice-mobile-sheet-enter; }
+  .map-client-quick-layer.is-closing > .client-panel { animation-name:salice-mobile-sheet-exit; }
+  :is(.client-drawer-layer,.product-drawer-layer,.brand-drawer-layer,.invoice-drawer-layer,.delivery-sheet-drawer-layer).is-opening > :is(.client-profile,.product-profile,.brand-panel,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
+    animation-name:salice-mobile-panel-enter;
+  }
+  :is(.client-drawer-layer,.product-drawer-layer,.brand-drawer-layer,.invoice-drawer-layer,.delivery-sheet-drawer-layer).is-closing > :is(.client-profile,.product-profile,.brand-panel,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
+    animation-name:salice-mobile-panel-exit;
   }
 
   /* Productos usa navegación compacta y patrón lista → ficha completa. */
@@ -4130,7 +4161,14 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .brand-product-table > article > .icon-button { position:absolute; top:10px; right:10px; width:38px; height:38px; }
 
   /* Vendedores, Cartera y Cuentas por cobrar usan fichas completas en móvil. */
-  .seller-portfolio-comparison .table-wrap,
+  .seller-portfolio-comparison .table-wrap {
+    max-height:min(72dvh,760px);
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
   .finance-page > .data-card:last-child .table-wrap { overflow:visible; }
   .seller-portfolio-table,
   .finance-table { display:block; min-width:0; border-collapse:separate; border-spacing:0; }
@@ -4233,6 +4271,73 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .admin-table.receivables > article > .edit-workflow-button::before { display:none; }
   .admin-table.receivables .workflow-cell :is(strong,small) { max-width:none; white-space:normal; }
 
+  /* Inventario comparte el mismo patrón de ficha móvil que el resto de tablas. */
+  .inventory-table-card .table-wrap {
+    max-height:min(72dvh,760px);
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
+  .inventory-decision-table { display:block; width:100%; min-width:0; border-collapse:separate; border-spacing:0; }
+  .inventory-decision-table thead { display:none; }
+  .inventory-decision-table tbody { display:block; width:100%; padding:8px; background:#f6f8f5; }
+  .inventory-decision-table tbody tr {
+    position:relative;
+    display:grid;
+    width:100%;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:10px 14px;
+    margin-bottom:9px;
+    padding:13px;
+    background:#fff;
+    border:1px solid #dfe6e1;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(23,53,42,.05);
+  }
+  .inventory-decision-table tbody tr:last-child { margin-bottom:0; }
+  .inventory-decision-table tbody tr.inventory-in-review-row { background:#fffdf7; border-color:#eadbb6; }
+  .inventory-decision-table tbody tr.inventory-reviewed-row { background:#fafbf9; }
+  .inventory-decision-table tbody tr.inventory-reopened-row { background:#fffaf5; border-color:#e1b69f; }
+  .inventory-decision-table td,
+  .density-compact .inventory-decision-table td { display:block; width:auto; height:auto; padding:0; border:0; text-align:left; }
+  .inventory-decision-table td:first-child,
+  .inventory-decision-table td:nth-child(2),
+  .inventory-decision-table td:last-child { grid-column:1/-1; }
+  .inventory-decision-table td:not(:first-child)::before {
+    display:block;
+    margin-bottom:4px;
+    color:#829088;
+    font-size:8.5px;
+    font-weight:850;
+    letter-spacing:.035em;
+    text-transform:uppercase;
+  }
+  .inventory-decision-table td:nth-child(2)::before { content:'Estado'; }
+  .inventory-decision-table td:nth-child(3)::before { content:'Stock U1'; }
+  .inventory-decision-table td:nth-child(4)::before { content:'Rotación / mes'; }
+  .inventory-decision-table td:nth-child(5)::before { content:'Cobertura'; }
+  .inventory-decision-table td:nth-child(6)::before { content:'Revisión'; }
+  .inventory-product-link strong { color:#244f3e; font-size:14px; line-height:1.35; white-space:normal; }
+  .inventory-product-link small { line-height:1.4; white-space:normal; }
+  .inventory-review-button { width:100%; min-height:42px; justify-content:center; }
+
+  /* La caja y sus márgenes usan una geometría común en todas las listas móviles. */
+  :is(.brand-product-table,.seller-portfolio-table tbody,.finance-table tbody,.admin-table.receivables,.clients-data-table tbody,.inventory-decision-table tbody) {
+    box-sizing:border-box;
+    width:100%;
+    padding-inline:8px;
+  }
+  :is(.brand-product-table > article,.seller-portfolio-table tbody tr,.finance-table tbody tr,.admin-table.receivables > article,.clients-data-table tbody tr,.inventory-decision-table tbody tr) {
+    box-sizing:border-box;
+    width:100%;
+    min-width:0;
+    margin-inline:0;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(23,53,42,.05);
+  }
+
   /* Clientes usa tarjetas legibles en vez de una tabla recortada. */
   .clients-data-table { min-width:0; border-collapse:separate; border-spacing:0; }
   .clients-data-table thead { display:none; }
@@ -4299,8 +4404,8 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .animated-layer.is-opening > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer),
-  .animated-layer.is-closing > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer),
+  .animated-layer.is-opening > :is(.client-profile,.client-panel,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer,.inventory-review-panel),
+  .animated-layer.is-closing > :is(.client-profile,.client-panel,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer,.inventory-review-panel),
   .animated-layer > [class$="-backdrop"] { animation:none; }
   .mobile-filter-layer,
   .mobile-filter-backdrop,

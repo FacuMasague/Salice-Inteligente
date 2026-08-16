@@ -148,6 +148,7 @@ export default function App() {
   const [receivablesRequest, setReceivablesRequest] = useState<{ id: number; filters: Partial<ReceivableDashboardFilters> } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [clientProfileOpen, setClientProfileOpen] = useState(false);
+  const [mapQuickClientId, setMapQuickClientId] = useState<number | null>(null);
   const [sellerFocus, setSellerFocus] = useState('');
   const [routeClientId, setRouteClientId] = useState<number | null>(null);
   const [clientQuery, setClientQuery] = useState('');
@@ -453,7 +454,7 @@ export default function App() {
   const visibleNotifications = useMemo(() => notifications.filter((item) => visibleClientIDs.has(item.clientId)), [notifications, visibleClientIDs]);
   const selected = useMemo(() => visibleClients.find((client) => client.id === selectedId) || null, [selectedId, visibleClients]);
   const selectedProduct = useMemo(() => data?.products.find((product) => product.id === productFocusId) || null, [data, productFocusId]);
-  const openClient = (client: Client) => { setSelectedId(client.id); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openClient = (client: Client) => { setSelectedId(client.id); setMapQuickClientId(null); setClientProfileOpen(true); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openClientById = (clientId: number) => { const client = visibleClients.find((candidate) => candidate.id === clientId); if (client) openClient(client); };
   const openProduct = (value: Product | string) => { const product = typeof value === 'string' ? data?.products.find((candidate) => candidate.id === value) : value; if (!product) return; setProductFocusId(product.id); setBrandProfileOpen(false); setProductProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
   const addProductToComparison = (product: Product) => {
@@ -484,6 +485,7 @@ export default function App() {
     setView(next);
     replaceViewInLocation(next);
     setSidebarOpen(false);
+    setMapQuickClientId(null);
     setClientProfileOpen(false);
     setProductProfileOpen(false);
     setBrandProfileOpen(false);
@@ -590,7 +592,7 @@ export default function App() {
         </div>
         <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>Datos disponibles</strong><small>{data.meta.source === 'demo' ? 'Información demostrativa' : `Actualizados · ${snapshotLabel}`}</small></div></div>
       </aside>
-      {sidebarOpen && <button type="button" className="sidebar-backdrop" tabIndex={-1} aria-hidden="true" onClick={() => setSidebarOpen(false)} />}
+      <button type="button" className={`sidebar-backdrop ${sidebarOpen ? 'open' : ''}`} tabIndex={-1} aria-hidden="true" onClick={() => setSidebarOpen(false)} />
 
       <main className="main-content">
         <header className="topbar">
@@ -645,7 +647,7 @@ export default function App() {
         </section>}
 
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
-          {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} onSelect={(client) => { setSelectedId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => setClientProfileOpen(true)} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
+          {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} quickViewOpen={mapQuickClientId === selected?.id} onSelect={(client) => { setSelectedId(client?.id ?? null); setMapQuickClientId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => { setMapQuickClientId(null); setClientProfileOpen(true); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
           {view === 'agenda' && <AgendaView clients={visibleClients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={visibleClients} products={data.products} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={visibleClients} products={data.products} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
