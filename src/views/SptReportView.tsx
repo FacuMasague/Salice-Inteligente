@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, SlidersHorizontal, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportExportUrl } from '../components/ReportExperience';
+import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount, reportExportUrl } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { compactNumber, money, number } from '../lib/format';
@@ -215,7 +216,6 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     return () => controller.abort();
   }, [filters, meta, tab]);
 
-  const selectedFilterCount = useMemo(() => (Object.entries(filters) as [keyof SptFilters, string][]).filter(([key, value]) => key !== 'month' && value).length, [filters]);
   const advancedFilterCount = useMemo(() => (['brand', 'category', 'product', 'client', 'line', 'subcategory', 'clientType', 'grouping', 'locality'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof SptFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
@@ -239,6 +239,8 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     setSpecificFiltersOpen(false);
   };
   const savedFilters = { ...filters, tab };
+  const defaultFilters = { ...EMPTY_FILTERS, month: meta.latestMonth, tab: 'summary' as ReportTab };
+  const selectedFilterCount = reportActiveFilterCount(savedFilters, defaultFilters);
   const applySaved = (saved: Record<string, string>) => {
     setFilters(Object.fromEntries(Object.keys(EMPTY_FILTERS).map((key) => [key, saved[key] ?? (key === 'month' ? meta.latestMonth : '')])) as unknown as SptFilters);
     setTab(['summary', 'sellers', 'quarters'].includes(saved.tab) ? saved.tab as ReportTab : 'summary');
@@ -247,15 +249,21 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   return <div className="page-view spt-page">
     <section className="data-card spt-filter-card" data-tour="spt-overview">
       <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Universo SPT conciliado</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan directamente sobre facturas, notas de crédito y maestros de GESI.</p></div>
-      <div className="spt-filter-primary"><SingleSelectFilter label="Mes" value={filters.month} options={meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update('month', value)} /><SelectFilter label="Vendedor" value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label="Canal" value={filters.channel} options={meta.options.channel} onChange={(value) => update('channel', value)} /><SelectFilter label="Grupo de artículo" value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className={`button secondary spt-more-button ${advancedFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}><Filter size={14} /> Más filtros {advancedFilterCount ? `(${advancedFilterCount})` : ''}<ChevronDown size={13} /></button></div>
-      {expanded && <div className="spt-filter-expanded">
-        <div className="spt-filter-group-heading"><div><strong>Filtros comerciales</strong><span>Acotá el análisis por marca, rubro, producto o cliente.</span></div></div>
-        <div className="spt-filter-grid">{commonAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div>
-        <button className={`button ghost spt-specific-toggle ${specificFiltersOpen ? 'active' : ''}`} onClick={() => setSpecificFiltersOpen((value) => !value)} aria-expanded={specificFiltersOpen}><SlidersHorizontal size={14} /> {specificFiltersOpen ? 'Ocultar criterios específicos' : 'Ver criterios específicos'}</button>
-        {specificFiltersOpen && <><div className="spt-filter-group-heading secondary"><div><strong>Clasificación y segmentación</strong><span>Usalos sólo cuando necesitás reproducir un corte puntual del reporte histórico.</span></div></div><div className="spt-filter-grid specific">{specificAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div></>}
-        <div className="spt-filter-footer"><button className="button secondary" disabled={!selectedFilterCount} onClick={resetFilters}><X size={14} /> Restablecer filtros</button></div>
-      </div>}
-      <ReportFilterActions view="spt" filters={savedFilters} labels={{ month: { label: 'Mes', value: (value) => monthLabel(value, true) }, tab: { label: 'Vista' }, ...Object.fromEntries(Object.entries(FILTER_LABELS).map(([key, label]) => [key, { label }])) }} onClear={(key) => key === 'tab' ? setTab('summary') : update(key as keyof SptFilters, key === 'month' ? meta.latestMonth : '')} onReset={() => { resetFilters(); setTab('summary'); }}><SavedViewsBar viewKey="spt" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      <MobileFilterSheet
+        title="Filtros de Volumen SPT"
+        description="Elegí el mes y acotá el universo comercial sin perder de vista el resumen del reporte."
+        activeCount={selectedFilterCount}
+      >
+        <div className="spt-filter-primary"><SingleSelectFilter label="Mes" value={filters.month} options={meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update('month', value)} /><SelectFilter label="Vendedor" value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label="Canal" value={filters.channel} options={meta.options.channel} onChange={(value) => update('channel', value)} /><SelectFilter label="Grupo de artículo" value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className={`button secondary spt-more-button ${advancedFilterCount ? 'active' : ''}`} onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}><Filter size={14} /> Más filtros {advancedFilterCount ? `(${advancedFilterCount})` : ''}<ChevronDown size={13} /></button></div>
+        {expanded && <div className="spt-filter-expanded">
+          <div className="spt-filter-group-heading"><div><strong>Filtros comerciales</strong><span>Acotá el análisis por marca, rubro, producto o cliente.</span></div></div>
+          <div className="spt-filter-grid">{commonAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div>
+          <button className={`button ghost spt-specific-toggle ${specificFiltersOpen ? 'active' : ''}`} onClick={() => setSpecificFiltersOpen((value) => !value)} aria-expanded={specificFiltersOpen}><SlidersHorizontal size={14} /> {specificFiltersOpen ? 'Ocultar criterios específicos' : 'Ver criterios específicos'}</button>
+          {specificFiltersOpen && <><div className="spt-filter-group-heading secondary"><div><strong>Clasificación y segmentación</strong><span>Usalos sólo cuando necesitás reproducir un corte puntual del reporte histórico.</span></div></div><div className="spt-filter-grid specific">{specificAdvancedKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}</div></>}
+          <div className="spt-filter-footer"><button className="button secondary" disabled={!selectedFilterCount} onClick={resetFilters}><X size={14} /> Restablecer filtros</button></div>
+        </div>}
+        <ReportFilterActions view="spt" filters={savedFilters} defaults={defaultFilters} labels={{ month: { label: 'Mes', value: (value) => monthLabel(value, true) }, tab: { label: 'Vista' }, ...Object.fromEntries(Object.entries(FILTER_LABELS).map(([key, label]) => [key, { label }])) }} onClear={(key) => key === 'tab' ? setTab('summary') : update(key as keyof SptFilters, key === 'month' ? meta.latestMonth : '')} onReset={() => { resetFilters(); setTab('summary'); }}><SavedViewsBar viewKey="spt" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      </MobileFilterSheet>
       {loading && <div className="spt-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
     </section>
 

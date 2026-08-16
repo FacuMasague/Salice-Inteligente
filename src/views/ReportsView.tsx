@@ -4,9 +4,10 @@ import type { Client, DashboardData, GeneralPerformanceRow, GeneralReportMeta, G
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { AiNarrativeCard } from '../components/AiInsights';
 import { CommercialGoalsManager } from '../components/CommercialGoalsManager';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { ReportContext, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
+import { ReportContext, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
@@ -178,6 +179,8 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
 
   if (error && !report) return <ReportState state="error" title="Reporte General no disponible" detail={error} onRetry={() => location.reload()} />;
   if (!meta || !report) return <ReportState state="loading" title="Preparando Reporte General…" detail="Calculando resultados y objetivos desde las fuentes conciliadas." />;
+  const defaultFilters = { mode: 'core' as GeneralReportMode, month: meta.latestMonth, seller: '', category: '', brand: '' };
+  const selectedFilterCount = reportActiveFilterCount(savedFilters, defaultFilters);
 
   return <div className={`page-view general-report-page ${loading ? 'is-loading' : ''}`}>
     <section className="data-card general-plan-toolbar">
@@ -188,13 +191,19 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
     <section className="data-card general-filter-card" data-tour="reports-overview">
       <div className="general-filter-heading"><span className="section-kicker"><Gauge size={14} /> Estado Salice</span><h2>Resultado real frente al plan mensual</h2><p>Resultados reales y objetivos del plan mensual activo se consultan juntos en este reporte.</p></div>
       <div className="general-mode-switch">{modes.map((item) => <button key={item.id} className={mode === item.id ? 'active' : ''} onClick={() => changeMode(item.id)}><strong>{item.label}</strong><small>{item.note}</small></button>)}</div>
-      <div className="general-filters">
-        <SingleSelectFilter label="Mes y objetivos" value={month} options={meta.months.map((item) => ({ value: item, label: `${monthLabel(item, true)} · ${meta.targetSource.monthPlans.find((plan) => plan.month === item)?.name ?? 'Plan vigente'}` }))} onChange={setMonth} />
-        <MultiSelectFilter label="Vendedor" value={seller} options={sellerOptions} onChange={setSeller} />
-        {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
-        {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
-      </div>
-      <ReportFilterActions view="reports" filters={savedFilters} labels={{ mode: { label: 'Universo', value: (value) => modes.find((item) => item.id === value)?.label ?? value }, month: { label: 'Mes', value: (value) => monthLabel(value, true) }, seller: { label: 'Vendedor' }, category: { label: 'Rubro' }, brand: { label: 'Marca' } }} onClear={(key) => key === 'mode' ? changeMode('core') : key === 'month' ? setMonth(meta.latestMonth) : key === 'seller' ? setSeller('') : key === 'category' ? setCategory('') : setBrand('')} onReset={() => { setMode('core'); setMonth(meta.latestMonth); setSeller(''); setCategory(''); setBrand(''); }}><SavedViewsBar viewKey="reports" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      <MobileFilterSheet
+        title="Filtros del Reporte General"
+        description="Elegí el mes y los criterios comerciales para el universo visible."
+        activeCount={selectedFilterCount}
+      >
+        <div className="general-filters">
+          <SingleSelectFilter label="Mes y objetivos" value={month} options={meta.months.map((item) => ({ value: item, label: `${monthLabel(item, true)} · ${meta.targetSource.monthPlans.find((plan) => plan.month === item)?.name ?? 'Plan vigente'}` }))} onChange={setMonth} />
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellerOptions} onChange={setSeller} />
+          {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
+          {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
+        </div>
+        <ReportFilterActions view="reports" filters={savedFilters} defaults={defaultFilters} labels={{ mode: { label: 'Universo', value: (value) => modes.find((item) => item.id === value)?.label ?? value }, month: { label: 'Mes', value: (value) => monthLabel(value, true) }, seller: { label: 'Vendedor' }, category: { label: 'Rubro' }, brand: { label: 'Marca' } }} onClear={(key) => key === 'mode' ? changeMode('core') : key === 'month' ? setMonth(meta.latestMonth) : key === 'seller' ? setSeller('') : key === 'category' ? setCategory('') : setBrand('')} onReset={() => { setMode('core'); setMonth(meta.latestMonth); setSeller(''); setCategory(''); setBrand(''); }}><SavedViewsBar viewKey="reports" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      </MobileFilterSheet>
     </section>
 
     <ReportContext universe={`${modes.find((item) => item.id === mode)?.label} · empresa 3 / sucursal 3`} period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes fuente no disponibles en GESI.`] : []} related={[{ view: 'spt', label: 'Abrir SPT' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: `/api/admin/goals/export?format=xlsx&month=${encodeURIComponent(month)}`, label: 'Plan mensual Excel', kind: 'xlsx' }, { href: `/api/admin/goals/export?format=pdf&month=${encodeURIComponent(month)}`, label: 'Plan y avance PDF', kind: 'pdf' }]} />} />

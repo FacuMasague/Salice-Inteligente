@@ -25,7 +25,7 @@ export function HelpView({ tutorialCompleted, onStartTutorial }: {
             <div className="tutorial-selector-icon"><Icon size={21} /></div>
             <div><span>{definition.label}</span><strong>{definition.title}</strong><p>{definition.description}</p><small>{definition.steps.length} pasos · recorrido independiente</small></div>
             {completed && <em><CheckCircle2 size={14} /> Completado</em>}
-            <button className={`button ${completed ? 'secondary' : 'primary'}`} onClick={() => onStartTutorial(id)}><PlayCircle size={16} /> {completed ? 'Repetir' : 'Comenzar'}</button>
+            <button className={`button ${completed ? 'secondary' : 'primary'}`} aria-label={`${completed ? 'Repetir' : 'Comenzar'} tutorial: ${definition.label}`} onClick={() => onStartTutorial(id)}><PlayCircle size={16} /> {completed ? 'Repetir' : 'Comenzar'}</button>
           </article>;
         })}
       </div>

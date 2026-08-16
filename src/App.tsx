@@ -13,6 +13,7 @@ import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawe
 import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
 import { ProductPanel } from './components/ProductPanel';
 import { BrandPanel } from './components/BrandPanel';
+import { MobileFilterSheet } from './components/MobileFilterSheet';
 import { TUTORIALS, TutorialOverlay, type TutorialSection, type TutorialView } from './components/TutorialOverlay';
 import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
 import { number } from './lib/format';
@@ -70,6 +71,8 @@ const clientScopeViews = new Set<View>([
   'reports',
   'non-buyers',
 ]);
+
+const APP_FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])';
 
 const titles: Record<View, { title: string; subtitle: string }> = {
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
@@ -148,7 +151,8 @@ export default function App() {
   const [routeClientId, setRouteClientId] = useState<number | null>(null);
   const [clientQuery, setClientQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [narrowDisplay, setNarrowDisplay] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('');
   const [clientScope, setClientScope] = useState<ClientScopeMode>(() => {
@@ -188,6 +192,10 @@ export default function App() {
   const refreshPollTimer = useRef<number | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const searchContainer = useRef<HTMLDivElement>(null);
+  const mobileSearchButton = useRef<HTMLButtonElement>(null);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const sidebarElement = useRef<HTMLElement>(null);
+  const sidebarCloseButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     fetch('/api/dashboard')
@@ -211,14 +219,84 @@ export default function App() {
   useEffect(() => {
     const narrowDisplay = window.matchMedia('(max-width: 900px)');
     const syncSidebarWithDisplay = (matches: boolean) => {
-      setSidebarCollapsed(matches);
-      if (matches) setSidebarOpen(false);
+      setNarrowDisplay(matches);
+      setSidebarOpen(false);
     };
     syncSidebarWithDisplay(narrowDisplay.matches);
     const handleDisplayChange = (event: MediaQueryListEvent) => syncSidebarWithDisplay(event.matches);
     narrowDisplay.addEventListener('change', handleDisplayChange);
     return () => narrowDisplay.removeEventListener('change', handleDisplayChange);
   }, []);
+
+  useEffect(() => {
+    if (!narrowDisplay || !sidebarOpen) return undefined;
+    const sidebar = sidebarElement.current;
+    if (!sidebar) return undefined;
+    const focusableElements = () => [...sidebar.querySelectorAll<HTMLElement>(APP_FOCUSABLE_SELECTOR)]
+      .filter((element) => element.offsetParent !== null);
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase('es') === 'k') {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setSidebarOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = focusableElements();
+      if (!focusable.length) {
+        event.preventDefault();
+        sidebar.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!sidebar.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const restoreEscapedFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !sidebar.contains(event.target)) {
+        (focusableElements()[0] ?? sidebar).focus();
+      }
+    };
+    const inertedBackground = new globalThis.Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>();
+    for (const sibling of sidebar.parentElement?.children ?? []) {
+      if (sibling === sidebar || !(sibling instanceof HTMLElement) || sibling.classList.contains('sidebar-backdrop')) continue;
+      inertedBackground.set(sibling, { inert: sibling.inert, ariaHidden: sibling.getAttribute('aria-hidden') });
+      sibling.inert = true;
+      sibling.setAttribute('aria-hidden', 'true');
+    }
+    document.documentElement.classList.add('mobile-navigation-open');
+    const focusFrame = window.requestAnimationFrame(() => sidebarCloseButton.current?.focus());
+    window.addEventListener('keydown', keepFocusInside, true);
+    document.addEventListener('focusin', restoreEscapedFocus, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.documentElement.classList.remove('mobile-navigation-open');
+      for (const [element, previous] of inertedBackground) {
+        element.inert = previous.inert;
+        if (previous.ariaHidden == null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', previous.ariaHidden);
+      }
+      window.removeEventListener('keydown', keepFocusInside, true);
+      document.removeEventListener('focusin', restoreEscapedFocus, true);
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        window.requestAnimationFrame(() => mobileMenuButton.current?.focus());
+      }
+    };
+  }, [narrowDisplay, sidebarOpen]);
 
   const refreshDataHealth = () => {
     fetch('/api/system/data-health').then((response) => response.ok ? response.json() : null).then(setDataHealth).catch(() => setDataHealth(null));
@@ -332,16 +410,21 @@ export default function App() {
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (document.documentElement.classList.contains('mobile-sheet-open') || document.documentElement.classList.contains('mobile-navigation-open')) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setSearchOpen(true);
         requestAnimationFrame(() => searchInput.current?.focus());
       }
-      if (event.key === 'Escape') { setSearchOpen(false); setNotificationsOpen(false); setUserMenuOpen(false); setHelpOpen(false); setBrandProfileOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); }
+      if (event.key === 'Escape') {
+        const restoreSearchFocus = searchOpen && window.matchMedia('(max-width: 900px)').matches;
+        setSearchOpen(false); setNotificationsOpen(false); setUserMenuOpen(false); setHelpOpen(false); setBrandProfileOpen(false); setProductProfileOpen(false); setClientProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null);
+        if (restoreSearchFocus) requestAnimationFrame(() => mobileSearchButton.current?.focus());
+      }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, []);
+  }, [searchOpen]);
 
   useEffect(() => {
     if (!tutorial || !data) return;
@@ -422,6 +505,7 @@ export default function App() {
     selectView('receivables');
   };
   const toggleSidebarSection = (section: SidebarSection) => setSidebarSections((current) => ({ ...current, [section]: !current[section] }));
+  const openMobileNavigation = () => { setSearchOpen(false); setNotificationsOpen(false); setUserMenuOpen(false); setHelpOpen(false); setSidebarOpen(true); };
   const planRoute = (clientId: number) => {
     const client = visibleClients.find((candidate) => candidate.id === clientId);
     if (!client?.active || !client.coordinates || client.locationPrecision === 'locality') return;
@@ -473,10 +557,22 @@ export default function App() {
   const snapshotDay = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(snapshotDate).replace('.', '');
   const snapshotTime = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(snapshotDate);
   const snapshotLabel = `${snapshotDay} · ${snapshotTime}`;
+  const clientScopeLabel = CLIENT_SCOPE_OPTIONS.find((option) => option.value === clientScope)?.label ?? 'Alcance de clientes';
+  const sidebarInactive = narrowDisplay ? !sidebarOpen : sidebarCollapsed;
   return (
     <div className={`app-shell density-${preferences.density}`}>
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="brand"><div className="brand-mark"><img src="/salice-isotipo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
+      <aside
+        ref={sidebarElement}
+        id="app-sidebar-navigation"
+        className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}
+        inert={sidebarInactive ? true : undefined}
+        aria-hidden={sidebarInactive ? true : undefined}
+        role={narrowDisplay && sidebarOpen ? 'dialog' : undefined}
+        aria-modal={narrowDisplay && sidebarOpen ? true : undefined}
+        aria-label={narrowDisplay && sidebarOpen ? 'Navegación principal' : undefined}
+        tabIndex={narrowDisplay && sidebarOpen ? -1 : undefined}
+      >
+        <div className="brand"><div className="brand-mark"><img src="/salice-isotipo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button ref={sidebarCloseButton} className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
         <div className="sidebar-scroll">
           <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection('operations')}><span>Centro operativo</span>{sidebarSections.operations ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
@@ -491,15 +587,31 @@ export default function App() {
         </div>
         <div className="sidebar-footer"><span className={`source-dot ${data.meta.source}`} /><div><strong>Datos disponibles</strong><small>{data.meta.source === 'demo' ? 'Información demostrativa' : `Actualizados · ${snapshotLabel}`}</small></div></div>
       </aside>
-      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && <button type="button" className="sidebar-backdrop" tabIndex={-1} aria-hidden="true" onClick={() => setSidebarOpen(false)} />}
 
       <main className="main-content">
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Abrir menú" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+          <button ref={mobileMenuButton} className="mobile-menu" aria-label="Abrir menú" aria-expanded={sidebarOpen} aria-controls="app-sidebar-navigation" onClick={openMobileNavigation}><Menu size={20} /></button>
           <button className="desktop-sidebar-toggle" aria-label={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} title={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} aria-pressed={sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button>
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
-            <div ref={searchContainer} className={`global-search ${searchOpen ? 'open' : ''}`} onClick={() => { setSearchOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); }}><Search size={17} /><input ref={searchInput} value={globalQuery} onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
+            {clientScopeViews.has(view) && <MobileFilterSheet
+              mobileOnly
+              className="mobile-client-scope-sheet"
+              title="Alcance de clientes"
+              description="Este alcance se comparte entre los módulos que trabajan con clientes para mantener resultados consistentes."
+              triggerLabel="Alcance"
+              applyLabel="Usar este alcance"
+            >
+              <label className="mobile-client-scope-control">
+                <span>Mostrar clientes que</span>
+                <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
+                  {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <small>Selección actual: {clientScopeLabel}</small>
+              </label>
+            </MobileFilterSheet>}
+            <div ref={searchContainer} className={`global-search ${searchOpen ? 'open' : ''}`} onClick={() => { setSearchOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); }}><Search className="global-search-leading-icon" size={17} /><button ref={mobileSearchButton} type="button" className="global-search-mobile-trigger" aria-label="Abrir búsqueda global" aria-expanded={searchOpen} aria-controls="global-search-input" onClick={(event) => { event.stopPropagation(); setSearchOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); }}><Search size={17} /></button><input id="global-search-input" ref={searchInput} value={globalQuery} aria-label="Buscar cliente, vendedor, marca o producto" onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
               {searchOpen && <div className="global-search-results" onClick={(event) => event.stopPropagation()}>
                 {normalizedGlobalQuery.length < 2 && <p>Escribí al menos 2 caracteres para buscar en toda la base.</p>}
                 {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · prioridad {client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, ChevronRight, Link2, NotebookPen, PackageCheck, PackageX, Search, Sparkles, Store, Users } from 'lucide-react';
 import type { Client, Product, Recommendation, RecommendationConfidence, RecommendationKind, SavedView } from '../../shared/models';
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number } from '../lib/format';
 import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
+import { MobileFilterSheet } from './MobileFilterSheet';
 import { SavedViewsBar } from './SavedViewsBar';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
@@ -50,6 +51,7 @@ export function CommercialOpportunitiesWorkspace({ clients, products, initialCli
   const [linkNote, setLinkNote] = useState('');
   const [linkError, setLinkError] = useState('');
   const [linking, setLinking] = useState(false);
+  const workspaceRef = useRef<HTMLElement>(null);
   const clientTypes = useMemo(() => [...new Set(activeClients.map((client) => client.segment).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const sellers = useMemo(() => [...new Set(activeClients.map((client) => client.seller).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
   const localities = useMemo(() => [...new Set(activeClients.map((client) => client.locality).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [activeClients]);
@@ -81,10 +83,23 @@ export function CommercialOpportunitiesWorkspace({ clients, products, initialCli
 
   const visibleClients = filteredClients.slice(0, 120);
   const visibleRecommendations = recommendations.filter((item) => (kind === 'all' || item.kinds.includes(kind)) && (confidence === 'all' || item.confidence === confidence));
+  const activeClientFilterCount = [clientType, seller, locality].filter(Boolean).length + (opportunity === 'all' ? 0 : 1);
+  const activeRecommendationFilterCount = (kind === 'all' ? 0 : 1) + (confidence === 'all' ? 0 : 1);
   const savedFilters = { clientId: String(selected?.id ?? ''), query, clientType, seller, locality, opportunity, kind, confidence };
+  const revealWorkspaceWhenStacked = () => {
+    if (typeof window === 'undefined' || !window.matchMedia?.('(max-width: 900px)').matches) return;
+    window.requestAnimationFrame(() => workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+  const selectClient = (clientId: number) => {
+    setSelectedId(clientId);
+    revealWorkspaceWhenStacked();
+  };
   const applySaved = (saved: Record<string, string>) => {
     const requestedClient = Number(saved.clientId);
-    if (activeClients.some((client) => client.id === requestedClient)) setSelectedId(requestedClient);
+    if (activeClients.some((client) => client.id === requestedClient)) {
+      setSelectedId(requestedClient);
+      revealWorkspaceWhenStacked();
+    }
     setQuery(saved.query ?? '');
     setClientType(saved.clientType ?? '');
     setSeller(saved.seller ?? '');
@@ -110,23 +125,41 @@ export function CommercialOpportunitiesWorkspace({ clients, products, initialCli
   return <div className="commercial-opportunity-layout">
     <aside className="data-card opportunity-client-directory">
       <header><span className="section-kicker"><Users size={14} /> Cliente objetivo</span><h2>Elegir una cuenta</h2><p>Orden inicial por señal O y ventas recientes.</p></header>
-      <SavedViewsBar viewKey="products" purpose="product_opportunities" filters={savedFilters} onApply={applySaved} onViewsChange={setOpportunityLists} />
       <label className="inline-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, vendedor o localidad…" /></label>
-      <div className="opportunity-client-filters">
-        <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} />
-        <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} />
-        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
-        <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
-      </div>
-      <div className="opportunity-client-list">{visibleClients.map((client) => <button key={client.id} className={client.id === selected.id ? 'active' : ''} onClick={() => setSelectedId(client.id)}><span><strong>{clientPrimaryName(client)}</strong><small>{client.seller} · {client.locality}</small></span><b>{client.commercialOpportunity}</b></button>)}</div>
+      <MobileFilterSheet
+        title="Filtrar clientes"
+        description="Acotá la cuenta objetivo por tipo, vendedor, localidad o nivel de oportunidad."
+        activeCount={activeClientFilterCount}
+        applyLabel={`Ver ${number(filteredClients.length)} clientes`}
+      >
+        <div className="opportunity-client-filters">
+          <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} />
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} />
+          <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
+          <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
+        </div>
+        <SavedViewsBar viewKey="products" purpose="product_opportunities" filters={savedFilters} onApply={applySaved} onViewsChange={setOpportunityLists} />
+      </MobileFilterSheet>
+      <div className="opportunity-client-list">{visibleClients.map((client) => <button key={client.id} className={client.id === selected.id ? 'active' : ''} onClick={() => selectClient(client.id)}><span><strong>{clientPrimaryName(client)}</strong><small>{client.seller} · {client.locality}</small></span><b>{client.commercialOpportunity}</b></button>)}</div>
       <footer>{number(filteredClients.length)} de {number(activeClients.length)} clientes activos, sin bloqueo y con mix reciente</footer>
     </aside>
-    <section className="opportunity-workspace-main">
+    <section ref={workspaceRef} className="opportunity-workspace-main">
       <header className="data-card opportunity-hero">
         <div><span className="section-kicker"><Sparkles size={15} /> Oportunidades explicables · 90 días</span><h2>{clientPrimaryName(selected)}</h2>{clientSecondaryName(selected) && <p>{clientSecondaryName(selected)}</p>}<div className="opportunity-entity-links"><button onClick={() => onOpenClient(selected)}><Users size={13} /> Abrir cliente</button><button onClick={() => onOpenSeller(selected.seller)}><Users size={13} /> {selected.seller}</button></div></div>
         <div className="opportunity-hero-score"><span>Oportunidad comercial</span><strong>{selected.commercialOpportunity}/100</strong><small>{money(selected.sales90d, true)} · {number(selectedKilos?.kilos ?? 0, 2)} kg{selectedKilos?.complete ? '' : ' parciales'} en 90 días</small></div>
       </header>
-      <div className="data-card opportunity-controls"><label><span>TIPO</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="all">Todas las oportunidades</option>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>CONFIANZA</span><select value={confidence} onChange={(event) => setConfidence(event.target.value as typeof confidence)}><option value="all">Todos los niveles</option>{Object.entries(confidenceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><p><PackageCheck size={15} /> Sólo productos comercializables con stock positivo. Los incompatibles quedan excluidos.</p></div>
+      <div className="data-card opportunity-controls">
+        <MobileFilterSheet
+          title="Filtrar oportunidades"
+          description="Acotá las sugerencias por tipo de señal o nivel de confianza."
+          activeCount={activeRecommendationFilterCount}
+          applyLabel={`Ver ${number(visibleRecommendations.length)} oportunidades`}
+        >
+          <label><span>TIPO</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="all">Todas las oportunidades</option>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label><span>CONFIANZA</span><select value={confidence} onChange={(event) => setConfidence(event.target.value as typeof confidence)}><option value="all">Todos los niveles</option>{Object.entries(confidenceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        </MobileFilterSheet>
+        <p><PackageCheck size={15} /> Sólo productos comercializables con stock positivo. Los incompatibles quedan excluidos.</p>
+      </div>
       {loading && <div className="data-card opportunity-status">Calculando mix, pares comparables, quiebres y cobertura…</div>}
       {error && <div className="data-card opportunity-status error">{error}</div>}
       {!loading && !error && <div className="commercial-opportunity-grid">{visibleRecommendations.map((item) => <article className="data-card commercial-opportunity-card" key={item.product.id}>

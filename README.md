@@ -1,6 +1,6 @@
-# Salice Inteligente · v1.5.1
+# Salice Inteligente · v2.0.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v1.5.1 corrige la captura de precios cuando GESI cuenta códigos consultados pero devuelve definiciones sólo para los productos que efectivamente tienen precio. Conserva las herramientas privadas de supervisión Developer incorporadas en v1.5.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.0.0 incorpora una experiencia móvil integral: navegación persistente, filtros por vista en paneles inferiores accesibles, superficies de datos adaptadas a pantallas angostas y un mapa que prioriza la cartografía. Mantiene sin cambios los universos, cálculos, permisos, persistencia y controles determinísticos de v1.5.1.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -153,10 +153,10 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance deliberadamente fuera de v1.4
+## Alcance que continúa fuera de v2.0.0
 
 - Empaquetado instalable.
-- Rediseño móvil completo.
+- Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
 - Escalado horizontal: la base SQLite y el programador requieren una sola instancia con disco.
 - Ajuste autónomo de prompts, aprendizaje automático con feedback o fine-tuning automático.
 
@@ -186,3 +186,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.4.0.md`
 - `docs/release-v1.5.0.md`
 - `docs/release-v1.5.1.md`
+- `docs/release-v2.0.0.md`

@@ -5,6 +5,7 @@ import type { AiOperationalBrief, AiStoredArtifact } from '../../shared/ai';
 import type { DemandDimension, DemandStability, DemandTrend, DemandWindowDays, ProductDemandPayload, ProductDemandRow } from '../../shared/product-demand';
 import { compactDate, money, number, shortDate } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
+import { MobileFilterSheet } from './MobileFilterSheet';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
 import { SortButton } from './SortButton';
@@ -98,6 +99,8 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const visible = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const activeFilterCount = [brand, family, group, line, masterStatus, trend, stability].filter(Boolean).length
+    + (availability === 'all' ? 0 : 1);
 
   const openEntity = (row: ProductDemandRow) => {
     if (dimension === 'product') { const product = productMap.get(row.id); if (product) onOpenProduct(product); }
@@ -143,14 +146,21 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
     <section className="data-card demand-controls">
       <div className="demand-dimension-switch" aria-label="Dimensión de análisis">{(Object.keys(dimensionLabels) as DemandDimension[]).map((key) => <button key={key} className={dimension === key ? 'active' : ''} onClick={() => { setDimension(key); setPage(1); }}>{dimensionLabels[key]}</button>)}</div>
       <label className="inline-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder={`Buscar ${dimensionLabels[dimension].toLocaleLowerCase('es')}…`} /></label>
-      <MultiSelectFilter label="Marca" value={brand} options={payload?.options.brands ?? []} onChange={(value) => { setBrand(value); setPage(1); }} />
-      <MultiSelectFilter label="Rubro" value={family} options={payload?.options.families ?? []} onChange={(value) => { setFamily(value); setPage(1); }} />
-      <MultiSelectFilter label="Grupo" value={group} options={payload?.options.groups ?? []} onChange={(value) => { setGroup(value); setPage(1); }} />
-      <MultiSelectFilter label="Línea" value={line} options={payload?.options.lines ?? []} onChange={(value) => { setLine(value); setPage(1); }} />
-      <SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'all', label: 'Todos' }, { value: 'stock', label: 'Con stock' }, { value: 'commercial', label: 'Comercializables' }]} onChange={(value) => { setAvailability(value); setPage(1); }} />
-      <MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin definir' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} />
-      <MultiSelectFilter label="Evolución" value={trend} options={Object.entries(trendLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setTrend(value); setPage(1); }} />
-      <MultiSelectFilter label="Estabilidad" value={stability} options={Object.entries(stabilityLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setStability(value); setPage(1); }} />
+      <MobileFilterSheet
+        title="Filtrar demanda y rotación"
+        description="Acotá el análisis por jerarquía comercial, disponibilidad, estado, evolución o estabilidad."
+        activeCount={activeFilterCount}
+        applyLabel={`Ver ${number(sorted.length)} resultados`}
+      >
+        <MultiSelectFilter label="Marca" value={brand} options={payload?.options.brands ?? []} onChange={(value) => { setBrand(value); setPage(1); }} />
+        <MultiSelectFilter label="Rubro" value={family} options={payload?.options.families ?? []} onChange={(value) => { setFamily(value); setPage(1); }} />
+        <MultiSelectFilter label="Grupo" value={group} options={payload?.options.groups ?? []} onChange={(value) => { setGroup(value); setPage(1); }} />
+        <MultiSelectFilter label="Línea" value={line} options={payload?.options.lines ?? []} onChange={(value) => { setLine(value); setPage(1); }} />
+        <SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'all', label: 'Todos' }, { value: 'stock', label: 'Con stock' }, { value: 'commercial', label: 'Comercializables' }]} onChange={(value) => { setAvailability(value); setPage(1); }} />
+        <MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin definir' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} />
+        <MultiSelectFilter label="Evolución" value={trend} options={Object.entries(trendLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setTrend(value); setPage(1); }} />
+        <MultiSelectFilter label="Estabilidad" value={stability} options={Object.entries(stabilityLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setStability(value); setPage(1); }} />
+      </MobileFilterSheet>
     </section>
 
     {loading && <section className="data-card demand-state"><Activity className="loading-icon" size={26} /><strong>Calculando ventanas equivalentes…</strong></section>}

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock3, FileText, MapPin, Navigation, Route, Search, Sparkles, Truck,
 } from 'lucide-react';
 import { groupDeliveryInvoices } from '../../shared/algorithms';
 import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { DELIVERY_ASSIGNMENT_LABELS, deliveryAssignmentText, summarizeReliableInvoiceKilos } from '../lib/delivery-status';
@@ -61,6 +62,7 @@ export function RoutesView({
   const [stopMinutes, setStopMinutes] = useState(15);
   const [maxWorkMinutes, setMaxWorkMinutes] = useState(480);
   const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
+  const consumedInitialClientId = useRef<number | null>(null);
 
   const localities = useMemo(() => [...new Set(logistics.invoices.map((invoice) => invoice.locality).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'es')), [logistics.invoices]);
@@ -76,13 +78,13 @@ export function RoutesView({
         && invoice.issuedAt <= through
         && (status === 'all' || invoice.assignmentStatus === status)
         && (!locality || locality.split('|').includes(invoice.locality))
-        && (!driver || (invoice.sheet?.driver && driver.split('|').includes(invoice.sheet.driver)))
-        && (!zone || (invoice.sheet && [sheetById.get(invoice.sheet.id)?.zone, sheetById.get(invoice.sheet.id)?.subzone].some((value) => value && zone.split('|').includes(value))))
-        && (!sheetNumber || (invoice.sheet && sheetNumber.split('|').includes(String(invoice.sheet.id))))
+        && (mode !== 'sheets' || !driver || (invoice.sheet?.driver && driver.split('|').includes(invoice.sheet.driver)))
+        && (mode !== 'sheets' || !zone || (invoice.sheet && [sheetById.get(invoice.sheet.id)?.zone, sheetById.get(invoice.sheet.id)?.subzone].some((value) => value && zone.split('|').includes(value))))
+        && (mode !== 'sheets' || !sheetNumber || (invoice.sheet && sheetNumber.split('|').includes(String(invoice.sheet.id))))
         && (!normalizedQuery || `${invoice.number} ${invoice.deliveryAddress} ${invoice.locality} ${client?.name ?? ''} ${client?.tradeName ?? ''}`
           .toLocaleLowerCase('es').includes(normalizedQuery));
     });
-  }, [clientById, driver, from, locality, logistics.invoices, query, sheetById, sheetNumber, status, through, zone]);
+  }, [clientById, driver, from, locality, logistics.invoices, mode, query, sheetById, sheetNumber, status, through, zone]);
   const stops = useMemo(() => groupDeliveryInvoices(filteredInvoices, clients), [clients, filteredInvoices]);
   const stopByClient = useMemo(() => new Map(stops.map((stop) => [stop.clientId, stop])), [stops]);
   const selectedStops = manualOrder.map((id) => stopByClient.get(id)).filter((stop): stop is NonNullable<typeof stop> => Boolean(stop));
@@ -116,7 +118,8 @@ export function RoutesView({
   }, [stopByClient]);
 
   useEffect(() => {
-    if (!initialClientId) return;
+    if (!initialClientId || consumedInitialClientId.current === initialClientId) return;
+    consumedInitialClientId.current = initialClientId;
     const target = stops.find((stop) => stop.clientId === initialClientId && stop.coordinates);
     if (!target) return;
     setSelectedIds(new Set([target.clientId]));
@@ -182,6 +185,16 @@ export function RoutesView({
 
   const counts = Object.fromEntries((['unassigned', 'open_sheet', 'closed_sheet', 'unknown'] as DeliveryAssignmentStatus[])
     .map((key) => [key, filteredInvoices.filter((invoice) => invoice.assignmentStatus === key).length])) as Record<DeliveryAssignmentStatus, number>;
+  const activeFilterCount = [
+    from !== (defaultFrom < coverageFrom ? coverageFrom : defaultFrom),
+    through !== coverageThrough,
+    status !== 'all',
+    Boolean(locality),
+    Boolean(query.trim()),
+    mode === 'sheets' && Boolean(driver),
+    mode === 'sheets' && Boolean(zone),
+    mode === 'sheets' && Boolean(sheetNumber),
+  ].filter(Boolean).length;
 
   return (
     <div className="page-view delivery-routes-page">
@@ -202,16 +215,25 @@ export function RoutesView({
         <article className="closed"><Check size={18} /><div><span>En foja cerrada</span><strong>{number(counts.closed_sheet)}</strong></div></article>
       </section>
 
-      <section className="data-card delivery-route-filters">
-        <label><span>FACTURADA DESDE</span><input type="date" min={coverageFrom} max={through} value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-        <label><span>HASTA</span><input type="date" min={from} max={coverageThrough} value={through} onChange={(event) => setThrough(event.target.value)} /></label>
-        <SingleSelectFilter label="Estado de reparto" value={status} options={statusOptions} onChange={setStatus} />
-        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
-        {mode === 'sheets' && <MultiSelectFilter label="Chofer" value={driver} options={drivers} onChange={setDriver} />}
-        {mode === 'sheets' && <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />}
-        {mode === 'sheets' && <MultiSelectFilter label="Número de foja" value={sheetNumber} options={sheetNumbers} onChange={setSheetNumber} />}
-        <label className="delivery-route-search"><span>BUSCAR</span><div><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, factura o domicilio" /></div></label>
-      </section>
+      <MobileFilterSheet
+        title={mode === 'sheets' ? 'Filtrar fojas y facturas' : 'Filtrar facturas para la ruta'}
+        description={mode === 'sheets'
+          ? 'Los filtros de chofer, zona y número de foja se conservan en este mapa y no afectan el planificador.'
+          : 'Acotá las facturas disponibles por fecha, estado, localidad o búsqueda.'}
+        activeCount={activeFilterCount}
+        applyLabel={`Ver ${number(filteredInvoices.length)} facturas`}
+      >
+        <section className="data-card delivery-route-filters">
+          <label><span>FACTURADA DESDE</span><input type="date" min={coverageFrom} max={through} value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+          <label><span>HASTA</span><input type="date" min={from} max={coverageThrough} value={through} onChange={(event) => setThrough(event.target.value)} /></label>
+          <SingleSelectFilter label="Estado de reparto" value={status} options={statusOptions} onChange={setStatus} />
+          <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} />
+          {mode === 'sheets' && <MultiSelectFilter label="Chofer" value={driver} options={drivers} onChange={setDriver} />}
+          {mode === 'sheets' && <MultiSelectFilter label="Zona" value={zone} options={zones} onChange={setZone} />}
+          {mode === 'sheets' && <MultiSelectFilter label="Número de foja" value={sheetNumber} options={sheetNumbers} onChange={setSheetNumber} />}
+          <label className="delivery-route-search"><span>BUSCAR</span><div><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, factura o domicilio" /></div></label>
+        </section>
+      </MobileFilterSheet>
 
       {mode === 'sheets' ? <div className="delivery-sheet-workspace">
         <aside className="data-card delivery-sheet-directory">

@@ -8,6 +8,7 @@ import {
   isActionableReceivableAmount,
   isReceivableSeller,
 } from '../../shared/receivables-policy';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
@@ -105,6 +106,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
     resetPage();
   };
   const savedFilters = { query, status, seller, portfolio, aging, creditTerm, paymentMethod };
+  const activeFilterCount = [status, seller, portfolio, aging, creditTerm, paymentMethod].filter(Boolean).length;
   const applySaved = (saved: Record<string, string>) => {
     setQuery(saved.query ?? ''); setStatus(saved.status ?? ''); setSeller(saved.seller ?? '');
     setPortfolio(saved.portfolio ?? ''); setAging(saved.aging ?? ''); setCreditTerm(saved.creditTerm ?? '');
@@ -120,16 +122,24 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
         <article className="summary-card success"><CheckCircle2 size={21} /><div><span>Pagos en término</span><strong>{paymentSamples ? `${onTimeRate}%` : 'Sin datos'}</strong><small>{number(paymentSamples)} facturas con vencimiento conciliado</small></div></article>
       </div>
 
-      <div className="finance-filter-bar">
+      <div className="page-tools">
         <label className="large-search"><Search size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Buscar cliente o comprobante…" /></label>
-        <MultiSelectFilter label="Estado" value={status} options={[{ value: 'overdue', label: 'Vencidos' }, { value: 'due_soon', label: 'Por vencer' }, { value: 'open', label: 'Abiertos' }]} onChange={(value) => { setStatus(value); resetPage(); }} />
-        <MultiSelectFilter label="Vencimiento" value={aging} options={agingBands.map((band) => ({ value: band.key, label: band.label }))} onChange={(value) => { setAging(value); resetPage(); }} />
-        <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); resetPage(); }} />
-        <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Confirmada' }, { value: 'review', label: 'A revisar' }]} onChange={(value) => { setPortfolio(value); resetPage(); }} />
-        <MultiSelectFilter label="Plazo observado" value={creditTerm} options={[{ value: 'consistent', label: 'Consistente' }, { value: 'predominant', label: 'Predominante' }, { value: 'mixed', label: 'Condición mixta' }, { value: 'single', label: 'Una factura' }, { value: 'unavailable', label: 'Sin muestra' }]} onChange={(value) => { setCreditTerm(value); resetPage(); }} />
-        <MultiSelectFilter label="Forma de pago factura" value={paymentMethod} options={paymentMethods} onChange={(value) => { setPaymentMethod(value); resetPage(); }} />
       </div>
-      <SavedViewsBar viewKey="finance" filters={savedFilters} onApply={applySaved} />
+      <MobileFilterSheet
+        title="Filtrar la cartera"
+        description="Acotá los comprobantes por estado, vencimiento, vendedor o condiciones observadas. La búsqueda queda siempre visible."
+        activeCount={activeFilterCount}
+      >
+        <div className="finance-filter-bar">
+          <MultiSelectFilter label="Estado" value={status} options={[{ value: 'overdue', label: 'Vencidos' }, { value: 'due_soon', label: 'Por vencer' }, { value: 'open', label: 'Abiertos' }]} onChange={(value) => { setStatus(value); resetPage(); }} />
+          <MultiSelectFilter label="Vencimiento" value={aging} options={agingBands.map((band) => ({ value: band.key, label: band.label }))} onChange={(value) => { setAging(value); resetPage(); }} />
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); resetPage(); }} />
+          <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Confirmada' }, { value: 'review', label: 'A revisar' }]} onChange={(value) => { setPortfolio(value); resetPage(); }} />
+          <MultiSelectFilter label="Plazo observado" value={creditTerm} options={[{ value: 'consistent', label: 'Consistente' }, { value: 'predominant', label: 'Predominante' }, { value: 'mixed', label: 'Condición mixta' }, { value: 'single', label: 'Una factura' }, { value: 'unavailable', label: 'Sin muestra' }]} onChange={(value) => { setCreditTerm(value); resetPage(); }} />
+          <MultiSelectFilter label="Forma de pago factura" value={paymentMethod} options={paymentMethods} onChange={(value) => { setPaymentMethod(value); resetPage(); }} />
+        </div>
+        <SavedViewsBar viewKey="finance" filters={savedFilters} onApply={applySaved} />
+      </MobileFilterSheet>
 
       <section className="data-card aging-card">
         <div className="data-card-header"><div><span className="section-kicker">Vencimiento de la cuenta corriente</span><h2>Antes y después del vencimiento</h2><p>Podés combinar varias bandas. Primero se muestra cuánto falta para vencer; después, la antigüedad de lo vencido.</p></div><button className="button secondary" onClick={() => setAging('')}>Ver todas</button></div>

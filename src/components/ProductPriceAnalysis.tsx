@@ -5,6 +5,7 @@ import type { PriceComparison, PricePerKgStatus, PriceWindowDays, ProductPriceAl
 import { readApiJson } from '../lib/api-response';
 import { compactDate, money, number, shortDate } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
+import { MobileFilterSheet } from './MobileFilterSheet';
 import { SingleSelectFilter } from './SingleSelectFilter';
 import { SortButton } from './SortButton';
 import { Sparkline } from './Sparkline';
@@ -113,6 +114,7 @@ export function ProductPriceAnalysis({ products, onOpenProduct }: { products: Pr
   const currentPage = Math.min(page, pageCount);
   const visible = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const selectedProduct = productMap.get(selectedId);
+  const activeFilterCount = Number(Boolean(alert)) + Number(Boolean(priceKgStatus));
 
   return <div className="product-price-workspace">
     <header className="data-card price-hero"><div><span className="section-kicker"><BadgeDollarSign size={15} /> Precios GESI y ventas reales</span><h2>Precios y evolución</h2><p>Referencia, precio efectivo neto y precio por kilo permanecen separados. Cada cambio conserva su fuente y base comparable.</p></div><div className="demand-window-switch" aria-label="Ventana del precio efectivo">{([30, 90, 180] as PriceWindowDays[]).map((days) => <button key={days} className={windowDays === days ? 'active' : ''} onClick={() => setWindowDays(days)}>{days} días</button>)}</div></header>
@@ -123,7 +125,18 @@ export function ProductPriceAnalysis({ products, onOpenProduct }: { products: Pr
       <article className={payload.summary.strongReferenceChanges ? 'attention' : ''}><TrendingUp size={18} /><span>Cambios fuertes referencia</span><strong>{number(payload.summary.strongReferenceChanges)}</strong><small>entre actualizaciones · ±15%</small></article>
       <article className={payload.summary.strongEffectiveChanges ? 'attention' : ''}><TrendingDown size={18} /><span>Cambios fuertes efectivos</span><strong>{number(payload.summary.strongEffectiveChanges)}</strong><small>con muestra suficiente</small></article>
     </section><section className="data-card price-coverage-note"><CalendarClock size={17} /><div><strong>Períodos efectivos equivalentes</strong><span>Actual: {compactDate(payload.currentRange.from)} → {compactDate(payload.currentRange.through)} · Anterior: {compactDate(payload.previousRange.from)} → {compactDate(payload.previousRange.through)}. La referencia compara actualizaciones, no estas ventanas.</span></div></section></>}
-    <section className="data-card price-controls"><label className="inline-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU, marca o familia…" /></label><SingleSelectFilter label="Alerta" value={alert} options={Object.entries(alertLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setAlert(value); setPage(1); }} /><SingleSelectFilter label="Precio por kilo" value={priceKgStatus} options={Object.entries(priceKgLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setPriceKgStatus(value); setPage(1); }} /></section>
+    <section className="data-card price-controls">
+      <label className="inline-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU, marca o familia…" /></label>
+      <MobileFilterSheet
+        title="Filtrar análisis de precios"
+        description="Acotá productos por alerta o por disponibilidad de un precio por kilo confiable."
+        activeCount={activeFilterCount}
+        applyLabel={`Ver ${number(sorted.length)} productos`}
+      >
+        <SingleSelectFilter label="Alerta" value={alert} options={Object.entries(alertLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setAlert(value); setPage(1); }} />
+        <SingleSelectFilter label="Precio por kilo" value={priceKgStatus} options={Object.entries(priceKgLabels).map(([value, label]) => ({ value, label }))} onChange={(value) => { setPriceKgStatus(value); setPage(1); }} />
+      </MobileFilterSheet>
+    </section>
     {loading && <section className="data-card price-state"><BadgeDollarSign className="loading-icon" size={26} /><strong>Reconstruyendo precios comparables…</strong></section>}
     {error && <section className="data-card price-state error"><strong>{error}</strong><span>La serie preservada no fue modificada.</span></section>}
     {!loading && !error && payload && <section className="data-card price-table-card"><div className="price-table-scroll"><table className="price-table"><thead><tr>

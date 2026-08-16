@@ -30,6 +30,7 @@ import type {
 import type { AiOperationalBrief, AiStoredArtifact } from '../../shared/ai';
 import { isCommercialOpportunityEligible } from '../../shared/commercial-opportunities';
 import { matchesMultiFilter, multiFilterLabel } from '../../shared/multi-filter';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
@@ -201,6 +202,15 @@ export function AgendaView({
     ? `${shortDate(data.weekStart)} al ${shortDate(data.weekEnd)}`
     : 'semana seleccionada';
   const savedFilters = { date, seller, source, attentionType, clientType, locality, opportunity, query, selectedClientId: String(selectedEntry?.clientId ?? '') };
+  const activeFilterCount = [
+    date === today() ? '' : date,
+    seller,
+    source,
+    attentionType,
+    clientType,
+    locality,
+    opportunity === 'all' ? '' : opportunity,
+  ].filter(Boolean).length;
   const applySaved = (saved: Record<string, string>) => {
     setDate(saved.date || today());
     setSeller(saved.seller || '');
@@ -222,14 +232,46 @@ export function AgendaView({
           <p>{weekLabel} · señales, oportunidades, promesas, recordatorios y notas en una sola lectura.</p>
         </div>
         <div className="agenda-command-controls">
-          <label><span>Semana que contiene</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} allLabel="Todos" />
           <button className="button secondary" onClick={reload} disabled={loading}><RefreshCw size={15} /> Actualizar</button>
           <button className="button primary" onClick={() => setNoteOpen(true)}><Plus size={16} /> Agregar nota</button>
         </div>
       </section>
 
-      <SavedViewsBar viewKey="agenda" filters={savedFilters} onApply={applySaved} />
+      <section className="data-card commercial-inbox-filters">
+        <label className="inline-search"><FileText size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, localidad o motivo…" /></label>
+      </section>
+
+      <MobileFilterSheet
+        title="Filtrar la bandeja comercial"
+        description="Elegí la semana, el vendedor y las señales que querés revisar. La búsqueda principal queda siempre visible."
+        activeCount={activeFilterCount}
+      >
+        <div className="agenda-command-controls">
+          <label><span>Semana que contiene</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={setSeller} allLabel="Todos" />
+        </div>
+        <section className="data-card commercial-inbox-filters">
+          <MultiSelectFilter
+            label="Origen"
+            value={source}
+            options={Object.entries(sourceLabels).map(([value, label]) => ({ value, label }))}
+            onChange={setSource}
+            allLabel="Todos"
+          />
+          <MultiSelectFilter
+            label="Tipo de atención"
+            value={attentionType}
+            options={Object.entries(attentionTypeLabels).map(([value, label]) => ({ value, label }))}
+            onChange={setAttentionType}
+            allLabel="Todos"
+          />
+          <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} allLabel="Todos" />
+          <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} allLabel="Todas" />
+          <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
+          <span>{multiFilterLabel(seller, 'Todos los vendedores')}</span>
+        </section>
+        <SavedViewsBar viewKey="agenda" filters={savedFilters} onApply={applySaved} />
+      </MobileFilterSheet>
 
       <AiOperationalBriefCard
         artifact={dailyBrief?.entityId === `${data?.weekStart}:${data?.weekEnd}` ? dailyBrief : null}
@@ -242,28 +284,6 @@ export function AgendaView({
         <article title={data?.definitions.dueItems}><span className="agenda-kpi-icon red"><CalendarDays size={19} /></span><div><span>Compromisos y recordatorios</span><strong>{data ? data.stats.dueItems : '—'}</strong><small>existentes hasta fin de semana</small></div></article>
         <article title={data?.definitions.notes}><span className="agenda-kpi-icon ochre"><MessageSquareText size={19} /></span><div><span>Notas de la semana</span><strong>{data ? data.stats.notes : '—'}</strong><small>hechos registrados por la oficina</small></div></article>
       </div>
-
-      <section className="data-card commercial-inbox-filters">
-        <MultiSelectFilter
-          label="Origen"
-          value={source}
-          options={Object.entries(sourceLabels).map(([value, label]) => ({ value, label }))}
-          onChange={setSource}
-          allLabel="Todos"
-        />
-        <MultiSelectFilter
-          label="Tipo de atención"
-          value={attentionType}
-          options={Object.entries(attentionTypeLabels).map(([value, label]) => ({ value, label }))}
-          onChange={setAttentionType}
-          allLabel="Todos"
-        />
-        <MultiSelectFilter label="Tipo de cliente" value={clientType} options={clientTypes} onChange={setClientType} allLabel="Todos" />
-        <MultiSelectFilter label="Localidad" value={locality} options={localities} onChange={setLocality} allLabel="Todas" />
-        <SingleSelectFilter label="Oportunidad" value={opportunity} options={[{ value: 'all', label: 'Todos los niveles' }, { value: 'high', label: 'Alta · 70 a 100' }, { value: 'medium', label: 'Media · 40 a 69' }, { value: 'low', label: 'Baja · menos de 40' }]} onChange={setOpportunity} />
-        <label className="inline-search"><FileText size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente, localidad o motivo…" /></label>
-        <span>{multiFilterLabel(seller, 'Todos los vendedores')}</span>
-      </section>
 
       <div className="agenda-layout">
         <section className="data-card agenda-list-card">

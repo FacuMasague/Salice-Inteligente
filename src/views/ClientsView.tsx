@@ -4,6 +4,7 @@ import { isCommercialOpportunityEligible } from '../../shared/commercial-opportu
 import type { Client, ClientTrendDirection, ClientTrendReview, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
@@ -75,6 +76,8 @@ export function ClientsView({ clients, products, query, onQuery, onOpen, onOpenS
   const ariaSort = (key: ClientSortKey): 'ascending' | 'descending' | 'none' => direction(key) === 'asc' ? 'ascending' : direction(key) === 'desc' ? 'descending' : 'none';
   const changeTableSort = (key: ClientSortKey) => { setTableSort((current) => cycleSort(current, key)); setPage(1); };
   const savedFilters = { query, commercialStatus, portfolio, seller, risk, trend, locationStatus, sort };
+  const activeFilterCount = [commercialStatus, portfolio, seller, risk, trend, locationStatus].filter(Boolean).length
+    + (sort === 'priority' ? 0 : 1);
   const applySaved = (saved: Record<string, string>) => {
     onQuery(saved.query ?? '');
     setCommercialStatus(saved.commercialStatus ?? '');
@@ -106,16 +109,22 @@ export function ClientsView({ clients, products, query, onQuery, onOpen, onOpenS
     <div className="page-view clients-page">
       <div className="page-tools clients-page-tools">
         <label className="large-search"><Search size={18} /><input value={query} onChange={(event) => { onQuery(event.target.value); setPage(1); }} placeholder="Buscar cliente, localidad, zona o vendedor…" /></label>
-        <div className="client-filter-bar">
-          <MultiSelectFilter label="Estado comercial" value={commercialStatus} options={[{ value: 'active', label: `Activos (${activeCount})` }, { value: 'inactive', label: `Inactivos (${inactiveCount})` }]} onChange={(value) => { setCommercialStatus(value); setPage(1); }} />
-          <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolio(value); setPage(1); }} />
-          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); setPage(1); }} />
-          <MultiSelectFilter label="Riesgo" value={risk} options={[{ value: 'high', label: 'Alto · 55+' }, { value: 'attention', label: 'Atención · 25–54' }, { value: 'low', label: 'Bajo · 0–24' }]} onChange={(value) => { setRisk(value); setPage(1); }} />
-          <MultiSelectFilter label="Evolución" value={trend} options={[{ value: 'growth', label: 'Aumentó 30%+' }, { value: 'decline', label: 'Cayó 30%+' }, { value: 'stable', label: 'Estable · menos de 30%' }]} onChange={(value) => { setTrend(value); setPage(1); }} />
-          <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original del sistema' }, { value: 'corrected', label: 'Corregida automáticamente' }, { value: 'review', label: 'Pendiente de revisión' }]} onChange={(value) => { setLocationStatus(value); setPage(1); }} />
-          <SingleSelectFilter label="Orden" value={sort} options={[{ value: 'priority', label: 'Prioridad de visita' }, { value: 'risk', label: 'Riesgo de cobranza' }, { value: 'opportunity', label: 'Oportunidad comercial' }, { value: 'sales', label: 'Ventas 90 días' }, { value: 'growth', label: 'Mayor crecimiento · 30%+' }, { value: 'decline', label: 'Mayor caída · 30%+' }]} onChange={(value) => { setSort(value as typeof sort); setTableSort(emptySort<ClientSortKey>()); setPage(1); }} />
-        </div>
-        <SavedViewsBar viewKey="clients" filters={savedFilters} onApply={applySaved} />
+        <MobileFilterSheet
+          title="Filtrar clientes"
+          description="Acotá la cartera por estado, vendedor, riesgo o evolución. La búsqueda principal queda siempre visible."
+          activeCount={activeFilterCount}
+        >
+          <div className="client-filter-bar">
+            <MultiSelectFilter label="Estado comercial" value={commercialStatus} options={[{ value: 'active', label: `Activos (${activeCount})` }, { value: 'inactive', label: `Inactivos (${inactiveCount})` }]} onChange={(value) => { setCommercialStatus(value); setPage(1); }} />
+            <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Sucursal confirmada' }, { value: 'review', label: 'Revisar pertenencia' }]} onChange={(value) => { setPortfolio(value); setPage(1); }} />
+            <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); setPage(1); }} />
+            <MultiSelectFilter label="Riesgo" value={risk} options={[{ value: 'high', label: 'Alto · 55+' }, { value: 'attention', label: 'Atención · 25–54' }, { value: 'low', label: 'Bajo · 0–24' }]} onChange={(value) => { setRisk(value); setPage(1); }} />
+            <MultiSelectFilter label="Evolución" value={trend} options={[{ value: 'growth', label: 'Aumentó 30%+' }, { value: 'decline', label: 'Cayó 30%+' }, { value: 'stable', label: 'Estable · menos de 30%' }]} onChange={(value) => { setTrend(value); setPage(1); }} />
+            <MultiSelectFilter label="Ubicación" value={locationStatus} options={[{ value: 'original', label: 'Original del sistema' }, { value: 'corrected', label: 'Corregida automáticamente' }, { value: 'review', label: 'Pendiente de revisión' }]} onChange={(value) => { setLocationStatus(value); setPage(1); }} />
+            <SingleSelectFilter label="Orden" value={sort} options={[{ value: 'priority', label: 'Prioridad de visita' }, { value: 'risk', label: 'Riesgo de cobranza' }, { value: 'opportunity', label: 'Oportunidad comercial' }, { value: 'sales', label: 'Ventas 90 días' }, { value: 'growth', label: 'Mayor crecimiento · 30%+' }, { value: 'decline', label: 'Mayor caída · 30%+' }]} onChange={(value) => { setSort(value as typeof sort); setTableSort(emptySort<ClientSortKey>()); setPage(1); }} />
+          </div>
+          <SavedViewsBar viewKey="clients" filters={savedFilters} onApply={applySaved} />
+        </MobileFilterSheet>
       </div>
       <section className="data-card" data-tour="clients-directory">
         <div className="data-card-header"><div><span className="section-kicker">{decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? <EyeOff size={14} /> : <Users size={14} />} Cartera comercial</span><h2>{trendMode === 'growth' ? 'Clientes con crecimiento de 30% o más' : trendMode === 'decline' ? 'Clientes con caída de 30% o más' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'active' ? 'Clientes activos' : decodeMultiFilter(commercialStatus).length === 1 && decodeMultiFilter(commercialStatus)[0] === 'inactive' ? 'Histórico de clientes inactivos' : 'Universo completo de clientes'}</h2><p>{trendMode ? 'Los pendientes de revisar aparecen primero; el tilde mueve el cliente al final de esta lista.' : 'Riesgo de cobranza y oportunidad comercial se calculan por separado.'}</p>{reviewError && <small className="form-error">{reviewError}</small>}</div><span className="count-badge">{number(filtered.length)} resultados</span></div>
@@ -126,14 +135,14 @@ export function ClientsView({ clients, products, query, onQuery, onOpen, onOpenS
               {visible.map((client) => {
                 const kiloMetric = clientKilos90d(client, contentByProduct);
                 return (
-                <tr key={client.id} className={`${client.active ? '' : 'inactive-client-row'} ${trendMode && reviewed(client.id) ? 'trend-reviewed-row' : ''}`} onClick={() => onOpen(client)}>
+                <tr key={client.id} tabIndex={0} aria-label={`Abrir ficha de ${clientPrimaryName(client)}`} className={`${client.active ? '' : 'inactive-client-row'} ${trendMode && reviewed(client.id) ? 'trend-reviewed-row' : ''}`} onClick={() => onOpen(client)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(client); } }}>
                   <td><div className="table-client client-legal-identity"><div className="mini-avatar">{clientInitials(client)}</div><div><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span className="client-trade-name">{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment}{client.locationStatus === 'corrected' ? ' · Ubicación corregida' : client.locationStatus === 'review' ? ' · Ubicación a revisar' : ''}</span></div></div></td>
                   <td><strong className="normal-weight">{zoneLabel(client.zone, client.locality)}</strong><button className="entity-link cell-sub" onClick={(event) => { event.stopPropagation(); onOpenSeller(client.seller); }}>{client.seller}</button></td>
                   <td><strong>{money(client.sales90d, true)}</strong><span className="cell-sub" title={kiloMetric.complete ? 'Conversión según presentación de producto' : 'Conversión parcial: hay compras sin presentación convertible'}>{number(kiloMetric.kilos, 2)} kg{kiloMetric.complete ? '' : ' · parcial'}</span><span title="Compara los últimos 90 días contra los 90 días inmediatamente anteriores" className={`cell-sub inline-delta ${client.salesDelta > 0 ? 'positive' : client.salesDelta < 0 ? 'negative' : ''}`}>{client.salesDelta > 0 ? <ArrowUpRight size={12} /> : client.salesDelta < 0 ? <ArrowDownRight size={12} /> : null}{client.salesDelta === 0 ? 'sin cambio vs. 90d previos' : `${client.salesDelta > 0 ? '+' : '-'}${Math.abs(client.salesDelta)}% vs. 90d previos`}</span></td>
                   <td>{client.active ? <><span className={`score-badge ${client.health}`}>{client.visitPriority}</span><span className="cell-sub">riesgo {client.collectionRisk} · oportunidad {isCommercialOpportunityEligible(client) ? client.commercialOpportunity : '—'}</span></> : <><span className="muted">—</span><span className="cell-sub">Cliente inactivo</span></>}</td>
                   <td className="clients-compact-hide"><strong>{creditTermLabel(client)}</strong><span className="cell-sub">{client.paymentSampleSize ? `${paymentDelay(client.avgPaymentDelayDays)} · ${client.onTimePaymentRate}% en término` : client.paymentMethod}</span></td>
                   <td className="clients-compact-hide">{client.active ? <><strong>{shortDate(client.nextVisitAt)}</strong><span className="cell-sub">referencia algorítmica</span></> : <span className="muted">Fuera de la bandeja</span>}</td>
-                  <td>{trendMode ? <button className={`trend-review-button ${reviewed(client.id) ? 'active' : ''}`} aria-label={`${reviewed(client.id) ? 'Marcar como pendiente' : 'Marcar como revisado'} a ${clientPrimaryName(client)}`} title={reviewed(client.id) ? 'Volver a pendientes' : 'Marcar como revisado'} disabled={reviewPending === client.id} onClick={(event) => { event.stopPropagation(); toggleReviewed(client.id); }}><Check size={16} /></button> : <button className="icon-button"><ChevronRight size={17} /></button>}</td>
+                  <td>{trendMode ? <button type="button" className={`trend-review-button ${reviewed(client.id) ? 'active' : ''}`} aria-label={`${reviewed(client.id) ? 'Marcar como pendiente' : 'Marcar como revisado'} a ${clientPrimaryName(client)}`} title={reviewed(client.id) ? 'Volver a pendientes' : 'Marcar como revisado'} disabled={reviewPending === client.id} onClick={(event) => { event.stopPropagation(); toggleReviewed(client.id); }}><Check size={16} /></button> : <button type="button" className="icon-button" aria-label={`Abrir ficha de ${clientPrimaryName(client)}`}><ChevronRight size={17} /></button>}</td>
                 </tr>
                 );
               })}

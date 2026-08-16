@@ -10,6 +10,7 @@ import type {
 } from '../../shared/models';
 import { localizedEditableNumber } from '../../shared/localized-number';
 import { decodeMultiFilter, encodeMultiFilter } from '../../shared/multi-filter';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
@@ -208,12 +209,20 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
 
   const activeStatuses = decodeMultiFilter(filters.internalStatus);
   const toggleStatus = (status: ReceivableCaseStatus) => changeFilter('internalStatus', activeStatuses.length === 1 && activeStatuses[0] === status ? '' : encodeMultiFilter([status]));
+  const activeFilterCount = [filters.seller, filters.paymentMethod, filters.status, filters.responsible, filters.internalStatus, filters.aging].filter(Boolean).length;
 
   return <div className={`page-view receivables-page ${loading ? 'is-loading' : ''}`} data-tour="receivables-overview">
     <section className="data-card admin-filter-card">
       <div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Centro administrativo</span><h2>Cartera abierta y trabajo pendiente</h2><p>La deuda proviene de GESI; responsables, promesas y seguimientos son información humana separada.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
-      <div className="receivable-filter-grid"><MultiSelectFilter label="Vendedor" value={filters.seller} options={payload.options.sellers} onChange={(value) => changeFilter('seller', value)} /><MultiSelectFilter label="Forma de pago" value={filters.paymentMethod} options={payload.options.paymentMethods} onChange={(value) => changeFilter('paymentMethod', value)} /><MultiSelectFilter label="Saldo" value={filters.status} options={balanceOptions} onChange={(value) => changeFilter('status', value)} /><MultiSelectFilter label="Responsable" value={filters.responsible} options={payload.options.responsibles} onChange={(value) => changeFilter('responsible', value)} /><MultiSelectFilter label="Estado interno" value={filters.internalStatus} options={statusOptions} onChange={(value) => changeFilter('internalStatus', value)} /><MultiSelectFilter label="Antigüedad" value={filters.aging} options={agingOptions} onChange={(value) => changeFilter('aging', value)} /><label className="admin-search-field"><Search size={15} /><input value={filters.query} placeholder="Cliente, vendedor o comentario" onChange={(event) => changeFilter('query', event.target.value)} /></label><button className="button ghost" onClick={() => setFilters(emptyFilters)}>Restablecer</button></div>
-      <SavedViewsBar viewKey="receivables" purpose="collections" filters={asRecord(filters)} onApply={applySaved} />
+      <div className="receivable-filter-grid"><label className="admin-search-field"><Search size={15} /><input value={filters.query} placeholder="Cliente, vendedor o comentario" onChange={(event) => changeFilter('query', event.target.value)} /></label></div>
+      <MobileFilterSheet
+        title="Filtrar cuentas por cobrar"
+        description="Acotá la bandeja por vendedor, saldo y estado de seguimiento. La búsqueda principal queda siempre visible."
+        activeCount={activeFilterCount}
+      >
+        <div className="receivable-filter-grid"><MultiSelectFilter label="Vendedor" value={filters.seller} options={payload.options.sellers} onChange={(value) => changeFilter('seller', value)} /><MultiSelectFilter label="Forma de pago" value={filters.paymentMethod} options={payload.options.paymentMethods} onChange={(value) => changeFilter('paymentMethod', value)} /><MultiSelectFilter label="Saldo" value={filters.status} options={balanceOptions} onChange={(value) => changeFilter('status', value)} /><MultiSelectFilter label="Responsable" value={filters.responsible} options={payload.options.responsibles} onChange={(value) => changeFilter('responsible', value)} /><MultiSelectFilter label="Estado interno" value={filters.internalStatus} options={statusOptions} onChange={(value) => changeFilter('internalStatus', value)} /><MultiSelectFilter label="Antigüedad" value={filters.aging} options={agingOptions} onChange={(value) => changeFilter('aging', value)} /><button className="button ghost" onClick={() => setFilters(emptyFilters)}>Restablecer</button></div>
+        <SavedViewsBar viewKey="receivables" purpose="collections" filters={asRecord(filters)} onApply={applySaved} />
+      </MobileFilterSheet>
     </section>
 
     <div className="admin-kpi-strip receivable-kpis"><button><span><WalletCards size={19} /></span><div><small>Saldo pendiente</small><strong>{money(payload.pendingBalance, true)}</strong><em>{number(payload.openDocuments)} comprobantes</em></div></button><button><span><AlertTriangle size={19} /></span><div><small>Saldo vencido</small><strong>{money(payload.overdueBalance, true)}</strong><em>{percent(payload.overdueShare)} de la cartera</em></div></button><button><span><CalendarClock size={19} /></span><div><small>Seguimientos exigibles</small><strong>{number(payload.dueFollowUps)}</strong><em>Hasta hoy</em></div></button><button><span><UserRoundCheck size={19} /></span><div><small>Sin gestionar</small><strong>{number(payload.unmanagedClients)}</strong><em>De {number(payload.clientsWithBalance)} cuentas</em></div></button><button><span><CheckCircle2 size={19} /></span><div><small>Clientes vencidos</small><strong>{number(payload.overdueClients)}</strong><em>{number(payload.overdueDocuments)} comprobantes</em></div></button></div>
