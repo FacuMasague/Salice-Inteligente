@@ -147,7 +147,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
         <div className="aging-section overdue"><div className="aging-section-title"><strong>Tiempo desde el vencimiento</strong><span>Documentos que requieren cobranza</span></div><div className="aging-bars">{overdueBands.map((band) => <button key={band.key} className={decodeMultiFilter(aging).includes(band.key) ? 'active' : ''} aria-pressed={decodeMultiFilter(aging).includes(band.key)} onClick={() => toggleAging(band.key)}><span>{band.label}</span><div><i style={{ width: `${band.amount / maxOverdueAmount * 100}%` }} /></div><strong>{money(band.amount, true)}</strong><small>{number(band.count)} docs.</small></button>)}</div></div>
       </section>
 
-      <section className="data-card">
+      <section className="data-card finance-table-card">
         <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)} emitidos por los seis vendedores habilitados.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table finance-table">
@@ -166,6 +166,23 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
               </tr>)}
             </tbody>
           </table>
+          <div className="finance-card-list">
+            {visibleInvoices.map((invoice) => <article key={invoice.id} onClick={() => onOpenInvoice(invoice.id)}>
+              <header>
+                <span className={`invoice-pill ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span>
+                <button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong>{clientSecondaryName(invoice.client) && <small>{clientSecondaryName(invoice.client)}</small>}</button>
+                <ChevronRight size={17} />
+              </header>
+              <span className="finance-card-seller"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span>
+              <div data-label="Comprobante"><strong>{invoice.number}</strong></div>
+              <div data-label="Emisión">{compactDate(invoice.issuedAt)}</div>
+              <div data-label="Vencimiento"><strong>{compactDate(invoice.dueAt)}</strong></div>
+              <div data-label="Plazo de la factura"><strong>{invoice.creditTermDays != null ? `${invoice.creditTermDays} días` : 'Sin dato'}</strong><small>emisión → vencimiento</small></div>
+              <div data-label="Saldo pendiente"><strong>{money(invoice.outstanding)}</strong><small>original {money(invoice.amount, true)}</small></div>
+              <div className="finance-card-behavior" data-label="Cuenta corriente / conducta" title={creditTermDetail(invoice.client)}><strong>{creditTermLabel(invoice.client)}</strong><small>{invoice.paymentMethod || 'Sin forma de pago informada'}</small><small>{invoice.client.paymentSampleSize ? `${paymentDelay(invoice.client.avgPaymentDelayDays)} · ${invoice.client.onTimePaymentRate}% en término` : 'sin muestra conciliada'}</small></div>
+              <div data-label="Riesgo"><span className={`score-badge ${invoice.client.health}`}>{invoice.client.collectionRisk}</span></div>
+            </article>)}
+          </div>
         </div>
         <div className="table-pagination"><span>Mostrando {number((currentPage - 1) * pageSize + (visibleInvoices.length ? 1 : 0))}–{number((currentPage - 1) * pageSize + visibleInvoices.length)} de {number(filtered.length)}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{number(currentPage)} / {number(pageCount)}</strong><button className="button secondary" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div></div>
       </section>

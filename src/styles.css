@@ -1713,6 +1713,8 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 .receivable-table-card { overflow: hidden; }
 .admin-table.receivables > header,.admin-table.receivables > article { min-width: 1210px; grid-template-columns: minmax(230px,1.4fr) minmax(120px,.7fr) minmax(180px,1fr) 110px 120px 88px 135px 54px; }
 .admin-table.receivables > article.follow-up-due { background: #fff9ee; box-shadow: inset 3px 0 #d68b2b; }
+.receivable-card-header,.receivable-card-body { display:contents; }
+.receivable-card-header > .admin-drill-entity > svg,.mobile-receivable-seller,.mobile-receivable-edit-target { display:none; }
 .workflow-cell strong,.workflow-cell small { display: block; }.workflow-cell strong { overflow: hidden; color: #315348; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.workflow-cell small { max-width: 180px; margin-top: 3px; overflow: hidden; color: #87938d; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .status-pill { display: inline-flex; min-height: 19px; align-items: center; margin-top: 3px; padding: 0 6px; color: #60736a; background: #edf1ee; border-radius: 6px; font-size: 9.5px; font-weight: 800; }.status-pill.promise { color: #8c611e; background: #fff0d6; }.status-pill.disputed { color: #9d4939; background: #fae8e4; }.status-pill.resolved { color: #2f7055; background: #e5f2e9; }
 .overdue-value { color: #a94a3b; font-weight: 750; }.overdue-value small { display: block; margin-top: 2px; color: #c0695b; font-size: 10px; }
@@ -3643,6 +3645,7 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 
 /* v1.4.0 · las tablas conservan todas sus columnas y desplazan sólo su contenido */
 .finance-table { min-width:1380px; }
+.finance-card-list { display:none; }
 .vector-ranking-table-scroll,.spt-seller-table-scroll { min-width:0; overflow-x:auto; scrollbar-gutter:stable; }
 .vector-ranking-table-scroll { display:flex; min-height:0; flex:1; flex-direction:column; }
 .vector-ranking-head,.vector-ranking-list { min-width:720px; }
@@ -3970,16 +3973,11 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .ai-faqs p { font-size:12.5px; line-height:1.55; }
   .ai-feedback-actions { flex-wrap:wrap; }
 
-  /* Las tablas que conservan muchas dimensiones explican el desplazamiento. */
+  /* El navegador conserva su scrollbar nativo en tablas y listas extensas. */
   .table-wrap,
   :is(.general-performance-table,.commercial-brand-table,.mars-brand-table,.mars-period-table,.nutripet-brand-table,.nutripet-product-table,.nonbuyer-table,.pending-seller-table,.pending-client-table,.brand-product-table,.admin-table,.goals-table,.goal-progress-table,.invoice-line-table,.users-table,.developer-table,.admin-line-items,.spt-daily-table,.seller-locality-table,.goal-manager-table) {
-    scrollbar-width:auto;
-    scrollbar-color:#7ea18f #e8eee9;
     overscroll-behavior-x:contain;
   }
-  .table-wrap::-webkit-scrollbar,
-  :is(.general-performance-table,.commercial-brand-table,.mars-brand-table,.mars-period-table,.nutripet-brand-table,.nutripet-product-table,.nonbuyer-table,.pending-seller-table,.pending-client-table,.brand-product-table,.admin-table,.goals-table,.goal-progress-table,.invoice-line-table,.users-table,.developer-table,.admin-line-items,.spt-daily-table,.seller-locality-table,.goal-manager-table)::-webkit-scrollbar { height:10px; }
-  .table-wrap::-webkit-scrollbar-thumb { background:#7ea18f; border:2px solid #edf2ee; border-radius:999px; }
 
   /* Mapa: la cartografía pasa a ser la superficie principal. */
   .map-dashboard,
@@ -4169,9 +4167,46 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     -webkit-overflow-scrolling:touch;
     touch-action:pan-y;
   }
-  .finance-page > .data-card:last-child .table-wrap { overflow:visible; }
-  .seller-portfolio-table,
-  .finance-table { display:block; min-width:0; border-collapse:separate; border-spacing:0; }
+  .finance-table-card { display:flex; flex-direction:column; overflow:hidden; }
+  .finance-table-card .table-wrap { display:block; max-height:none; flex:0 0 auto; overflow:visible; }
+  .finance-table-card .table-pagination { position:static; flex:0 0 auto; clear:both; }
+  .seller-portfolio-table { display:block; min-width:0; border-collapse:separate; border-spacing:0; }
+  .finance-table { display:none; }
+  .finance-card-list { display:grid; gap:9px; padding:8px; background:#f6f8f5; }
+  .finance-card-list > article {
+    position:relative;
+    display:grid;
+    width:100%;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:10px 14px;
+    padding:13px;
+    background:#fff;
+    border:1px solid #dfe6e1;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(23,53,42,.05);
+    cursor:pointer;
+  }
+  .finance-card-list > article > header { display:grid; grid-column:1/-1; grid-template-columns:minmax(0,1fr) 38px; gap:4px 10px; padding-right:0; }
+  .finance-card-list > article > header > .invoice-pill { grid-column:1; justify-self:start; }
+  .finance-card-list > article > header > .entity-link { grid-column:1; min-width:0; }
+  .finance-card-list > article > header > .entity-link strong { color:#244f3e; font-size:14px; line-height:1.35; white-space:normal; }
+  .finance-card-list > article > header > .entity-link small { display:block; margin-top:2px; color:#798981; font-size:10px; line-height:1.35; }
+  .finance-card-list > article > header > svg { grid-column:2; grid-row:1/3; align-self:center; justify-self:end; }
+  .finance-card-seller,.finance-card-behavior { grid-column:1/-1; }
+  .finance-card-seller { color:#798981; font-size:10px; }
+  .finance-card-seller > .entity-link { display:inline; color:#2f7057; font-weight:800; }
+  .finance-card-list > article > div::before {
+    display:block;
+    margin-bottom:4px;
+    color:#829088;
+    content:attr(data-label);
+    font-size:8.5px;
+    font-weight:850;
+    letter-spacing:.035em;
+    text-transform:uppercase;
+  }
+  .finance-card-list > article :is(strong,small) { display:block; }
+  .finance-card-list > article > div > small { margin-top:3px; color:#839089; font-size:10px; line-height:1.4; }
   .seller-portfolio-table thead,
   .finance-table thead { display:none; }
   .seller-portfolio-table tbody,
@@ -4198,7 +4233,8 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .density-compact .finance-table td { display:block; width:auto; height:auto; padding:0; border:0; text-align:left; }
   .seller-portfolio-table td::before,
   .finance-table td::before,
-  .admin-table.receivables > article > :is(button,div,span)::before {
+  .admin-table.receivables > article > :is(button,div,span)::before,
+  .receivable-card-body > :is(.mobile-receivable-seller,.workflow-cell,span)::before {
     display:block;
     margin-bottom:4px;
     color:#829088;
@@ -4240,10 +4276,9 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .admin-table.receivables > header { display:none; }
   .admin-table.receivables > article {
     position:relative;
-    display:grid;
+    display:flex;
     min-width:0;
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-    gap:10px 14px;
+    flex-direction:column;
     min-height:0;
     margin-bottom:9px;
     padding:13px;
@@ -4254,21 +4289,28 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   }
   .admin-table.receivables > article:last-child { margin-bottom:0; }
   .admin-table.receivables > article.follow-up-due { background:#fffaf1; border-color:#ead5ad; box-shadow:inset 3px 0 #d68b2b,0 3px 10px rgba(23,53,42,.05); }
-  .admin-table.receivables > article > :is(button,div,span) { min-width:0; }
-  .admin-table.receivables > article > .admin-drill-entity { grid-column:1/-1; padding-right:42px; }
-  .admin-table.receivables > article > .admin-drill-entity::before { display:none; }
+  .receivable-card-header { display:block; margin:-13px -13px 0; padding:0 13px; background:rgba(255,255,255,.72); border-bottom:1px solid #e4e9e5; border-radius:12px 12px 0 0; }
+  .receivable-card-header > .admin-drill-entity { display:grid; width:100%; min-height:62px; grid-template-columns:minmax(0,1fr) 24px; align-items:center; gap:10px; }
+  .receivable-card-header > .admin-drill-entity > span { min-width:0; }
+  .receivable-card-header > .admin-drill-entity > svg { display:block; justify-self:end; color:#6d8278; }
+  .receivable-card-header > .admin-drill-entity::before { display:none; }
   .admin-table.receivables .admin-drill-entity strong { color:#244f3e; font-size:14px; line-height:1.35; white-space:normal; }
   .admin-table.receivables .admin-drill-entity small { line-height:1.4; white-space:normal; }
-  .admin-table.receivables > article > .entity-link { display:flex; align-items:flex-start; flex-direction:column; }
-  .admin-table.receivables > article > .entity-link::before { content:'Vendedor'; }
-  .admin-table.receivables > article > .workflow-cell { grid-column:1/-1; }
-  .admin-table.receivables > article > .workflow-cell::before { content:'Responsable / estado'; }
-  .admin-table.receivables > article > span:nth-of-type(1)::before { content:'Pendiente'; }
-  .admin-table.receivables > article > span:nth-of-type(2)::before { content:'Vencido'; }
-  .admin-table.receivables > article > span:nth-of-type(3)::before { content:'Antigüedad'; }
-  .admin-table.receivables > article > span:nth-of-type(4)::before { content:'Próximo seguimiento'; }
-  .admin-table.receivables > article > .edit-workflow-button { position:absolute; top:11px; right:10px; width:40px; height:40px; }
-  .admin-table.receivables > article > .edit-workflow-button::before { display:none; }
+  .receivable-card-body { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px 14px; padding-top:13px; padding-right:50px; }
+  .receivable-card-body > :is(button,div,span) { min-width:0; }
+  .receivable-card-body > .receivable-seller-link { display:none; }
+  .receivable-card-body > .mobile-receivable-seller { display:block; grid-column:1/-1; }
+  .receivable-card-body > .mobile-receivable-seller::before { content:'Vendedor'; }
+  .receivable-card-body > .workflow-cell { grid-column:1/-1; }
+  .receivable-card-body > .workflow-cell::before { content:'Responsable / estado'; }
+  .receivable-card-body > span:nth-of-type(2)::before { content:'Pendiente'; }
+  .receivable-card-body > span:nth-of-type(3)::before { content:'Vencido'; }
+  .receivable-card-body > span:nth-of-type(4)::before { content:'Antigüedad'; }
+  .receivable-card-body > span:nth-of-type(5)::before { content:'Próximo seguimiento'; }
+  .receivable-card-body > .mobile-receivable-edit-target { position:absolute; z-index:1; inset:0; display:block; width:100%; padding:0; background:transparent; border:0; border-radius:0 0 12px 12px; cursor:pointer; }
+  .receivable-card-body > .mobile-receivable-edit-target:focus-visible { outline:3px solid rgba(57,111,88,.28); outline-offset:2px; }
+  .receivable-card-body > .edit-workflow-button { position:absolute; z-index:2; top:50%; right:-1px; width:40px; height:40px; transform:translateY(-50%); }
+  .receivable-card-body > .edit-workflow-button::before { display:none; }
   .admin-table.receivables .workflow-cell :is(strong,small) { max-width:none; white-space:normal; }
 
   /* Inventario comparte el mismo patrón de ficha móvil que el resto de tablas. */
@@ -4324,12 +4366,12 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .inventory-review-button { width:100%; min-height:42px; justify-content:center; }
 
   /* La caja y sus márgenes usan una geometría común en todas las listas móviles. */
-  :is(.brand-product-table,.seller-portfolio-table tbody,.finance-table tbody,.admin-table.receivables,.clients-data-table tbody,.inventory-decision-table tbody) {
+  :is(.brand-product-table,.seller-portfolio-table tbody,.finance-table tbody,.finance-card-list,.admin-table.receivables,.clients-data-table tbody,.inventory-decision-table tbody) {
     box-sizing:border-box;
     width:100%;
     padding-inline:8px;
   }
-  :is(.brand-product-table > article,.seller-portfolio-table tbody tr,.finance-table tbody tr,.admin-table.receivables > article,.clients-data-table tbody tr,.inventory-decision-table tbody tr) {
+  :is(.brand-product-table > article,.seller-portfolio-table tbody tr,.finance-table tbody tr,.finance-card-list > article,.admin-table.receivables > article,.clients-data-table tbody tr,.inventory-decision-table tbody tr) {
     box-sizing:border-box;
     width:100%;
     min-width:0;
