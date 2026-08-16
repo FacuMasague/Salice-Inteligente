@@ -3672,6 +3672,21 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 .mobile-filter-shell.mobile-only .mobile-filter-layer { display:none; }
 .map-mobile-saved-views { display:none; }
 
+/* Los paneles transitorios conservan el contenido durante la salida. */
+.animated-layer.is-closing { pointer-events:none; }
+.animated-layer.is-opening > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
+  animation:salice-panel-enter .22s cubic-bezier(.22,.82,.28,1) both;
+}
+.animated-layer.is-closing > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer) {
+  animation:salice-panel-exit .2s ease both;
+}
+.animated-layer.is-opening > [class$="-backdrop"] { animation:salice-backdrop-enter .18s ease both; }
+.animated-layer.is-closing > [class$="-backdrop"] { animation:salice-backdrop-exit .2s ease both; }
+@keyframes salice-panel-enter { from { opacity:0; transform:translate3d(34px,0,0); } to { opacity:1; transform:translate3d(0,0,0); } }
+@keyframes salice-panel-exit { from { opacity:1; transform:translate3d(0,0,0); } to { opacity:0; transform:translate3d(34px,0,0); } }
+@keyframes salice-backdrop-enter { from { opacity:0; } to { opacity:1; } }
+@keyframes salice-backdrop-exit { from { opacity:1; } to { opacity:0; } }
+
 @media (max-width:900px) {
   :root { --mobile-topbar-height:60px; --mobile-page-gap:10px; }
   html.mobile-sheet-open,
@@ -3797,15 +3812,24 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .mobile-filter-close:focus-visible,
   .mobile-filter-apply:focus-visible { outline:3px solid rgba(57,111,88,.24); outline-offset:2px; }
   .mobile-filter-layer,
-  .mobile-filter-shell.mobile-only .mobile-filter-layer { display:none; }
-  .mobile-filter-layer.open,
-  .mobile-filter-shell.mobile-only .mobile-filter-layer.open {
+  .mobile-filter-shell.mobile-only .mobile-filter-layer {
     position:fixed;
     z-index:2600;
     inset:0;
     display:flex;
     align-items:flex-end;
     justify-content:center;
+    visibility:hidden;
+    opacity:0;
+    pointer-events:none;
+    transition:visibility 0s linear .22s,opacity .18s ease;
+  }
+  .mobile-filter-layer.open,
+  .mobile-filter-shell.mobile-only .mobile-filter-layer.open {
+    visibility:visible;
+    opacity:1;
+    pointer-events:auto;
+    transition-delay:0s;
   }
   .mobile-filter-backdrop {
     position:absolute;
@@ -3814,7 +3838,10 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     background:rgba(9,31,23,.48);
     border:0;
     backdrop-filter:blur(2px);
+    opacity:0;
+    transition:opacity .18s ease;
   }
+  .mobile-filter-layer.open .mobile-filter-backdrop { opacity:1; }
   .mobile-filter-sheet {
     position:relative;
     z-index:1;
@@ -3827,7 +3854,10 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     border:1px solid #d7e0da;
     border-radius:20px 20px 0 0;
     box-shadow:0 -18px 55px rgba(9,31,23,.26);
+    transform:translateY(102%);
+    transition:transform .22s cubic-bezier(.22,.82,.28,1);
   }
+  .mobile-filter-layer.open .mobile-filter-sheet { transform:translateY(0); }
   .mobile-filter-sheet > header {
     display:flex;
     flex:0 0 auto;
@@ -4073,13 +4103,13 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
 
   /* Marcas conserva todas las métricas sin obligar a leer una tabla de 820 px. */
   .brand-detail-column { scroll-margin-top:calc(var(--mobile-topbar-height) + 10px); }
-  .brand-product-table { padding:8px; overflow:visible; background:#f6f8f5; }
+  .brand-product-table { max-height:min(72dvh,760px); padding:8px; overflow-x:hidden; overflow-y:auto; background:#f6f8f5; }
   .brand-product-table > header { display:none; }
   .brand-product-table > article {
     position:relative;
     display:grid;
     min-width:0;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:9px 14px;
     margin-bottom:8px;
     padding:13px;
@@ -4088,7 +4118,8 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
     border-radius:11px;
   }
   .brand-product-table > article:last-child { margin-bottom:0; }
-  .brand-product-table .product-entity-link { grid-column:1/-1; padding-right:34px; text-align:left; }
+  .brand-product-table .product-entity-link { width:100%; min-width:0; grid-column:1/-1; padding-right:34px; overflow:hidden; text-align:left; }
+  .brand-product-table .product-entity-link > :is(strong,small) { overflow-wrap:anywhere; white-space:normal; }
   .brand-product-table > article > span { display:flex; min-width:0; justify-content:space-between; gap:8px; font-size:11px; }
   .brand-product-table > article > span::before { color:#819087; font-size:9px; font-weight:800; text-transform:uppercase; }
   .brand-product-table > article > span:nth-child(2)::before { content:'Venta'; }
@@ -4097,6 +4128,110 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .brand-product-table > article > span:nth-child(5)::before { content:'Compradores'; }
   .brand-product-table > article > span:nth-child(6)::before { content:'Stock'; }
   .brand-product-table > article > .icon-button { position:absolute; top:10px; right:10px; width:38px; height:38px; }
+
+  /* Vendedores, Cartera y Cuentas por cobrar usan fichas completas en móvil. */
+  .seller-portfolio-comparison .table-wrap,
+  .finance-page > .data-card:last-child .table-wrap { overflow:visible; }
+  .seller-portfolio-table,
+  .finance-table { display:block; min-width:0; border-collapse:separate; border-spacing:0; }
+  .seller-portfolio-table thead,
+  .finance-table thead { display:none; }
+  .seller-portfolio-table tbody,
+  .finance-table tbody { display:block; width:100%; padding:8px; background:#f6f8f5; }
+  .seller-portfolio-table tbody tr,
+  .finance-table tbody tr {
+    position:relative;
+    display:grid;
+    width:100%;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:10px 14px;
+    margin-bottom:9px;
+    padding:13px;
+    background:#fff;
+    border:1px solid #dfe6e1;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(23,53,42,.05);
+  }
+  .seller-portfolio-table tbody tr:last-child,
+  .finance-table tbody tr:last-child { margin-bottom:0; }
+  .seller-portfolio-table td,
+  .finance-table td,
+  .density-compact .seller-portfolio-table td,
+  .density-compact .finance-table td { display:block; width:auto; height:auto; padding:0; border:0; text-align:left; }
+  .seller-portfolio-table td::before,
+  .finance-table td::before,
+  .admin-table.receivables > article > :is(button,div,span)::before {
+    display:block;
+    margin-bottom:4px;
+    color:#829088;
+    font-size:8.5px;
+    font-weight:850;
+    letter-spacing:.035em;
+    text-transform:uppercase;
+  }
+  .seller-portfolio-table td:first-child { grid-column:1/-1; padding-bottom:3px; }
+  .seller-portfolio-table td:first-child .entity-link { width:100%; justify-content:space-between; color:#244f3e; font-size:14px; white-space:normal; }
+  .seller-portfolio-table td:nth-child(2)::before { content:'Clientes'; }
+  .seller-portfolio-table td:nth-child(3) { grid-column:1/-1; }
+  .seller-portfolio-table td:nth-child(3)::before { content:'Facturación / kilos · 90 días'; }
+  .seller-portfolio-table td:nth-child(4)::before { content:'Localidades'; }
+  .seller-portfolio-table td:nth-child(5)::before { content:'Riesgo de cobranza'; }
+  .seller-portfolio-table td:nth-child(6)::before { content:'Oportunidad alta'; }
+  .seller-portfolio-table td:nth-child(7)::before { content:'Prioridad alta'; }
+  .seller-portfolio-table tbody tr.active { background:#f7fbf8; border-color:#9fbcac; box-shadow:inset 3px 0 #3c775e,0 3px 10px rgba(23,53,42,.05); }
+
+  .finance-table tbody tr { cursor:pointer; }
+  .finance-table td.finance-compact-hide { display:block; }
+  .finance-table td:first-child { grid-column:1/-1; }
+  .finance-table td:nth-child(2) { grid-column:1/-1; padding-right:38px; }
+  .finance-table td:nth-child(2) > .entity-link strong { color:#244f3e; font-size:14px; line-height:1.35; }
+  .finance-table td:nth-child(3)::before { content:'Comprobante'; }
+  .finance-table td:nth-child(4)::before { content:'Emisión'; }
+  .finance-table td:nth-child(5)::before { content:'Vencimiento'; }
+  .finance-table td:nth-child(6)::before { content:'Plazo de la factura'; }
+  .finance-table td:nth-child(7)::before { content:'Saldo pendiente'; }
+  .finance-table td:nth-child(8) { grid-column:1/-1; }
+  .finance-table td:nth-child(8)::before { content:'Cuenta corriente / conducta'; }
+  .finance-table td:nth-child(9)::before { content:'Riesgo'; }
+  .finance-table td:nth-child(10) { position:absolute; top:11px; right:10px; }
+  .finance-table td:nth-child(10)::before { display:none; }
+  .finance-table .cell-sub { white-space:normal; line-height:1.4; }
+
+  .receivable-table-card { overflow:hidden; }
+  .admin-table.receivables { max-height:min(72dvh,760px); padding:8px; overflow-x:hidden; overflow-y:auto; background:#f6f8f5; }
+  .admin-table.receivables > header { display:none; }
+  .admin-table.receivables > article {
+    position:relative;
+    display:grid;
+    min-width:0;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:10px 14px;
+    min-height:0;
+    margin-bottom:9px;
+    padding:13px;
+    background:#fff;
+    border:1px solid #dfe6e1;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(23,53,42,.05);
+  }
+  .admin-table.receivables > article:last-child { margin-bottom:0; }
+  .admin-table.receivables > article.follow-up-due { background:#fffaf1; border-color:#ead5ad; box-shadow:inset 3px 0 #d68b2b,0 3px 10px rgba(23,53,42,.05); }
+  .admin-table.receivables > article > :is(button,div,span) { min-width:0; }
+  .admin-table.receivables > article > .admin-drill-entity { grid-column:1/-1; padding-right:42px; }
+  .admin-table.receivables > article > .admin-drill-entity::before { display:none; }
+  .admin-table.receivables .admin-drill-entity strong { color:#244f3e; font-size:14px; line-height:1.35; white-space:normal; }
+  .admin-table.receivables .admin-drill-entity small { line-height:1.4; white-space:normal; }
+  .admin-table.receivables > article > .entity-link { display:flex; align-items:flex-start; flex-direction:column; }
+  .admin-table.receivables > article > .entity-link::before { content:'Vendedor'; }
+  .admin-table.receivables > article > .workflow-cell { grid-column:1/-1; }
+  .admin-table.receivables > article > .workflow-cell::before { content:'Responsable / estado'; }
+  .admin-table.receivables > article > span:nth-of-type(1)::before { content:'Pendiente'; }
+  .admin-table.receivables > article > span:nth-of-type(2)::before { content:'Vencido'; }
+  .admin-table.receivables > article > span:nth-of-type(3)::before { content:'Antigüedad'; }
+  .admin-table.receivables > article > span:nth-of-type(4)::before { content:'Próximo seguimiento'; }
+  .admin-table.receivables > article > .edit-workflow-button { position:absolute; top:11px; right:10px; width:40px; height:40px; }
+  .admin-table.receivables > article > .edit-workflow-button::before { display:none; }
+  .admin-table.receivables .workflow-cell :is(strong,small) { max-width:none; white-space:normal; }
 
   /* Clientes usa tarjetas legibles en vez de una tabla recortada. */
   .clients-data-table { min-width:0; border-collapse:separate; border-spacing:0; }
@@ -4161,4 +4296,13 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   .map-heading span { font-size:11px; }
   .clients-data-table tbody { padding:7px; }
   .clients-data-table tbody tr { grid-template-columns:minmax(0,1fr) 92px; padding:12px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .animated-layer.is-opening > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer),
+  .animated-layer.is-closing > :is(.client-profile,.product-profile,.brand-panel,.admin-drawer,.invoice-detail-drawer,.delivery-sheet-detail-drawer),
+  .animated-layer > [class$="-backdrop"] { animation:none; }
+  .mobile-filter-layer,
+  .mobile-filter-backdrop,
+  .mobile-filter-sheet { transition:none !important; }
 }

@@ -10,6 +10,7 @@ import type {
 } from '../../shared/models';
 import { localizedEditableNumber } from '../../shared/localized-number';
 import { decodeMultiFilter, encodeMultiFilter } from '../../shared/multi-filter';
+import { AnimatedLayer } from '../components/AnimatedLayer';
 import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -123,7 +124,7 @@ function ReceivableDrawer({ row, detail, responsibles, onClose, onSaved, onOpenC
   };
   const historyEvents = detail?.events.filter((event) => event.eventType !== 'status') ?? [];
 
-  return <div className="admin-drawer-layer">
+  return <>
     <button className="admin-drawer-backdrop" aria-label="Cerrar seguimiento" onClick={onClose} />
     <aside className="admin-drawer receivable-drawer">
       <header><div><span className="section-kicker"><WalletCards size={14} /> Seguimiento administrativo</span><h2>{clientPrimaryName(row)}</h2><p>{clientSecondaryName(row) ? `${clientSecondaryName(row)} · ` : ''}ID {row.clientId} · {row.seller}</p></div><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X size={19} /></button></header>
@@ -156,7 +157,7 @@ function ReceivableDrawer({ row, detail, responsibles, onClose, onSaved, onOpenC
         {detail && !historyEvents.length && <p className="drawer-empty">Todavía no hay seguimientos registrados.</p>}
       </section>
     </aside>
-  </div>;
+  </>;
 }
 
 export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, onOpenSeller, onOpenInvoice }: ReceivablesViewProps) {
@@ -234,6 +235,8 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
 
     <section className="data-card receivable-table-card"><div className="data-card-header"><div><span className="section-kicker"><MessageSquareText size={14} /> Bandeja de trabajo</span><h2>Cuentas por cobrar</h2><p>La razón social abre el cliente; el lápiz permite modificar el seguimiento.</p></div><span className="count-badge">{number(payload.rows.length)} cuentas</span></div><div className="admin-table receivables"><header><SortButton label="Cliente" direction={direction('name')} onClick={() => setSort((state) => cycleSort(state, 'name'))} /><SortButton label="Vendedor" direction={direction('seller')} onClick={() => setSort((state) => cycleSort(state, 'seller'))} /><SortButton label="Responsable / estado" direction={direction('responsible')} onClick={() => setSort((state) => cycleSort(state, 'responsible'))} /><SortButton label="Pendiente" direction={direction('pendingBalance')} onClick={() => setSort((state) => cycleSort(state, 'pendingBalance'))} /><SortButton label="Vencido" direction={direction('overdueBalance')} onClick={() => setSort((state) => cycleSort(state, 'overdueBalance'))} /><SortButton label="Antigüedad" direction={direction('oldestOverdueDays')} onClick={() => setSort((state) => cycleSort(state, 'oldestOverdueDays'))} /><SortButton label="Próximo seguimiento" direction={direction('nextFollowUpAt')} onClick={() => setSort((state) => cycleSort(state, 'nextFollowUpAt'))} /><span>Modificar</span></header>{sorted.map((row) => <article key={row.clientId} className={row.workflow.nextFollowUpAt && row.workflow.nextFollowUpAt <= today && row.workflow.status !== 'resolved' ? 'follow-up-due' : ''}><button className="admin-drill-entity" onClick={() => openProfile(row.clientId)}><strong>{clientPrimaryName(row)}</strong><small>{clientSecondaryName(row) ? `${clientSecondaryName(row)} · ` : ''}ID {row.clientId} · {row.paymentMethod} · {number(row.openDocuments)} comprobantes</small></button><button className="entity-link" onClick={() => onOpenSeller(row.seller)}>{row.seller}</button><div className="workflow-cell"><strong>{row.workflow.responsible || 'Sin asignar'}</strong><span className={`status-pill ${row.workflow.status}`}>{statusLabels[row.workflow.status]}</span>{row.workflow.status === 'promise' && row.workflow.promiseAmount && <small>{money(row.workflow.promiseAmount)} · {longDate(row.workflow.promiseDueAt ?? '')}</small>}{row.workflow.status === 'promise' && !row.workflow.promiseAmount && <small className="promise-incomplete-inline">Completar importe y fecha</small>}{row.workflow.lastComment && <small>{row.workflow.lastComment}</small>}</div><span>{money(row.pendingBalance)}</span><span className="overdue-value">{money(row.overdueBalance)}<small>{percent(row.overdueShare)}</small></span><span>{row.oldestOverdueDays ? `${number(row.oldestOverdueDays)} días` : 'A vencer'}</span><span>{row.workflow.nextFollowUpAt ? longDate(row.workflow.nextFollowUpAt) : 'Sin fecha'}</span><button className="icon-button edit-workflow-button" aria-label={`Modificar seguimiento de ${clientPrimaryName(row)}`} onClick={() => openWorkflow(row)}><Pencil size={15} /></button></article>)}</div></section>
     <section className="general-source-note"><ShieldCheck size={18} /><div><strong>Separación de responsabilidades</strong><span>Los importes y vencimientos corresponden a los datos del {payload.sourceMaxDate}. El seguimiento interno se conserva entre actualizaciones.</span><small>“Cerrado internamente” no cancela ni modifica una deuda; sólo cierra el seguimiento dentro del programa.</small></div></section>
-    {selected && <ReceivableDrawer key={selected.clientId} row={selected} detail={detail} responsibles={payload.options.responsibles} onClose={() => { setSelected(null); setDetail(null); }} onSaved={saved} onOpenClient={() => { const clientId = selected.clientId; setSelected(null); setDetail(null); openProfile(clientId); }} onOpenInvoice={onOpenInvoice} />}
+    <AnimatedLayer open={Boolean(selected)} className="admin-drawer-layer">
+      {selected && <ReceivableDrawer key={selected.clientId} row={selected} detail={detail} responsibles={payload.options.responsibles} onClose={() => { setSelected(null); setDetail(null); }} onSaved={saved} onOpenClient={() => { const clientId = selected.clientId; setSelected(null); setDetail(null); openProfile(clientId); }} onOpenInvoice={onOpenInvoice} />}
+    </AnimatedLayer>
   </div>;
 }

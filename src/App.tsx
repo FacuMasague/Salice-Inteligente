@@ -8,6 +8,7 @@ import {
   type ClientScopeMode,
 } from '../shared/client-visibility';
 import type { DataHealthPayload } from '../shared/data-health';
+import { AnimatedLayer } from './components/AnimatedLayer';
 import { ClientPanel } from './components/ClientPanel';
 import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawer';
 import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
@@ -559,6 +560,8 @@ export default function App() {
   const snapshotLabel = `${snapshotDay} · ${snapshotTime}`;
   const clientScopeLabel = CLIENT_SCOPE_OPTIONS.find((option) => option.value === clientScope)?.label ?? 'Alcance de clientes';
   const sidebarInactive = narrowDisplay ? !sidebarOpen : sidebarCollapsed;
+  const focusedDeliverySheet = sheetFocusId == null ? null : data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId) ?? null;
+
   return (
     <div className={`app-shell density-${preferences.density}`}>
       <aside
@@ -672,18 +675,28 @@ export default function App() {
           {view === 'help' && <HelpView tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
         </Suspense></div>
       </main>
-      {clientProfileOpen && selected && <div className="client-drawer-layer"><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></div>}
-      {productProfileOpen && selectedProduct && <div className="product-drawer-layer"><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></div>}
-      {brandProfileOpen && brandFocus && <div className="brand-drawer-layer"><button className="brand-drawer-backdrop" aria-label="Cerrar ficha de marca" onClick={() => setBrandProfileOpen(false)} /><BrandPanel brand={brandFocus} products={data.products} onClose={() => setBrandProfileOpen(false)} onOpenProduct={openProduct} /></div>}
-      {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
-      {sheetFocusId != null && data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId) && <DeliverySheetDetailDrawer
-        sheet={data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId)!}
-        logistics={data.logistics}
-        clients={visibleClients}
-        onClose={() => setSheetFocusId(null)}
-        onOpenClient={openClientById}
-        onOpenInvoice={openInvoice}
-      />}
+      <AnimatedLayer open={clientProfileOpen && Boolean(selected)} className="client-drawer-layer">
+        {selected && <><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></>}
+      </AnimatedLayer>
+      <AnimatedLayer open={productProfileOpen && Boolean(selectedProduct)} className="product-drawer-layer">
+        {selectedProduct && <><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></>}
+      </AnimatedLayer>
+      <AnimatedLayer open={brandProfileOpen && Boolean(brandFocus)} className="brand-drawer-layer">
+        {brandFocus && <><button className="brand-drawer-backdrop" aria-label="Cerrar ficha de marca" onClick={() => setBrandProfileOpen(false)} /><BrandPanel brand={brandFocus} products={data.products} onClose={() => setBrandProfileOpen(false)} onOpenProduct={openProduct} /></>}
+      </AnimatedLayer>
+      <AnimatedLayer open={Boolean(invoiceFocusId)} className="invoice-drawer-layer">
+        {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
+      </AnimatedLayer>
+      <AnimatedLayer open={Boolean(focusedDeliverySheet)} className="delivery-sheet-drawer-layer">
+        {focusedDeliverySheet && <DeliverySheetDetailDrawer
+          sheet={focusedDeliverySheet}
+          logistics={data.logistics}
+          clients={visibleClients}
+          onClose={() => setSheetFocusId(null)}
+          onOpenClient={openClientById}
+          onOpenInvoice={openInvoice}
+        />}
+      </AnimatedLayer>
       {tutorial && <TutorialOverlay definition={TUTORIALS[tutorial.section]} stepIndex={tutorial.stepIndex} onBack={() => setTutorial((current) => current ? { ...current, stepIndex: Math.max(0, current.stepIndex - 1) } : null)} onNext={nextTutorialStep} onClose={() => setTutorial(null)} />}
     </div>
   );

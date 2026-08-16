@@ -19,13 +19,14 @@ La v2.0.0 convierte la interfaz existente en una experiencia utilizable y compre
 - Las búsquedas principales permanecen visibles cuando son necesarias para recorrer resultados.
 - El mismo estado y los mismos controles se reutilizan en escritorio y móvil; no existe una segunda lógica de filtrado.
 - Los paneles admiten Escape, navegación por teclado, contención de foco, cierre por fondo y restauración del foco al botón de origen.
+- Filtros, fichas y bandejas superpuestas animan la entrada y la salida; la animación se desactiva cuando el dispositivo solicita reducir movimiento.
 - Las vistas guardadas continúan perteneciendo al usuario autenticado.
 
 ## Superficies densas
 
 - Mapa prioriza la cartografía, oculta los indicadores secundarios y traslada filtros y vistas guardadas al panel móvil.
 - La ficha de cliente del mapa se abre como panel inferior y las ubicaciones aproximadas mantienen todas sus advertencias.
-- Clientes, Productos y los productos de una Marca usan tarjetas legibles en pantallas angostas.
+- Clientes, Vendedores, la bandeja de cobranzas de Cartera, Cuentas por cobrar, Productos y los productos de una Marca usan tarjetas legibles en pantallas angostas.
 - Productos adopta un flujo lista → ficha completa en móvil; en escritorio conserva la comparación lado a lado.
 - Las tablas que requieren todas sus dimensiones conservan anchos legibles y desplazamiento horizontal visible.
 - Los paneles de IA siguen plegados, pero su acceso, texto, límites y acciones tienen tamaños de lectura y toque apropiados.
