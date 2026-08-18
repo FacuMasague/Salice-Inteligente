@@ -207,7 +207,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     </details>
   </nav>;
 
-  if (mode === 'inventory') return <div className="page-view products-workspace">{modeNavigation}<InventoryDecisionTray products={products} reviews={inventoryReviews} loadError={inventoryReviewLoadError} onReviewSaved={(review) => setInventoryReviews((current) => ({ ...current, [review.productId]: review }))} onOpenProduct={(product) => openProduct(product.id)} onOpenBrand={onOpenBrand} /></div>;
+  if (mode === 'inventory') return <div className="page-view products-workspace">{modeNavigation}<InventoryDecisionTray products={products} reviews={inventoryReviews} loadError={inventoryReviewLoadError} onReviewSaved={(review) => setInventoryReviews((current) => ({ ...current, [review.productId]: review }))} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} /></div>;
 
   if (mode === 'demand') return <div className="page-view products-workspace">{modeNavigation}<ProductDemandAnalysis products={products} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenGroup={(value) => { setQuery(value); setMode('catalog'); setPage(1); }} /></div>;
 

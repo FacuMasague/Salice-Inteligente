@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, UserCircle, Users, WalletCards, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeft, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, UserCircle, Users, WalletCards, X } from 'lucide-react';
 import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
 import {
@@ -598,6 +598,7 @@ export default function App() {
         <header className="topbar">
           <button ref={mobileMenuButton} className="mobile-menu" aria-label="Abrir menú" aria-expanded={sidebarOpen} aria-controls="app-sidebar-navigation" onClick={openMobileNavigation}><Menu size={20} /></button>
           <button className="desktop-sidebar-toggle" aria-label={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} title={sidebarCollapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'} aria-pressed={sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</button>
+          {isReportViewId(view) && <button type="button" className="report-center-back" aria-label="Volver a Reportes" title="Volver a Reportes" onClick={() => selectView('report-center')}><ArrowLeft size={18} /><span>Reportes</span></button>}
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
             {clientScopeViews.has(view) && <MobileFilterSheet

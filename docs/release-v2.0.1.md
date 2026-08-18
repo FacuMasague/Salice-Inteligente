@@ -22,6 +22,17 @@ La v2.0.1 corrige la administración de objetivos comerciales cuando una celda d
 - El editor y Reporte General comparten la misma definición de vendedores de autoservicio.
 - Cada guardado conserva una revisión mensual inmutable y activa una versión completa de manera atómica.
 
+## Pulido final de la experiencia móvil
+
+- Las bandejas de clientes, vendedores, cartera, cuentas por cobrar, marcas e inventario conservan tarjetas legibles y acciones táctiles consistentes.
+- Las fichas rápidas se cierran antes de abrir una ficha principal y los paneles laterales animan tanto su entrada como su salida.
+- Los productos de inventario abren directamente su ficha desde toda la tarjeta, sin interferir con la acción de revisión.
+- Los reportes incorporan un acceso directo para volver al centro de Reportes en escritorio y móvil.
+- Los gráficos interactivos permiten consultar al pasar el mouse y fijar o liberar el detalle mediante clic o toque.
+- El avance mensual de Volumen SPT mantiene su escala normal en teléfonos y se recorre horizontalmente sin desplazar el encabezado.
+- Los gráficos trimestrales de Mars, NutriPet y Baires desplazan únicamente el área gráfica.
+- Los tutoriales respetan el área visible del dispositivo y mantienen sus acciones accesibles.
+
 ## Reglas que no cambian
 
 - Los resultados reales continúan proviniendo de GESI y no se modifican desde el editor de objetivos.

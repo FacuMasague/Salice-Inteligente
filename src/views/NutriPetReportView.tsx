@@ -12,6 +12,7 @@ import { SortButton } from '../components/SortButton';
 import { compactNumber, money as formatMoney, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 const EMPTY_FILTERS: NutriPetFilters = {
   year: '', month: '', channelGroup: 'Especializado', brand: '', product: '', line: '', client: '', grouping: '', category: '',
@@ -38,7 +39,8 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
 }
 
 function EvolutionChart({ report }: { report: NutriPetReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 920;
   const height = 310;
   const inset = { left: 63, right: 64, top: 23, bottom: 42 };
@@ -58,7 +60,7 @@ function EvolutionChart({ report }: { report: NutriPetReportPayload }) {
   const zeroY = yKilos(0);
   const linePoints = report.monthly.flatMap((row, index) => row.ytdVsPreviousYear == null ? [] : [`${x(index)},${yRatio(row.ytdVsPreviousYear)}`]).join(' ');
   const hoveredRow = hovered == null ? null : report.monthly[hovered];
-  return <div className="nutripet-chart-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="nutripet-chart-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Volumen NutriPet de los últimos trece meses y acumulado contra el año anterior">
       {[0, .25, .5, .75, 1].map((ratioValue) => {
         const value = minKilos + kiloRange * ratioValue;
@@ -70,7 +72,7 @@ function EvolutionChart({ report }: { report: NutriPetReportPayload }) {
         const barWidth = Math.min(43, step * .62);
         const barY = row.kilos >= 0 ? yKilos(row.kilos) : zeroY;
         const barHeight = Math.max(1, Math.abs(zeroY - yKilos(row.kilos)));
-        return <g key={row.month} className="nutripet-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${monthLabel(row.month, true)}: ${exactKilos(row.kilos)} kilos`}>
+        return <g key={row.month} className="nutripet-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${monthLabel(row.month, true)}: ${exactKilos(row.kilos)} kilos`}>
           <rect x={x(index) - step / 2} y={inset.top} width={step} height={chartHeight} fill="transparent" />
           <rect x={x(index) - barWidth / 2} y={barY} width={barWidth} height={barHeight} rx="5" className={row.isPartial ? 'nutripet-volume-bar partial' : row.kilos < 0 ? 'nutripet-volume-bar negative' : 'nutripet-volume-bar'} />
           <text x={x(index)} y={height - 13} textAnchor="middle">{monthLabel(row.month)}</text>
@@ -91,7 +93,8 @@ function EvolutionChart({ report }: { report: NutriPetReportPayload }) {
 }
 
 function ClientChart({ rows }: { rows: NutriPetMonthlyPoint[] }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const data = rows.slice(-12);
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(520);
@@ -114,7 +117,7 @@ function ClientChart({ rows }: { rows: NutriPetMonthlyPoint[] }) {
   const y = (value: number) => inset.top + chartHeight - value / max * chartHeight;
   const points = data.map((row, index) => `${x(index)},${y(row.clients)}`).join(' ');
   const hoveredRow = hovered == null ? null : data[hovered];
-  return <div className="nutripet-client-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="nutripet-client-stage" onMouseLeave={chart.clearHover}>
     <svg
       ref={svgRef}
       viewBox={`0 0 ${width} ${height}`}
@@ -125,12 +128,12 @@ function ClientChart({ rows }: { rows: NutriPetMonthlyPoint[] }) {
         const rect = event.currentTarget.getBoundingClientRect();
         const pointerX = (event.clientX - rect.left) / rect.width * width;
         const nearest = data.length === 1 ? 0 : Math.round((pointerX - inset.left) / step);
-        setHovered(Math.max(0, Math.min(data.length - 1, nearest)));
+        chart.setHovered(Math.max(0, Math.min(data.length - 1, nearest)));
       }}
     >
       {[0, .5, 1].map((ratioValue) => <g key={ratioValue}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratioValue)} y2={y(max * ratioValue)} className="nutripet-grid-line" />{ratioValue > 0 && <text x={inset.left - 8} y={y(max * ratioValue) + 4} textAnchor="end">{Math.round(max * ratioValue)}</text>}</g>)}
       <polyline points={points} className="nutripet-client-line" />
-      {data.map((row, index) => <g key={row.month} className="nutripet-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${monthLabel(row.month, true)}: ${number(row.clients)} clientes`}><circle cx={x(index)} cy={y(row.clients)} r={hovered === index ? 6 : 4.5} className={row.isPartial ? 'nutripet-client-dot partial' : 'nutripet-client-dot'} /><text className="nutripet-client-month-label" x={x(index)} y={height - 18} textAnchor="middle">{monthLabel(row.month)}</text></g>)}
+      {data.map((row, index) => <g key={row.month} className="nutripet-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${monthLabel(row.month, true)}: ${number(row.clients)} clientes`}><rect x={x(index) - Math.max(16, step / 2)} y={inset.top} width={Math.max(32, step)} height={chartHeight} fill="transparent" /><circle cx={x(index)} cy={y(row.clients)} r={hovered === index ? 6 : 4.5} className={row.isPartial ? 'nutripet-client-dot partial' : 'nutripet-client-dot'} /><text className="nutripet-client-month-label" x={x(index)} y={height - 18} textAnchor="middle">{monthLabel(row.month)}</text></g>)}
       {hovered != null && <line x1={x(hovered)} x2={x(hovered)} y1={inset.top} y2={inset.top + chartHeight} className="nutripet-hover-line" />}
     </svg>
     {hoveredRow && hovered != null && <aside className={`nutripet-client-tooltip ${hovered < 2 ? 'align-start' : hovered > data.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}><strong>{monthLabel(hoveredRow.month, true)}</strong><b>{number(hoveredRow.clients)}</b><span>clientes únicos</span><small>{exactKilos(hoveredRow.kilos)} kg · {money(hoveredRow.netAmount)}</small></aside>}
@@ -261,7 +264,7 @@ export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProdu
 
     <section className="data-card nutripet-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen y acumulado interanual</h2><p>Últimos 13 meses disponibles. Las barras muestran kilos y la línea el acumulado contra el año anterior.</p></div><div className="nutripet-legend"><span><i />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Mes parcial</span></div></div><EvolutionChart report={report} /></section>
 
-    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><QuarterChart report={report} /></section></div>
+    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
 
     <section className="data-card nutripet-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBag size={14} /> Marcas</span><h2>Mix del mes seleccionado</h2><p>Volumen y comparación contra el mismo corte del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 

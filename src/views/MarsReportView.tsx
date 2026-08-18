@@ -11,6 +11,7 @@ import { SortButton } from '../components/SortButton';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { compactNumber, money as formatMoney, number } from '../lib/format';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 const EMPTY_FILTERS: MarsFilters = {
   year: '', period: '', clientMode: 'branch', branch: '', clientType: '',
@@ -39,7 +40,8 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
 }
 
 function VolumeChart({ report }: { report: MarsReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 920;
   const height = 315;
   const inset = { left: 62, right: 62, top: 24, bottom: 43 };
@@ -53,14 +55,14 @@ function VolumeChart({ report }: { report: MarsReportPayload }) {
   const yRatio = (value: number) => inset.top + chartHeight - value / maxRatio * chartHeight;
   const linePoints = report.periods.map((row, index) => `${x(index)},${yRatio(row.ytdVsPreviousYear ?? 0)}`).join(' ');
   const hoveredRow = hovered == null ? null : report.periods[hovered];
-  return <div className="mars-chart-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="mars-chart-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Volumen Mars por período y comparación acumulada contra el año anterior">
       {[0, .25, .5, .75, 1].map((ratioValue) => <g key={ratioValue}><line x1={inset.left} x2={width - inset.right} y1={yKilos(maxKilos * ratioValue)} y2={yKilos(maxKilos * ratioValue)} className="mars-grid-line" />{ratioValue > 0 && <text x={inset.left - 10} y={yKilos(maxKilos * ratioValue) + 4} textAnchor="end">{kilos(maxKilos * ratioValue, true)}</text>}</g>)}
       {[0, 50, 100].map((ratioValue) => <text key={ratioValue} x={width - inset.right + 10} y={yRatio(ratioValue) + 4}>{ratioValue}%</text>)}
       {report.periods.map((row, index) => {
         const barWidth = Math.min(47, step * .58);
         const barHeight = Math.max(1, inset.top + chartHeight - yKilos(row.kilos));
-        return <g key={row.label} className="mars-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${row.label}: ${exactKilos(row.kilos)} kilos`}>
+        return <g key={row.label} className="mars-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${row.label}: ${exactKilos(row.kilos)} kilos`}>
           <rect x={x(index) - step / 2} y={inset.top} width={step} height={chartHeight} fill="transparent" />
           <rect x={x(index) - barWidth / 2} y={yKilos(row.kilos)} width={barWidth} height={barHeight} rx="5" className={row.isPartial ? 'mars-volume-bar partial' : 'mars-volume-bar'} />
           <text x={x(index)} y={height - 14} textAnchor="middle">{row.label}</text>
@@ -81,7 +83,8 @@ function VolumeChart({ report }: { report: MarsReportPayload }) {
 }
 
 function ClientChart({ report }: { report: MarsReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(500);
   const height = 315;
@@ -103,7 +106,7 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
   const y = (value: number) => inset.top + chartHeight - value / max * chartHeight;
   const points = report.periods.map((row, index) => `${x(index)},${y(row.clients)}`).join(' ');
   const hoveredRow = hovered == null ? null : report.periods[hovered];
-  return <div className="mars-client-chart" onMouseLeave={() => setHovered(null)}>
+  return <div className="mars-client-chart" onMouseLeave={chart.clearHover}>
     <svg
       ref={svgRef}
       viewBox={`0 0 ${width} ${height}`}
@@ -114,12 +117,12 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
         const rect = event.currentTarget.getBoundingClientRect();
         const pointerX = (event.clientX - rect.left) / rect.width * width;
         const nearest = report.periods.length === 1 ? 0 : Math.round((pointerX - inset.left) / step);
-        setHovered(Math.max(0, Math.min(report.periods.length - 1, nearest)));
+        chart.setHovered(Math.max(0, Math.min(report.periods.length - 1, nearest)));
       }}
     >
       {[0, .5, 1].map((ratioValue) => <g key={ratioValue}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratioValue)} y2={y(max * ratioValue)} className="mars-grid-line" />{ratioValue > 0 && <text x={inset.left - 8} y={y(max * ratioValue) + 4} textAnchor="end">{Math.round(max * ratioValue)}</text>}</g>)}
       <polyline points={points} className="mars-client-line" />
-      {report.periods.map((row, index) => <g key={row.label} className="mars-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${row.label}: ${number(row.clients)} ${report.filters.clientMode === 'branch' ? 'sucursales de cliente' : 'cuentas únicas'}`}><circle cx={x(index)} cy={y(row.clients)} r={hovered === index ? 6 : 4.5} className={row.isPartial ? 'mars-client-dot partial' : 'mars-client-dot'} /><text x={x(index)} y={height - 12} textAnchor="middle">{row.label}</text></g>)}
+      {report.periods.map((row, index) => <g key={row.label} className="mars-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${row.label}: ${number(row.clients)} ${report.filters.clientMode === 'branch' ? 'sucursales de cliente' : 'cuentas únicas'}`}><rect x={x(index) - Math.max(16, step / 2)} y={inset.top} width={Math.max(32, step)} height={chartHeight} fill="transparent" /><circle cx={x(index)} cy={y(row.clients)} r={hovered === index ? 6 : 4.5} className={row.isPartial ? 'mars-client-dot partial' : 'mars-client-dot'} /><text x={x(index)} y={height - 12} textAnchor="middle">{row.label}</text></g>)}
       {hovered != null && <line x1={x(hovered)} x2={x(hovered)} y1={inset.top} y2={inset.top + chartHeight} className="mars-hover-line" />}
     </svg>
     {hoveredRow && hovered != null && <aside className={`mars-client-tooltip ${hovered < 2 ? 'align-start' : hovered > report.periods.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}><strong>{hoveredRow.label}</strong><b>{number(hoveredRow.clients)}</b><span>{report.filters.clientMode === 'branch' ? 'sucursales de cliente' : 'cuentas únicas'}</span><small>{number(hoveredRow.accounts)} cuentas · {number(hoveredRow.clientBranches)} sucursales</small></aside>}
@@ -243,7 +246,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
 
     <section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance acumulado</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section>
 
-    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><QuarterChart report={report} /></section></div>
+    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
 
     <section className="data-card mars-brand-card"><div className="data-card-header"><div><span className="section-kicker"><PawPrint size={14} /> Marcas</span><h2>Mix del período seleccionado</h2><p>Comparación contra la misma cantidad de días del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 

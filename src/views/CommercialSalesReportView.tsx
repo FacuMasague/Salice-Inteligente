@@ -18,6 +18,7 @@ import { SortButton } from '../components/SortButton';
 import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 const EMPTY_FILTERS: CommercialSalesFilters = { periodMode: 'month', month: '', year: '', seller: '', category: '', brand: '', productGroup: '' };
 const FILTER_LABELS: Record<CommercialSalesFilterKey, string> = {
@@ -51,7 +52,8 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
 }
 
 function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 820;
   const height = 285;
   const inset = { left: 56, right: 18, top: 20, bottom: 42 };
@@ -63,13 +65,13 @@ function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
   const y = (value: number) => inset.top + chartHeight - value / max * chartHeight;
   const line = report.monthly.map((row, index) => `${x(index)},${y(row.previousYear)}`).join(' ');
   const hoveredRow = hovered == null ? null : report.monthly[hovered];
-  return <div className="commercial-evolution-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="commercial-evolution-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Evolución de ventas netas ${report.periodMode === 'year' ? `durante ${report.selectedPeriod}` : 'por mes'}`}>
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratio)} y2={y(max * ratio)} className="commercial-grid-line" />{ratio > 0 && <text x={inset.left - 9} y={y(max * ratio) + 4} textAnchor="end">{money(max * ratio, true)}</text>}</g>)}
       {report.monthly.map((row, index) => {
         const barWidth = Math.min(50, step * .56);
         const barHeight = Math.max(1, chartHeight - (y(row.current) - inset.top));
-        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${monthLabel(row.month, true)}: ${money(row.current)} y ${kilos(row.currentKilos)} kilos`}>
+        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${monthLabel(row.month, true)}: ${money(row.current)} y ${kilos(row.currentKilos)} kilos`}>
           <rect x={x(index) - step / 2} y={inset.top} width={step} height={chartHeight} fill="transparent" />
           <rect x={x(index) - barWidth / 2} y={y(row.current)} width={barWidth} height={barHeight} rx="5" className="commercial-current-bar" />
           <text x={x(index)} y={height - 14} textAnchor="middle">{monthLabel(row.month)}</text>
@@ -89,7 +91,8 @@ function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
 }
 
 function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
-  const [hovered, setHovered] = useState<CommercialSalesMixRow['label'] | null>(null);
+  const chart = usePinnedChart<CommercialSalesMixRow['label']>();
+  const hovered = chart.active;
   const radius = 62;
   const circumference = Math.PI * radius * 2;
   let offset = 0;
@@ -102,12 +105,12 @@ function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
           const length = circumference * row.share / 100;
           const currentOffset = offset;
           offset += length;
-          return <circle key={row.label} cx="90" cy="90" r={radius} fill="none" stroke={MIX_COLORS[row.label]} strokeWidth={hovered === row.label ? 24 : 20} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} className="commercial-donut-slice" tabIndex={0} onMouseEnter={() => setHovered(row.label)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(row.label)} onBlur={() => setHovered(null)}><title>{row.label}: {money(row.netAmount)} ({percent(row.share)})</title></circle>;
+          return <circle key={row.label} cx="90" cy="90" r={radius} fill="none" stroke={MIX_COLORS[row.label]} strokeWidth={hovered === row.label ? 24 : 20} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} className="commercial-donut-slice" tabIndex={0} role="button" aria-pressed={chart.pinned === row.label} onMouseEnter={() => chart.setHovered(row.label)} onMouseLeave={chart.clearHover} onFocus={() => chart.setHovered(row.label)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(row.label)}><title>{row.label}: {money(row.netAmount)} ({percent(row.share)})</title></circle>;
         })}
       </svg>
       <div><strong>{money(total, true)}</strong><span>venta neta</span></div>
     </div>
-    <div className="commercial-mix-list">{rows.map((row) => <article key={row.label} className={hovered === row.label ? 'active' : ''} onMouseEnter={() => setHovered(row.label)} onMouseLeave={() => setHovered(null)}><i style={{ background: MIX_COLORS[row.label] }} /><div><strong>{row.label}</strong><span>{number(row.clients)} clientes · {kilos(row.kilos, true)} kg</span></div><b>{percent(row.share)}</b><em>{money(row.netAmount, true)}</em></article>)}</div>
+    <div className="commercial-mix-list">{rows.map((row) => <article key={row.label} className={hovered === row.label ? 'active' : ''} role="button" tabIndex={0} aria-pressed={chart.pinned === row.label} onMouseEnter={() => chart.setHovered(row.label)} onMouseLeave={chart.clearHover} onFocus={() => chart.setHovered(row.label)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(row.label)}><i style={{ background: MIX_COLORS[row.label] }} /><div><strong>{row.label}</strong><span>{number(row.clients)} clientes · {kilos(row.kilos, true)} kg</span></div><b>{percent(row.share)}</b><em>{money(row.netAmount, true)}</em></article>)}</div>
   </div>;
 }
 

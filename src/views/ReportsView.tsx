@@ -15,6 +15,7 @@ import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 interface ReportsViewProps {
   data: DashboardData;
@@ -55,7 +56,8 @@ function change(value: number, base: number) {
 }
 
 function TrendChart({ report }: { report: GeneralReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 980;
   const height = 330;
   const inset = { left: 54, right: 24, top: 24, bottom: 46 };
@@ -69,13 +71,13 @@ function TrendChart({ report }: { report: GeneralReportPayload }) {
   const targetLine = report.trend.map((point, index) => `${x(index)},${y(point.target)}`).join(' ');
   const active = hovered == null ? null : report.trend[hovered];
 
-  return <div className="general-trend-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="general-trend-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolución mensual de resultado real y objetivo">
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}>
         <line x1={inset.left} x2={width - inset.right} y1={inset.top + plotHeight * (1 - ratio)} y2={inset.top + plotHeight * (1 - ratio)} className="general-chart-grid" />
         <text x={inset.left - 10} y={inset.top + plotHeight * (1 - ratio) + 4} textAnchor="end" className="general-axis-label">{metric(max * ratio, report.unit, true)}</text>
       </g>)}
-      {report.trend.map((point, index) => <g key={point.month} tabIndex={0} aria-label={`${monthLabel(point.month, true)}. Real ${metric(point.actual, report.unit)}. Objetivo ${metric(point.target, report.unit)}.`} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} onMouseEnter={() => setHovered(index)}>
+      {report.trend.map((point, index) => <g key={point.month} tabIndex={0} role="button" aria-pressed={chart.pinned === index} aria-label={`${monthLabel(point.month, true)}. Real ${metric(point.actual, report.unit)}. Objetivo ${metric(point.target, report.unit)}.`} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onMouseEnter={() => chart.setHovered(index)} onClick={() => chart.togglePinned(index)}>
         <rect x={x(index) - step / 2} y={inset.top} width={step} height={plotHeight} className={`general-chart-hit ${hovered === index ? 'active' : ''}`} />
         <rect x={x(index) - barWidth / 2} y={y(point.actual)} width={barWidth} height={Math.max(1, inset.top + plotHeight - y(point.actual))} rx="5" className={point.isPartial ? 'general-chart-bar partial' : 'general-chart-bar'} />
         <text x={x(index)} y={height - 15} textAnchor="middle" className="general-month-label">{monthLabel(point.month)}</text>
@@ -83,7 +85,7 @@ function TrendChart({ report }: { report: GeneralReportPayload }) {
       <polyline points={targetLine} className="general-target-line" />
       {report.trend.map((point, index) => <circle key={point.month} cx={x(index)} cy={y(point.target)} r={hovered === index ? 5.5 : 3.5} className="general-target-dot" />)}
     </svg>
-    {active && hovered != null && <aside className="general-chart-tooltip" style={{ left: `${Math.min(84, Math.max(8, x(hovered) / width * 100))}%` }}>
+    {active && hovered != null && <aside className={`general-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.trend.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}>
       <strong>{monthLabel(active.month, true)}{active.isPartial ? ' · parcial' : ''}</strong>
       <span><i className="actual" />Real <b>{metric(active.actual, report.unit)}</b></span>
       <span><i className="target" />Objetivo <b>{metric(active.target, report.unit)}</b></span>

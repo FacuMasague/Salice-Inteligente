@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, SlidersHorizontal, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
@@ -11,6 +11,7 @@ import { SortButton } from '../components/SortButton';
 import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 type ReportTab = 'summary' | 'sellers' | 'quarters';
 
@@ -45,25 +46,11 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
 }
 
 function DailyComparison({ report }: { report: SptReportPayload }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  const chart = usePinnedChart<number>();
+  const hoveredIndex = chart.active;
   const width = 820;
-  const [height, setHeight] = useState(300);
+  const height = 300;
   const inset = { x: 46, y: 22, bottom: 31 };
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const resize = () => {
-      const bounds = stage.getBoundingClientRect();
-      if (bounds.width > 0 && bounds.height > 0) {
-        setHeight(Math.max(220, Math.round(width * bounds.height / bounds.width)));
-      }
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, []);
   const cumulative = (key: 'current' | 'previousMonth' | 'previousYear') => {
     let total = 0;
     return report.daily.map((point) => { total += point[key]; return total; });
@@ -80,30 +67,41 @@ function DailyComparison({ report }: { report: SptReportPayload }) {
   const hoveredPoint = hoveredIndex == null ? null : report.daily[hoveredIndex];
   return <div className="spt-line-chart">
     <div className="spt-chart-legend">{series.map((item) => <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>)}</div>
-    <div className="spt-line-chart-stage" ref={stageRef}>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kilos acumulados por día comparados con mes y año anterior"
-        onPointerMove={(event) => {
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const pointerX = (event.clientX - bounds.left) / bounds.width * width;
-          const index = Math.round((pointerX - inset.x) / Math.max(1, width - inset.x * 2) * Math.max(1, report.daily.length - 1));
-          setHoveredIndex(Math.max(0, Math.min(report.daily.length - 1, index)));
-        }}
-        onPointerLeave={() => setHoveredIndex(null)}>
-        {[0, .25, .5, .75, 1].map((tick) => <g key={tick}><line x1={inset.x} x2={width - inset.x} y1={y(max * tick)} y2={y(max * tick)} className="spt-grid-line" /><text x={inset.x - 7} y={y(max * tick) + 3} textAnchor="end">{kilos(max * tick, true)}</text></g>)}
-        {series.map((item) => <polyline key={item.key} points={item.values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} fill="none" stroke={item.color} strokeWidth={item.key === 'current' ? 3 : 2} strokeDasharray={item.key === 'current' ? undefined : '5 4'} strokeLinejoin="round" strokeLinecap="round" />)}
-        {hoveredIndex != null && <g className="spt-hover-guide"><line x1={x(hoveredIndex)} x2={x(hoveredIndex)} y1={inset.y} y2={height - inset.bottom} />{series.map((item) => <circle key={item.key} cx={x(hoveredIndex)} cy={y(item.values[hoveredIndex])} r={4} fill="white" stroke={item.color} strokeWidth={2.5} />)}</g>}
-        {report.daily.map((point, index) => (point.day === 1 || point.day % 3 === 0 || point.day === report.cutoffDay) && <text key={point.day} x={x(index)} y={height - 7} textAnchor="middle">{point.day}</text>)}
-      </svg>
-      {hoveredPoint && hoveredIndex != null && <aside className={`spt-chart-tooltip ${hoveredIndex < 3 ? 'align-start' : hoveredIndex > report.daily.length - 4 ? 'align-end' : ''}`} style={{ left: `${x(hoveredIndex) / width * 100}%` }} aria-live="polite">
-        <strong>Día {hoveredPoint.day}</strong>
-        {series.map((item) => <div key={item.key}><i style={{ background: item.color }} /><span><b>{item.label}</b><em>{exactKilos(item.values[hoveredIndex])} kg acumulados</em><small>{exactKilos(hoveredPoint[item.key])} kg del día</small></span></div>)}
-      </aside>}
+    <div className="spt-line-chart-scroll">
+      <div className="spt-line-chart-stage">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kilos acumulados por día comparados con mes y año anterior"
+          onPointerMove={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const pointerX = (event.clientX - bounds.left) / bounds.width * width;
+            const index = Math.round((pointerX - inset.x) / Math.max(1, width - inset.x * 2) * Math.max(1, report.daily.length - 1));
+            chart.setHovered(Math.max(0, Math.min(report.daily.length - 1, index)));
+          }}
+          onPointerLeave={chart.clearHover}
+          onClick={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const pointerX = (event.clientX - bounds.left) / bounds.width * width;
+            const index = Math.round((pointerX - inset.x) / Math.max(1, width - inset.x * 2) * Math.max(1, report.daily.length - 1));
+            chart.togglePinned(Math.max(0, Math.min(report.daily.length - 1, index)));
+          }}>
+          <defs><linearGradient id="spt-current-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4f8b72" stopOpacity=".22" /><stop offset="100%" stopColor="#4f8b72" stopOpacity="0" /></linearGradient></defs>
+          {[0, .25, .5, .75, 1].map((tick) => <g key={tick}><line x1={inset.x} x2={width - inset.x} y1={y(max * tick)} y2={y(max * tick)} className="spt-grid-line" /><text x={inset.x - 7} y={y(max * tick) + 3} textAnchor="end">{kilos(max * tick, true)}</text></g>)}
+          {series[0]?.values.length > 0 && <polygon points={`${x(0)},${height - inset.bottom} ${series[0].values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} ${x(series[0].values.length - 1)},${height - inset.bottom}`} fill="url(#spt-current-area)" />}
+          {series.map((item) => <polyline key={item.key} points={item.values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} fill="none" stroke={item.color} strokeWidth={item.key === 'current' ? 3 : 2} strokeDasharray={item.key === 'current' ? undefined : '5 4'} strokeLinejoin="round" strokeLinecap="round" />)}
+          {hoveredIndex != null && <g className="spt-hover-guide"><line x1={x(hoveredIndex)} x2={x(hoveredIndex)} y1={inset.y} y2={height - inset.bottom} />{series.map((item) => <circle key={item.key} cx={x(hoveredIndex)} cy={y(item.values[hoveredIndex])} r={4} fill="white" stroke={item.color} strokeWidth={2.5} />)}</g>}
+          {report.daily.map((point, index) => (point.day === 1 || point.day % 3 === 0 || point.day === report.cutoffDay) && <text key={point.day} x={x(index)} y={height - 7} textAnchor="middle">{point.day}</text>)}
+        </svg>
+        {hoveredPoint && hoveredIndex != null && <aside className={`spt-chart-tooltip ${hoveredIndex < 3 ? 'align-start' : hoveredIndex > report.daily.length - 4 ? 'align-end' : ''}`} style={{ left: `${x(hoveredIndex) / width * 100}%` }} aria-live="polite">
+          <strong>Día {hoveredPoint.day}</strong>
+          {series.map((item) => <div key={item.key}><i style={{ background: item.color }} /><span><b>{item.label}</b><em>{exactKilos(item.values[hoveredIndex])} kg acumulados</em><small>{exactKilos(hoveredPoint[item.key])} kg del día</small></span></div>)}
+        </aside>}
+      </div>
     </div>
   </div>;
 }
 
 function MonthlyChart({ report }: { report: SptReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 900;
   const height = 285;
   const inset = { left: 58, right: 18, top: 20, bottom: 42 };
@@ -114,13 +112,13 @@ function MonthlyChart({ report }: { report: SptReportPayload }) {
   const x = (index: number) => inset.left + step * index + step / 2;
   const y = (value: number) => inset.top + chartHeight - value / max * chartHeight;
   const hoveredRow = hovered == null ? null : report.monthly[hovered];
-  return <div className="commercial-evolution-stage spt-history-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="commercial-evolution-stage spt-history-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolución mensual de kilos SPT">
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratio)} y2={y(max * ratio)} className="commercial-grid-line" />{ratio > 0 && <text x={inset.left - 9} y={y(max * ratio) + 4} textAnchor="end">{kilos(max * ratio, true)} kg</text>}</g>)}
       {report.monthly.map((row, index) => {
         const barWidth = Math.min(42, step * .58);
         const barHeight = Math.max(1, chartHeight - (y(row.kilos) - inset.top));
-        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${monthLabel(row.month, true)}: ${exactKilos(row.kilos)} kilos`}>
+        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${monthLabel(row.month, true)}: ${exactKilos(row.kilos)} kilos`}>
           <rect x={x(index) - step / 2} y={inset.top} width={step} height={chartHeight} fill="transparent" />
           <rect x={x(index) - barWidth / 2} y={y(row.kilos)} width={barWidth} height={barHeight} rx="5" className="commercial-current-bar" />
           <text x={x(index)} y={height - 14} textAnchor="middle">{monthLabel(row.month)}</text>

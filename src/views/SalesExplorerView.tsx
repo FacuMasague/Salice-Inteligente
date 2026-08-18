@@ -18,6 +18,7 @@ import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { money, number, shortDate } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { shouldAdvanceFromPeriod } from '../lib/sales-explorer-navigation';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 type ExplorerTab = 'periods' | 'clients' | 'products' | 'documents';
 type ClientSort = 'name' | 'seller' | 'netAmount' | 'kilos' | 'documents' | 'lastSaleAt';
@@ -44,7 +45,8 @@ function periodLabel(key: string) {
 }
 
 function SalesTimeline({ report, onSelect }: { report: SalesExplorerPayload; onSelect: (from: string, to: string) => void }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 1100;
   const height = 300;
   const inset = { left: 72, right: 24, top: 24, bottom: 46 };
@@ -54,7 +56,7 @@ function SalesTimeline({ report, onSelect }: { report: SalesExplorerPayload; onS
   const step = plotWidth / Math.max(1, report.timeline.length);
   const barWidth = Math.max(3, Math.min(38, step * .66));
   const active = hovered == null ? null : report.timeline[hovered];
-  return <div className="admin-chart-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="admin-chart-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolución de venta neta del período filtrado">
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}>
         <line x1={inset.left} x2={width - inset.right} y1={inset.top + plotHeight * (1 - ratio)} y2={inset.top + plotHeight * (1 - ratio)} />
@@ -64,14 +66,14 @@ function SalesTimeline({ report, onSelect }: { report: SalesExplorerPayload; onS
         const x = inset.left + step * index + step / 2;
         const barHeight = Math.abs(row.netAmount) / max * plotHeight;
         const visibleLabel = report.timeline.length <= 18 || index % Math.ceil(report.timeline.length / 14) === 0;
-        return <g key={row.key} tabIndex={0} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} onMouseEnter={() => setHovered(index)} onClick={() => onSelect(row.from, row.to)} className="admin-chart-point">
+        return <g key={row.key} tabIndex={0} role="button" aria-pressed={chart.pinned === index} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onMouseEnter={() => chart.setHovered(index)} onClick={() => { chart.togglePinned(index); onSelect(row.from, row.to); }} className="admin-chart-point">
           <rect className="hit" x={x - step / 2} y={inset.top} width={step} height={plotHeight} />
           <rect className={row.netAmount < 0 ? 'negative' : hovered === index ? 'active' : ''} x={x - barWidth / 2} y={inset.top + plotHeight - barHeight} width={barWidth} height={Math.max(1, barHeight)} rx="4" />
           {visibleLabel && <text x={x} y={height - 16} textAnchor="middle">{periodLabel(row.key)}</text>}
         </g>;
       })}
     </svg>
-    {active && <aside className="admin-chart-tooltip">
+    {active && hovered != null && <aside className={`admin-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.timeline.length - 3 ? 'align-end' : ''}`} style={{ left: `${(inset.left + step * hovered + step / 2) / width * 100}%` }}>
       <strong>{periodLabel(active.key)}</strong><span>Venta neta <b>{money(active.netAmount)}</b></span><span>Kilos <b>{exact(active.kilos, 3)}</b></span><span>Clientes <b>{number(active.clients)}</b></span><small>Hacé clic para profundizar este período.</small>
     </aside>}
   </div>;
