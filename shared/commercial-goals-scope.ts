@@ -12,6 +12,8 @@ export const COMMERCIAL_GOAL_STRATEGIC_BRANDS = [
   'Fawna', 'Juvenia Nutrition', 'MaxPet', 'Pampa',
 ] as const;
 
+export const COMMERCIAL_GOAL_AUTOSERVICE_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'] as const;
+
 export const COMMERCIAL_GOAL_PRODUCTS = [
   ...COMMERCIAL_GOAL_CATEGORIES,
   ...COMMERCIAL_GOAL_CORE_BRANDS,

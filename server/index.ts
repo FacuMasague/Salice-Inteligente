@@ -611,7 +611,7 @@ app.post('/api/admin/goals/months', (req, res) => {
   if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Elegí el mes que querés guardar.' });
   if (!name) return res.status(400).json({ error: 'Escribí un nombre para estos objetivos mensuales.' });
   if (!Array.isArray(req.body?.rows) || !req.body.rows.length) return res.status(400).json({ error: 'Cargá al menos un objetivo antes de guardar.' });
-  const rows = req.body.rows.slice(0, 500).map((row: Record<string, unknown>) => ({
+  const parsedRows = req.body.rows.slice(0, 500).map((row: Record<string, unknown>) => ({
     month,
     product: String(row?.product ?? '').trim().slice(0, 160),
     seller: String(row?.seller ?? '').trim().slice(0, 120),
@@ -619,12 +619,18 @@ app.post('/api/admin/goals/months', (req, res) => {
     accounts: optionalNonNegativeNumber(row?.accounts),
     invoicing: optionalNonNegativeNumber(row?.invoicing),
   }));
-  if (rows.some((row: { kilos: number | null | undefined; accounts: number | null | undefined; invoicing: number | null | undefined }) => row.kilos === undefined || row.accounts === undefined || row.invoicing === undefined)) {
+  if (parsedRows.some((row: { kilos: number | null | undefined; accounts: number | null | undefined; invoicing: number | null | undefined }) => row.kilos === undefined || row.accounts === undefined || row.invoicing === undefined)) {
     return res.status(400).json({ error: 'Los objetivos deben ser números positivos o cero.' });
   }
-  if (rows.some((row: { product: string; seller: string; kilos: number | null; accounts: number | null; invoicing: number | null }) => !row.seller || ((!row.product) && (row.kilos != null || row.accounts != null)))) {
-    return res.status(400).json({ error: 'Cada objetivo de kilos o cuentas debe indicar producto y vendedor.' });
-  }
+  const rows = parsedRows.map((row: { product: string; seller: string; kilos: number | null; accounts: number | null; invoicing: number | null }) => ({
+    ...row,
+    kilos: row.product ? row.kilos : null,
+    accounts: row.product ? row.accounts : null,
+  })).filter((row: { kilos: number | null; accounts: number | null; invoicing: number | null }) => (
+    row.kilos != null || row.accounts != null || row.invoicing != null
+  ));
+  if (!rows.length) return res.status(400).json({ error: 'Cargá al menos un objetivo antes de guardar.' });
+  if (rows.some((row: { seller: string }) => !row.seller)) return res.status(400).json({ error: 'Cada objetivo debe indicar un vendedor.' });
   try {
     const result = saveCommercialGoalMonth({
       month,

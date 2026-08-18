@@ -1,12 +1,14 @@
-# Salice Inteligente · v2.0.0
+# Salice Inteligente · v2.0.1
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.0.0 incorpora una experiencia móvil integral: navegación persistente, filtros por vista en paneles inferiores accesibles, superficies de datos adaptadas a pantallas angostas y un mapa que prioriza la cartografía. Mantiene sin cambios los universos, cálculos, permisos, persistencia y controles determinísticos de v1.5.1.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.0.1 corrige la edición de objetivos comerciales con celdas no especificadas y conserva la experiencia móvil integral incorporada en v2.0.0. Mantiene sin cambios los universos, cálculos, permisos, persistencia y controles determinísticos de v1.5.1.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
 Los objetivos reutilizan el alcance comercial común del programa: vendedores vigentes o altas futuras válidas de GESI y los mismos productos/rubros publicados por Reporte General. Las carteras antiguas del Excel quedan disponibles sólo en el historial auditable.
 
 Cada producto o rubro admite objetivos mensuales de kilos y de clientes. Reporte General calcula el cumplimiento de clientes con compradores únicos por producto y vendedor usando exclusivamente movimientos GESI del mismo mes; una cuenta puede integrar más de un producto.
+
+Una celda vacía de kilos, clientes o facturación se conserva como `null`, es decir, sin objetivo definido. El cero continúa siendo un valor explícito válido. Las filas de facturación de autoservicio no requieren producto y nunca aportan kilos ni cuentas.
 
 ## Abrir el programa
 
@@ -153,7 +155,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.0.0
+## Alcance que continúa fuera de v2.0.1
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -187,3 +189,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.5.0.md`
 - `docs/release-v1.5.1.md`
 - `docs/release-v2.0.0.md`
+- `docs/release-v2.0.1.md`

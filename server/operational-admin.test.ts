@@ -162,6 +162,29 @@ describe('persistencia administrativa v0.4.0', () => {
     expect(store.listCommercialGoalChanges(store.getActiveCommercialGoalPlan().version.id).map((change) => change.eventType)).toContain('saved');
   });
 
+  it('guarda como nulos los objetivos no especificados y conserva la facturación sin producto', () => {
+    const result = store.saveCommercialGoalMonth({
+      month: '2026-09',
+      name: 'Plan septiembre con celdas vacías',
+      actor: 'Prueba oficina',
+      rows: [
+        { month: '2026-09', product: 'Raza', seller: 'Andres Dominguez', kilos: 2_000, accounts: null, invoicing: null },
+        { month: '2026-09', product: '', seller: 'Ana Ottaviano', kilos: 19, accounts: 1, invoicing: 6_000_000 },
+        { month: '2026-09', product: '', seller: 'Julieta Errecart', kilos: 19, accounts: 1, invoicing: null },
+      ],
+    });
+
+    const rows = store.listCommercialGoals(result.version.id, '2026-09');
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ product: 'Raza', kilos: 2_000, accounts: null }),
+      expect.objectContaining({ product: '', seller: 'Ana Ottaviano', kilos: null, accounts: null, invoicing: 6_000_000 }),
+    ]));
+    expect(rows.some((row) => row.seller === 'Julieta Errecart')).toBe(false);
+    expect(store.listCommercialGoalMonthRevisions('2026-09')[0]?.totals).toEqual({
+      kilos: 2_000, accounts: 0, invoicing: 6_000_000,
+    });
+  });
+
   it('exporta el plan actual y todos los registros con las columnas compatibles con Power BI', async () => {
     const { createGoalsHistoryWorkbook } = await import('./admin-exports');
     const workbook = createGoalsHistoryWorkbook();

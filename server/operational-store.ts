@@ -895,13 +895,14 @@ function commercialOpportunityLinkFromRow(row: Record<string, unknown>): Commerc
 }
 
 function commercialGoalFromRow(row: Record<string, unknown>): CommercialGoalRow {
+  const product = textValue(row.product).trim();
   return {
     id: textValue(row.id),
     month: textValue(row.month),
-    product: textValue(row.product),
-    seller: textValue(row.seller),
-    kilos: row.kilos == null ? null : Number(row.kilos),
-    accounts: row.accounts == null ? null : Number(row.accounts),
+    product,
+    seller: textValue(row.seller).trim(),
+    kilos: !product || row.kilos == null ? null : Number(row.kilos),
+    accounts: !product || row.accounts == null ? null : Number(row.accounts),
     invoicing: row.invoicing == null ? null : Number(row.invoicing),
   };
 }
@@ -1858,15 +1859,18 @@ export function listCommercialGoalChanges(versionId: string, limit = 100) {
 function commercialGoalRevisionRows(value: unknown): CommercialGoalRow[] {
   try {
     const parsed = JSON.parse(String(value ?? '[]')) as CommercialGoalRow[];
-    return Array.isArray(parsed) ? parsed.map((row) => ({
-      id: String(row.id ?? randomUUID()),
-      month: String(row.month ?? ''),
-      product: String(row.product ?? ''),
-      seller: String(row.seller ?? ''),
-      kilos: row.kilos == null ? null : Number(row.kilos),
-      accounts: row.accounts == null ? null : Number(row.accounts),
-      invoicing: row.invoicing == null ? null : Number(row.invoicing),
-    })) : [];
+    return Array.isArray(parsed) ? parsed.map((row) => {
+      const product = String(row.product ?? '').trim();
+      return {
+        id: String(row.id ?? randomUUID()),
+        month: String(row.month ?? ''),
+        product,
+        seller: String(row.seller ?? '').trim(),
+        kilos: !product || row.kilos == null ? null : Number(row.kilos),
+        accounts: !product || row.accounts == null ? null : Number(row.accounts),
+        invoicing: row.invoicing == null ? null : Number(row.invoicing),
+      };
+    }) : [];
   } catch {
     return [];
   }
@@ -2052,21 +2056,28 @@ function replaceCommercialGoalMonth(input: ReplaceCommercialGoalMonthInput) {
   if (!/^\d{4}-\d{2}$/.test(input.month)) throw new Error('El mes seleccionado no es válido.');
   const name = input.name.trim().slice(0, 120);
   if (!name) throw new Error('Escribí un nombre para estos objetivos mensuales.');
-  if (!input.rows.length || !input.dimensions.length) throw new Error('El mes seleccionado no contiene objetivos para importar.');
   if (input.rows.some((row) => row.month !== input.month)) throw new Error('El archivo mezcla filas de otro mes en la selección.');
-  if (input.rows.some((row) => [row.kilos, row.accounts, row.invoicing].every((value) => value == null))) {
-    throw new Error('Cada fila debe contener al menos un objetivo.');
-  }
-  if (input.rows.some((row) => [row.kilos, row.accounts, row.invoicing].some((value) => value != null && (!Number.isFinite(value) || value < 0)))) {
+  const rows = input.rows.map((row) => {
+    const product = row.product.trim().slice(0, 160);
+    return {
+      ...row,
+      product,
+      seller: row.seller.trim().slice(0, 120),
+      kilos: product ? row.kilos : null,
+      accounts: product ? row.accounts : null,
+    };
+  }).filter((row) => [row.kilos, row.accounts, row.invoicing].some((value) => value != null));
+  if (!rows.length || !input.dimensions.length) throw new Error('El mes seleccionado no contiene objetivos para importar.');
+  if (rows.some((row) => [row.kilos, row.accounts, row.invoicing].some((value) => value != null && (!Number.isFinite(value) || value < 0)))) {
     throw new Error('Los objetivos deben ser números positivos o cero.');
   }
-  if (input.sourceKind === 'web' && input.rows.some((row) => !isCommercialGoalSeller(row.seller))) {
+  if (input.sourceKind === 'web' && rows.some((row) => !isCommercialGoalSeller(row.seller))) {
     throw new Error('Los objetivos sólo pueden usar vendedores del alcance comercial vigente.');
   }
-  if (input.sourceKind === 'web' && input.rows.some((row) => row.product && !isCommercialGoalProduct(row.product))) {
+  if (input.sourceKind === 'web' && rows.some((row) => row.product && !isCommercialGoalProduct(row.product))) {
     throw new Error('Los objetivos sólo pueden usar productos o rubros disponibles en Reporte General.');
   }
-  const rowKeys = input.rows.map((row) => `${row.product.trim()}\u0000${row.seller.trim()}`);
+  const rowKeys = rows.map((row) => `${row.product}\u0000${row.seller}`);
   if (new Set(rowKeys).size !== rowKeys.length) throw new Error('Hay vendedores repetidos dentro del mismo producto.');
   const active = getCommercialGoalVersion();
   if (!active) throw new Error('No existe un plan activo para actualizar.');
@@ -2112,9 +2123,9 @@ function replaceCommercialGoalMonth(input: ReplaceCommercialGoalMonthInput) {
       DELETE FROM commercial_goals
       WHERE version_id = ? AND month = ? AND kilos IS NULL AND accounts IS NULL AND invoicing IS NULL
     `).run(id, input.month);
-    for (const row of input.rows) {
+    for (const row of rows) {
       insertGoal.run(
-        randomUUID(), id, input.month, row.product.trim().slice(0, 160), row.seller.trim().slice(0, 120),
+        randomUUID(), id, input.month, row.product, row.seller,
         input.dimensions.includes('kilos') ? row.kilos : null,
         input.dimensions.includes('accounts') ? row.accounts : null,
         input.dimensions.includes('invoicing') ? row.invoicing : null,
@@ -2137,7 +2148,7 @@ function replaceCommercialGoalMonth(input: ReplaceCommercialGoalMonthInput) {
       comment: input.sourceKind === 'excel'
         ? `Objetivos “${name}” importados desde ${sourceFile}${sourceSheet ? ` · ${sourceSheet}` : ''}.`
         : `Objetivos “${name}” guardados desde la web.`,
-      after: { month: input.month, name, rows: input.rows.length, dimensions: input.dimensions, sourceKind: input.sourceKind, sourceFile, sourceSheet }, createdAt,
+      after: { month: input.month, name, rows: rows.length, dimensions: input.dimensions, sourceKind: input.sourceKind, sourceFile, sourceSheet }, createdAt,
     });
     const revisionRows = store.prepare('SELECT * FROM commercial_goals WHERE version_id = ? AND month = ? ORDER BY product, seller, id')
       .all(id, input.month).map((row) => commercialGoalFromRow(row));
