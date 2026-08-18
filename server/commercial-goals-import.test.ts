@@ -14,7 +14,7 @@ describe('importación web de objetivos comerciales', () => {
       ['Mes ', 'Producto', 'Vendedor', ' Objetivo', 'Obj. Ctas', 'Obj. Fact'],
       [new Date('2026-07-01T12:00:00Z'), 'Humedos', 'Ana Otaviano', 1_500, 110, null],
       [new Date('2026-07-01T12:00:00Z'), 'Humedos', 'Ana Ottaviano', 500, 10, null],
-      [new Date('2026-07-01T12:00:00Z'), '', 'Julieta Errecart', null, null, 40_000_000],
+      [new Date('2026-07-01T12:00:00Z'), '', 'Julieta Errecart', 19, 1, 40_000_000],
       [new Date('2026-06-01T12:00:00Z'), 'Fawna', 'Lucianos Payba', 800, 10, null],
     ]);
 
@@ -26,7 +26,7 @@ describe('importación web de objetivos comerciales', () => {
     expect(parsed.months[0].dimensions).toEqual(['kilos', 'accounts', 'invoicing']);
     expect(parsed.months[0].rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ product: 'Alimento Húmedo', seller: 'Ana Ottaviano', kilos: 2_000, accounts: 120 }),
-      expect.objectContaining({ product: '', seller: 'Julieta Errecart', invoicing: 40_000_000 }),
+      expect.objectContaining({ product: '', seller: 'Julieta Errecart', kilos: null, accounts: null, invoicing: 40_000_000 }),
     ]));
     expect(preview.months[0].totals).toMatchObject({ coreKilos: 2_000, invoicing: 40_000_000 });
   });

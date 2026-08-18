@@ -8,9 +8,10 @@ import type {
 } from '../../shared/models';
 import { decodeMultiFilter } from '../../shared/multi-filter';
 import { AiNarrativeCard } from '../components/AiInsights';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
+import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount } from '../components/ReportExperience';
 import { SortButton } from '../components/SortButton';
 import { money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
@@ -66,12 +67,24 @@ export function PendingBalancesReportView({ onOpenSeller, onOpenReceivables }: {
 
   const maxAging = Math.max(1, ...report.aging.map((row) => row.amount));
   const savedFilters = { ...filters };
+  const activeFilterCount = reportActiveFilterCount(savedFilters, EMPTY_FILTERS);
   const receivablesExportUrl = `/api/admin/receivables/export?${new URLSearchParams({ ...filters, format: 'xlsx' })}`;
   const applySaved = (saved: Record<string, string>) => {
     setFilters({ seller: saved.seller || '', paymentMethod: saved.paymentMethod || '', status: saved.status || 'all' });
   };
   return <div className={`page-view pending-page ${loading ? 'is-loading' : ''}`}>
-    <section className="data-card pending-filter-card" data-tour="pending-balances-overview"><div className="pending-filter-heading"><div><span className="section-kicker"><WalletCards size={14} /> Saldos Pendientes Salice</span><h2>Resumen de cartera abierta · corte al {shortDate(report.sourceMaxDate)}</h2><p>Esta pantalla resume saldos, vencimientos y presión sobre ventas. El detalle por cliente y las gestiones se trabajan en Cuentas por cobrar.</p></div><span className="pending-summary-badge">Vista resumida</span></div><div className="pending-filters"><MultiSelectFilter label="Vendedor" value={filters.seller} options={meta.options.sellers} onChange={(value) => update('seller', value)} /><MultiSelectFilter label="Forma de pago" value={filters.paymentMethod} options={meta.options.paymentMethods} onChange={(value) => update('paymentMethod', value)} /><MultiSelectFilter label="Estado del saldo" value={filters.status === 'all' ? '' : filters.status} options={[{ value: 'overdue', label: 'Con saldo vencido' }, { value: 'not_due', label: 'Sólo a vencer' }]} onChange={(value) => update('status', value)} /></div><ReportFilterActions view="pending-balances" filters={savedFilters} labels={{ seller: { label: 'Vendedor' }, paymentMethod: { label: 'Forma de pago' }, status: { label: 'Saldo', value: (value) => value === 'all' ? 'Todos' : value === 'overdue' ? 'Vencido' : 'A vencer' } }} onClear={(key) => update(key as keyof PendingBalanceFilters, key === 'status' ? 'all' : '')} onReset={() => setFilters(EMPTY_FILTERS)}><SavedViewsBar viewKey="pending-balances" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>{loading && <div className="nutripet-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}</section>
+    <section className="data-card pending-filter-card" data-tour="pending-balances-overview">
+      <div className="pending-filter-heading"><div><span className="section-kicker"><WalletCards size={14} /> Saldos Pendientes Salice</span><h2>Resumen de cartera abierta · corte al {shortDate(report.sourceMaxDate)}</h2><p>Esta pantalla resume saldos, vencimientos y presión sobre ventas. El detalle por cliente y las gestiones se trabajan en Cuentas por cobrar.</p></div><span className="pending-summary-badge">Vista resumida</span></div>
+      <MobileFilterSheet
+        title="Filtros de saldos pendientes"
+        description="Acotá la cartera por vendedor, forma de pago o estado del saldo."
+        activeCount={activeFilterCount}
+      >
+        <div className="pending-filters"><MultiSelectFilter label="Vendedor" value={filters.seller} options={meta.options.sellers} onChange={(value) => update('seller', value)} /><MultiSelectFilter label="Forma de pago" value={filters.paymentMethod} options={meta.options.paymentMethods} onChange={(value) => update('paymentMethod', value)} /><MultiSelectFilter label="Estado del saldo" value={filters.status === 'all' ? '' : filters.status} options={[{ value: 'overdue', label: 'Con saldo vencido' }, { value: 'not_due', label: 'Sólo a vencer' }]} onChange={(value) => update('status', value || 'all')} /></div>
+        <ReportFilterActions view="pending-balances" filters={savedFilters} defaults={EMPTY_FILTERS} labels={{ seller: { label: 'Vendedor' }, paymentMethod: { label: 'Forma de pago' }, status: { label: 'Saldo', value: (value) => value === 'all' ? 'Todos' : value === 'overdue' ? 'Vencido' : 'A vencer' } }} onClear={(key) => update(key as keyof PendingBalanceFilters, key === 'status' ? 'all' : '')} onReset={() => setFilters(EMPTY_FILTERS)}><SavedViewsBar viewKey="pending-balances" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      </MobileFilterSheet>
+      {loading && <div className="nutripet-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
+    </section>
 
     <ReportContext universe="Empresa 3 · sucursal 3 · cartera documental abierta" period={`${report.salesWindowFrom} → ${report.sourceMaxDate} (ventas de los últimos 30 días)`} cutoff={report.sourceMaxDate} comparison="No aplica" partial={false} warnings={['Recibos y notas de crédito sin aplicar no se suman como deuda documental.']} related={[{ view: 'reports', label: 'Abrir Reporte General' }]} actions={<button className="button secondary compact" onClick={() => onOpenReceivables({ seller: decodeMultiFilter(filters.seller).length === 1 ? decodeMultiFilter(filters.seller)[0] : undefined })}><WalletCards size={14} /> Gestionar en Cuentas por cobrar</button>} exports={<ReportExportActions links={[{ href: receivablesExportUrl, label: 'Exportar cartera completa', kind: 'xlsx' }]} />} />
     <AiNarrativeCard artifact={report.aiNarrative} />

@@ -44,7 +44,7 @@ export function DeliverySheetDetailDrawer({
   const clientIds = [...new Set(invoices.map((invoice) => invoice.clientId))];
   const total = invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
 
-  return <div className="delivery-sheet-drawer-layer">
+  return <>
     <button className="delivery-sheet-drawer-backdrop" aria-label="Cerrar foja" onClick={onClose} />
     <aside className="delivery-sheet-detail-drawer" aria-label={`Detalle de foja ${sheet.id}`}>
       <header className="delivery-sheet-detail-header">
@@ -103,5 +103,5 @@ export function DeliverySheetDetailDrawer({
         </section>
       </div>
     </aside>
-  </div>;
+  </>;
 }

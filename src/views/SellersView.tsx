@@ -20,8 +20,9 @@ import {
   type PortfolioLens,
   type SellerPortfolioProfile,
 } from '../../shared/portfolio-analysis';
-import { SavedViewsBar } from '../components/SavedViewsBar';
 import { AiSellerSummaryCard } from '../components/AiInsights';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
+import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
 import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
@@ -150,7 +151,14 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
       <article><span className="seller-kpi-icon blue"><AlertTriangle size={20} /></span><div><small>Riesgo alto</small><strong>{number(highRisk)}</strong><em>clientes con {PORTFOLIO_SIGNAL_THRESHOLD}/100 o superior</em></div></article>
     </section>
 
-    <SavedViewsBar viewKey="sellers" filters={savedFilters} onApply={applySaved} />
+    <MobileFilterSheet
+      title="Vistas de vendedores"
+      description="Aplicá o guardá una combinación de búsqueda y vendedor seleccionado."
+      triggerLabel="Vistas guardadas"
+      applyLabel="Volver a vendedores"
+    >
+      <SavedViewsBar viewKey="sellers" filters={savedFilters} onApply={applySaved} />
+    </MobileFilterSheet>
 
     <section className="data-card seller-portfolio-comparison">
       <div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Lectura comparativa</span><h2>Carteras comerciales activas</h2><p>Incluye Sin vendedor para no ocultar clientes. No reasigna ni define territorios.</p></div><label className="seller-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar vendedor" /></label></div>
@@ -202,7 +210,14 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
           <div className="data-card-header"><div><span className="section-kicker"><Target size={14} /> Lectura de clientes</span><h2>Cartera para revisar</h2><p>Los filtros no crean tareas. El orden se mantiene por prioridad descendente.</p></div><span className="count-badge">{number(visibleClients.length)}</span></div>
           <div className="seller-client-controls">
             <label><Search size={14} /><input value={clientQuery} onChange={(event) => setClientQuery(event.target.value)} placeholder="Buscar cliente o localidad" /></label>
-            <div>{lensLabels.map((item) => <button key={item.value} className={lens === item.value ? 'active' : ''} onClick={() => setLens(item.value)}>{item.label}<span>{lensCount(item.value)}</span></button>)}</div>
+            <div><MobileFilterSheet
+              title="Señales de la cartera"
+              description="Mostrá todos los clientes o concentrá la revisión en una señal comercial."
+              activeCount={lens === 'all' ? 0 : 1}
+              triggerLabel="Filtrar por señal"
+            >
+              {lensLabels.map((item) => <button key={item.value} className={lens === item.value ? 'active' : ''} onClick={() => setLens(item.value)}>{item.label}<span>{lensCount(item.value)}</span></button>)}
+            </MobileFilterSheet></div>
           </div>
           <div className="seller-priority-list seller-portfolio-client-list">
             {visibleClients.map((row) => {

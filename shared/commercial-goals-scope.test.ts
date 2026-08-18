@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CURRENT_COMMERCIAL_SELLERS } from './commercial-seller-scope';
 import {
+  COMMERCIAL_GOAL_AUTOSERVICE_SELLERS,
   COMMERCIAL_GOAL_PRODUCTS,
   commercialGoalSellerOptions,
   isCommercialGoalProduct,
@@ -22,5 +23,10 @@ describe('dimensiones conectadas de objetivos comerciales', () => {
     expect(COMMERCIAL_GOAL_PRODUCTS).toContain('Juvenia Nutrition');
     expect(isCommercialGoalProduct('Pedigree')).toBe(true);
     expect(isCommercialGoalProduct('Objetivo inventado')).toBe(false);
+  });
+
+  it('mantiene una única definición para vendedores de facturación de autoservicio', () => {
+    expect(COMMERCIAL_GOAL_AUTOSERVICE_SELLERS).toEqual(['Ana Ottaviano', 'Julieta Errecart']);
+    expect(COMMERCIAL_GOAL_AUTOSERVICE_SELLERS.every(isCommercialGoalSeller)).toBe(true);
   });
 });

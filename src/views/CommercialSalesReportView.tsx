@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, ChevronDown, ChevronRight, CircleDollarSign, Database, PackageOpen, Scale, ShoppingBasket, Store, TrendingDown, TrendingUp, X } from 'lucide-react';
 import type {
   CommercialSalesBrandRow,
@@ -12,12 +12,13 @@ import { AiNarrativeCard } from '../components/AiInsights';
 import { BusinessReportFilters } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
+import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { compactNumber, money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 const EMPTY_FILTERS: CommercialSalesFilters = { periodMode: 'month', month: '', year: '', seller: '', category: '', brand: '', productGroup: '' };
 const FILTER_LABELS: Record<CommercialSalesFilterKey, string> = {
@@ -51,7 +52,8 @@ function SelectFilter({ label, value, options, onChange }: { label: string; valu
 }
 
 function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 820;
   const height = 285;
   const inset = { left: 56, right: 18, top: 20, bottom: 42 };
@@ -63,13 +65,13 @@ function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
   const y = (value: number) => inset.top + chartHeight - value / max * chartHeight;
   const line = report.monthly.map((row, index) => `${x(index)},${y(row.previousYear)}`).join(' ');
   const hoveredRow = hovered == null ? null : report.monthly[hovered];
-  return <div className="commercial-evolution-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="commercial-evolution-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Evolución de ventas netas ${report.periodMode === 'year' ? `durante ${report.selectedPeriod}` : 'por mes'}`}>
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}><line x1={inset.left} x2={width - inset.right} y1={y(max * ratio)} y2={y(max * ratio)} className="commercial-grid-line" />{ratio > 0 && <text x={inset.left - 9} y={y(max * ratio) + 4} textAnchor="end">{money(max * ratio, true)}</text>}</g>)}
       {report.monthly.map((row, index) => {
         const barWidth = Math.min(50, step * .56);
         const barHeight = Math.max(1, chartHeight - (y(row.current) - inset.top));
-        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)}>
+        return <g key={row.month} className="commercial-chart-hit" tabIndex={0} role="button" aria-pressed={chart.pinned === index} onMouseEnter={() => chart.setHovered(index)} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(index)} aria-label={`${monthLabel(row.month, true)}: ${money(row.current)} y ${kilos(row.currentKilos)} kilos`}>
           <rect x={x(index) - step / 2} y={inset.top} width={step} height={chartHeight} fill="transparent" />
           <rect x={x(index) - barWidth / 2} y={y(row.current)} width={barWidth} height={barHeight} rx="5" className="commercial-current-bar" />
           <text x={x(index)} y={height - 14} textAnchor="middle">{monthLabel(row.month)}</text>
@@ -89,7 +91,8 @@ function EvolutionChart({ report }: { report: CommercialSalesReportPayload }) {
 }
 
 function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
-  const [hovered, setHovered] = useState<CommercialSalesMixRow['label'] | null>(null);
+  const chart = usePinnedChart<CommercialSalesMixRow['label']>();
+  const hovered = chart.active;
   const radius = 62;
   const circumference = Math.PI * radius * 2;
   let offset = 0;
@@ -102,12 +105,12 @@ function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
           const length = circumference * row.share / 100;
           const currentOffset = offset;
           offset += length;
-          return <circle key={row.label} cx="90" cy="90" r={radius} fill="none" stroke={MIX_COLORS[row.label]} strokeWidth={hovered === row.label ? 24 : 20} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} className="commercial-donut-slice" tabIndex={0} onMouseEnter={() => setHovered(row.label)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(row.label)} onBlur={() => setHovered(null)}><title>{row.label}: {money(row.netAmount)} ({percent(row.share)})</title></circle>;
+          return <circle key={row.label} cx="90" cy="90" r={radius} fill="none" stroke={MIX_COLORS[row.label]} strokeWidth={hovered === row.label ? 24 : 20} strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-currentOffset} className="commercial-donut-slice" tabIndex={0} role="button" aria-pressed={chart.pinned === row.label} onMouseEnter={() => chart.setHovered(row.label)} onMouseLeave={chart.clearHover} onFocus={() => chart.setHovered(row.label)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(row.label)}><title>{row.label}: {money(row.netAmount)} ({percent(row.share)})</title></circle>;
         })}
       </svg>
       <div><strong>{money(total, true)}</strong><span>venta neta</span></div>
     </div>
-    <div className="commercial-mix-list">{rows.map((row) => <article key={row.label} className={hovered === row.label ? 'active' : ''} onMouseEnter={() => setHovered(row.label)} onMouseLeave={() => setHovered(null)}><i style={{ background: MIX_COLORS[row.label] }} /><div><strong>{row.label}</strong><span>{number(row.clients)} clientes · {kilos(row.kilos, true)} kg</span></div><b>{percent(row.share)}</b><em>{money(row.netAmount, true)}</em></article>)}</div>
+    <div className="commercial-mix-list">{rows.map((row) => <article key={row.label} className={hovered === row.label ? 'active' : ''} role="button" tabIndex={0} aria-pressed={chart.pinned === row.label} onMouseEnter={() => chart.setHovered(row.label)} onMouseLeave={chart.clearHover} onFocus={() => chart.setHovered(row.label)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(row.label)}><i style={{ background: MIX_COLORS[row.label] }} /><div><strong>{row.label}</strong><span>{number(row.clients)} clientes · {kilos(row.kilos, true)} kg</span></div><b>{percent(row.share)}</b><em>{money(row.netAmount, true)}</em></article>)}</div>
   </div>;
 }
 
@@ -123,11 +126,11 @@ function BrandTable({ report, onOpenProduct, onOpenBrand, onExploreProduct }: { 
     if (next.has(brand)) next.delete(brand); else next.add(brand);
     return next;
   });
-  return <div className="commercial-brand-table">
+  return <div className="commercial-brand-table" role="region" aria-label="Detalle comercial por marca y producto" tabIndex={0}>
     <header><SortButton label="Marca / producto" direction={direction('brand')} onClick={() => changeSort('brand')} /><SortButton label="Kilos" direction={direction('kilos')} onClick={() => changeSort('kilos')} /><SortButton label="Precio prom. / kg" direction={direction('averagePricePerKilo')} onClick={() => changeSort('averagePricePerKilo')} /><SortButton label="% kilos" direction={direction('kiloShare')} onClick={() => changeSort('kiloShare')} /><SortButton label="Venta neta" direction={direction('netAmount')} onClick={() => changeSort('netAmount')} /><SortButton label="% venta" direction={direction('salesShare')} onClick={() => changeSort('salesShare')} /><SortButton label="Promedio diario" direction={direction('averageDailySales')} onClick={() => changeSort('averageDailySales')} /></header>
     <div>{rows.map((row) => <div className="commercial-brand-group" key={row.brand}>
-      <div className="commercial-brand-row" aria-expanded={expanded.has(row.brand)}><span><button className="icon-button" aria-label={`${expanded.has(row.brand) ? 'Ocultar' : 'Mostrar'} productos de ${row.brand}`} onClick={() => toggle(row.brand)}><ChevronRight size={15} /></button><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><small>{number(row.products.length)} productos · {number(row.clients)} clientes</small></span><strong>{kilos(row.kilos)}</strong><strong>{price(row.averagePricePerKilo)}</strong><strong>{percent(row.kiloShare)}</strong><strong>{money(row.netAmount)}</strong><strong>{percent(row.salesShare)}</strong><strong>{money(row.averageDailySales)}</strong></div>
-      {expanded.has(row.brand) && <div className="commercial-product-rows">{row.products.map((product) => <article key={product.productId}><span><button className="entity-link product-entity-link" onClick={() => onOpenProduct(product.productId)}>{product.product}<ChevronRight size={12} /></button><small>{product.productId} · {number(product.clients)} clientes</small><button className="report-inline-action" onClick={() => onExploreProduct(product.productId)}>Ver ventas</button></span><strong>{kilos(product.kilos)}</strong><strong>{price(product.averagePricePerKilo)}</strong><strong>{percent(row.kilos ? product.kilos / row.kilos * 100 : 0)}</strong><strong>{money(product.netAmount)}</strong><strong>{percent(row.netAmount ? product.netAmount / row.netAmount * 100 : 0)}</strong><strong>{money(product.netAmount / report.elapsedDays)}</strong></article>)}</div>}
+      <div className="commercial-brand-row"><span><button className="icon-button" aria-label={`${expanded.has(row.brand) ? 'Ocultar' : 'Mostrar'} productos de ${row.brand}`} aria-expanded={expanded.has(row.brand)} onClick={() => toggle(row.brand)}><ChevronRight size={15} /></button><button className="entity-link" onClick={() => onOpenBrand(row.brand)}>{row.brand}</button><small>{number(row.products.length)} productos · {number(row.clients)} clientes</small></span><strong>{kilos(row.kilos)}</strong><strong>{price(row.averagePricePerKilo)}</strong><strong>{percent(row.kiloShare)}</strong><strong>{money(row.netAmount)}</strong><strong>{percent(row.salesShare)}</strong><strong>{money(row.averageDailySales)}</strong></div>
+      {expanded.has(row.brand) && <div className="commercial-product-rows">{row.products.map((product) => <article key={product.productId}><span><button className="entity-link product-entity-link" onClick={() => onOpenProduct(product.productId)}>{product.product}<ChevronRight size={12} /></button><small>{product.productId} · {number(product.clients)} clientes</small><button className="report-inline-action" aria-label={`Ver ventas de ${product.product}`} onClick={() => onExploreProduct(product.productId)}>Ver ventas</button></span><strong>{kilos(product.kilos)}</strong><strong>{price(product.averagePricePerKilo)}</strong><strong>{percent(row.kilos ? product.kilos / row.kilos * 100 : 0)}</strong><strong>{money(product.netAmount)}</strong><strong>{percent(row.netAmount ? product.netAmount / row.netAmount * 100 : 0)}</strong><strong>{money(product.netAmount / report.elapsedDays)}</strong></article>)}</div>}
     </div>)}</div>
     <footer><strong>Total</strong><strong>{kilos(report.brandTotal.kilos)}</strong><strong>{price(report.brandTotal.averagePricePerKilo)}</strong><strong>100%</strong><strong>{money(report.brandTotal.netAmount)}</strong><strong>100%</strong><strong>{money(report.brandTotal.averageDailySales)}</strong></footer>
   </div>;
@@ -167,7 +170,6 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
     return () => controller.abort();
   }, [filters, meta]);
 
-  const activeFilterCount = useMemo(() => (Object.entries(filters) as [keyof CommercialSalesFilters, string][]).filter(([key, value]) => !['periodMode', 'month', 'year'].includes(key) && value).length, [filters]);
   const advancedFilterCount = Number(Boolean(filters.brand)) + Number(Boolean(filters.productGroup));
   const update = (key: keyof CommercialSalesFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
@@ -197,6 +199,13 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
     seller: filters.seller, brand: filters.brand, product, category: filters.category,
   });
   const linkFilters = { ...filters, month: filters.periodMode === 'month' ? filters.month : '', year: filters.periodMode === 'year' ? filters.year : '' };
+  const defaultFilters: CommercialSalesFilters = {
+    ...EMPTY_FILTERS,
+    periodMode: filters.periodMode,
+    month: filters.periodMode === 'month' ? meta.latestMonth : '',
+    year: filters.periodMode === 'year' ? meta.latestYear : '',
+  };
+  const activeFilterCount = reportActiveFilterCount(linkFilters, defaultFilters);
   const salesExportUrl = `/api/admin/sales/export?${new URLSearchParams({
     format: 'xlsx', from: report.periodStart, to: report.periodEnd, seller: filters.seller,
     brand: filters.brand, category: filters.category, productGroup: filters.productGroup,
@@ -217,11 +226,12 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
       primary={<><SingleSelectFilter label={filters.periodMode === 'year' ? 'Año' : 'Mes'} value={filters.periodMode === 'year' ? filters.year : filters.month} options={filters.periodMode === 'year' ? meta.years : meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update(filters.periodMode === 'year' ? 'year' : 'month', value)} /><SelectFilter label={FILTER_LABELS.seller} value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label={FILTER_LABELS.category} value={filters.category} options={meta.options.category} onChange={(value) => update('category', value)} /></>}
       advanced={<><SelectFilter label={FILTER_LABELS.brand} value={filters.brand} options={meta.options.brand} onChange={(value) => update('brand', value)} /><SelectFilter label={FILTER_LABELS.productGroup} value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className="button secondary" disabled={!activeFilterCount} onClick={resetFilters}><X size={14} /> Restablecer</button></>}
       activeFilterCount={advancedFilterCount}
+      mobileActiveFilterCount={activeFilterCount}
       expanded={expanded}
       onToggle={() => setExpanded((value) => !value)}
       loading={loading}
     >
-      <ReportFilterActions view="commercial-sales" filters={linkFilters} labels={filterLabels} onClear={(key) => update(key as keyof CommercialSalesFilters, key === 'periodMode' ? 'month' : key === 'month' ? meta.latestMonth : key === 'year' ? meta.latestYear : '')} onReset={resetFilters}>
+      <ReportFilterActions view="commercial-sales" filters={linkFilters} defaults={defaultFilters} labels={filterLabels} onClear={(key) => update(key as keyof CommercialSalesFilters, key === 'periodMode' ? 'month' : key === 'month' ? meta.latestMonth : key === 'year' ? meta.latestYear : '')} onReset={resetFilters}>
         <SavedViewsBar viewKey="commercial-sales" filters={{ ...filters }} onApply={applySaved} />
       </ReportFilterActions>
     </BusinessReportFilters>

@@ -8,23 +8,38 @@ interface FilterLabel {
   value?: (value: string) => string;
 }
 
-export function ReportFilterActions({
+export type ReportFilterDefaults<Filters extends ReportLinkFilters> = Partial<Filters>;
+
+export function reportActiveFilterCount<Filters extends ReportLinkFilters>(
+  filters: Filters,
+  defaults: ReportFilterDefaults<Filters> = {},
+) {
+  return Object.entries(filters).filter(([key, value]) => (
+    value !== (defaults[key as keyof Filters] ?? '')
+  )).length;
+}
+
+export function ReportFilterActions<Filters extends ReportLinkFilters>({
   view,
   filters,
+  defaults = {},
   labels,
   onClear,
   onReset,
   children,
 }: {
   view: ReportViewId;
-  filters: ReportLinkFilters;
+  filters: Filters;
+  defaults?: ReportFilterDefaults<Filters>;
   labels: Record<string, FilterLabel>;
   onClear: (key: string) => void;
   onReset: () => void;
   children?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
-  const active = Object.entries(filters).filter(([key, value]) => value !== '' && labels[key]);
+  const active = Object.entries(filters).filter(([key, value]) => (
+    labels[key] && value !== (defaults[key as keyof Filters] ?? '')
+  ));
   const copyLink = async () => {
     const link = buildReportLink(view, filters);
     await navigator.clipboard.writeText(link);
@@ -35,12 +50,15 @@ export function ReportFilterActions({
     <div className="report-filter-summary">
       <span className="report-filter-summary-label">Filtros activos</span>
       <div className="report-filter-chips">
-        {active.length ? active.map(([key, raw]) => <button key={key} title={`Quitar ${labels[key].label}`} onClick={() => onClear(key)}>
-          <span>{labels[key].label}</span><strong>{labels[key].value?.(raw) ?? raw}</strong><X size={12} />
-        </button>) : <em>Vista general, sin filtros adicionales</em>}
+        {active.length ? active.map(([key, raw]) => {
+          const displayValue = labels[key].value?.(raw) || raw || 'Todos';
+          return <button key={key} title={`Quitar ${labels[key].label}`} onClick={() => onClear(key)}>
+            <span>{labels[key].label}</span><strong>{displayValue}</strong><X size={12} />
+          </button>;
+        }) : <em>Vista general, sin filtros adicionales</em>}
       </div>
       <div className="report-filter-buttons">
-        <button className="button ghost compact" onClick={onReset}><RotateCcw size={14} /> Restablecer</button>
+        <button className="button ghost compact" disabled={!active.length} onClick={onReset}><RotateCcw size={14} /> Restablecer</button>
         <button className="button ghost compact" onClick={copyLink}><Clipboard size={14} /> {copied ? 'Enlace copiado' : 'Copiar enlace'}</button>
       </div>
     </div>

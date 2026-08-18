@@ -37,7 +37,7 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
     return () => controller.abort();
   }, [invoiceId]);
 
-  return <div className="invoice-drawer-layer">
+  return <>
     <button className="invoice-drawer-backdrop" aria-label="Cerrar comprobante" onClick={onClose} />
     <aside className="invoice-detail-drawer" aria-label="Detalle completo del comprobante">
       <header className="invoice-detail-header">
@@ -88,5 +88,5 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
 
       {detail && <footer className="invoice-detail-footer"><span>Comprobante generado con los datos disponibles.</span><a className="button primary" href={`/api/invoices/pdf?id=${encodeURIComponent(detail.id)}`} download><Download size={16} /> Descargar PDF</a></footer>}
     </aside>
-  </div>;
+  </>;
 }

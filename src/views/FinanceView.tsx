@@ -8,6 +8,7 @@ import {
   isActionableReceivableAmount,
   isReceivableSeller,
 } from '../../shared/receivables-policy';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { SortButton } from '../components/SortButton';
@@ -105,6 +106,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
     resetPage();
   };
   const savedFilters = { query, status, seller, portfolio, aging, creditTerm, paymentMethod };
+  const activeFilterCount = [status, seller, portfolio, aging, creditTerm, paymentMethod].filter(Boolean).length;
   const applySaved = (saved: Record<string, string>) => {
     setQuery(saved.query ?? ''); setStatus(saved.status ?? ''); setSeller(saved.seller ?? '');
     setPortfolio(saved.portfolio ?? ''); setAging(saved.aging ?? ''); setCreditTerm(saved.creditTerm ?? '');
@@ -120,16 +122,24 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
         <article className="summary-card success"><CheckCircle2 size={21} /><div><span>Pagos en término</span><strong>{paymentSamples ? `${onTimeRate}%` : 'Sin datos'}</strong><small>{number(paymentSamples)} facturas con vencimiento conciliado</small></div></article>
       </div>
 
-      <div className="finance-filter-bar">
+      <div className="page-tools">
         <label className="large-search"><Search size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Buscar cliente o comprobante…" /></label>
-        <MultiSelectFilter label="Estado" value={status} options={[{ value: 'overdue', label: 'Vencidos' }, { value: 'due_soon', label: 'Por vencer' }, { value: 'open', label: 'Abiertos' }]} onChange={(value) => { setStatus(value); resetPage(); }} />
-        <MultiSelectFilter label="Vencimiento" value={aging} options={agingBands.map((band) => ({ value: band.key, label: band.label }))} onChange={(value) => { setAging(value); resetPage(); }} />
-        <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); resetPage(); }} />
-        <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Confirmada' }, { value: 'review', label: 'A revisar' }]} onChange={(value) => { setPortfolio(value); resetPage(); }} />
-        <MultiSelectFilter label="Plazo observado" value={creditTerm} options={[{ value: 'consistent', label: 'Consistente' }, { value: 'predominant', label: 'Predominante' }, { value: 'mixed', label: 'Condición mixta' }, { value: 'single', label: 'Una factura' }, { value: 'unavailable', label: 'Sin muestra' }]} onChange={(value) => { setCreditTerm(value); resetPage(); }} />
-        <MultiSelectFilter label="Forma de pago factura" value={paymentMethod} options={paymentMethods} onChange={(value) => { setPaymentMethod(value); resetPage(); }} />
       </div>
-      <SavedViewsBar viewKey="finance" filters={savedFilters} onApply={applySaved} />
+      <MobileFilterSheet
+        title="Filtrar la cartera"
+        description="Acotá los comprobantes por estado, vencimiento, vendedor o condiciones observadas. La búsqueda queda siempre visible."
+        activeCount={activeFilterCount}
+      >
+        <div className="finance-filter-bar">
+          <MultiSelectFilter label="Estado" value={status} options={[{ value: 'overdue', label: 'Vencidos' }, { value: 'due_soon', label: 'Por vencer' }, { value: 'open', label: 'Abiertos' }]} onChange={(value) => { setStatus(value); resetPage(); }} />
+          <MultiSelectFilter label="Vencimiento" value={aging} options={agingBands.map((band) => ({ value: band.key, label: band.label }))} onChange={(value) => { setAging(value); resetPage(); }} />
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellers} onChange={(value) => { setSeller(value); resetPage(); }} />
+          <MultiSelectFilter label="Cartera Salice" value={portfolio} options={[{ value: 'confirmed', label: 'Confirmada' }, { value: 'review', label: 'A revisar' }]} onChange={(value) => { setPortfolio(value); resetPage(); }} />
+          <MultiSelectFilter label="Plazo observado" value={creditTerm} options={[{ value: 'consistent', label: 'Consistente' }, { value: 'predominant', label: 'Predominante' }, { value: 'mixed', label: 'Condición mixta' }, { value: 'single', label: 'Una factura' }, { value: 'unavailable', label: 'Sin muestra' }]} onChange={(value) => { setCreditTerm(value); resetPage(); }} />
+          <MultiSelectFilter label="Forma de pago factura" value={paymentMethod} options={paymentMethods} onChange={(value) => { setPaymentMethod(value); resetPage(); }} />
+        </div>
+        <SavedViewsBar viewKey="finance" filters={savedFilters} onApply={applySaved} />
+      </MobileFilterSheet>
 
       <section className="data-card aging-card">
         <div className="data-card-header"><div><span className="section-kicker">Vencimiento de la cuenta corriente</span><h2>Antes y después del vencimiento</h2><p>Podés combinar varias bandas. Primero se muestra cuánto falta para vencer; después, la antigüedad de lo vencido.</p></div><button className="button secondary" onClick={() => setAging('')}>Ver todas</button></div>
@@ -137,7 +147,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
         <div className="aging-section overdue"><div className="aging-section-title"><strong>Tiempo desde el vencimiento</strong><span>Documentos que requieren cobranza</span></div><div className="aging-bars">{overdueBands.map((band) => <button key={band.key} className={decodeMultiFilter(aging).includes(band.key) ? 'active' : ''} aria-pressed={decodeMultiFilter(aging).includes(band.key)} onClick={() => toggleAging(band.key)}><span>{band.label}</span><div><i style={{ width: `${band.amount / maxOverdueAmount * 100}%` }} /></div><strong>{money(band.amount, true)}</strong><small>{number(band.count)} docs.</small></button>)}</div></div>
       </section>
 
-      <section className="data-card">
+      <section className="data-card finance-table-card">
         <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)} emitidos por los seis vendedores habilitados.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table finance-table">
@@ -156,6 +166,23 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
               </tr>)}
             </tbody>
           </table>
+          <div className="finance-card-list">
+            {visibleInvoices.map((invoice) => <article key={invoice.id} onClick={() => onOpenInvoice(invoice.id)}>
+              <header>
+                <span className={`invoice-pill ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span>
+                <button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong>{clientSecondaryName(invoice.client) && <small>{clientSecondaryName(invoice.client)}</small>}</button>
+                <ChevronRight size={17} />
+              </header>
+              <span className="finance-card-seller"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span>
+              <div data-label="Comprobante"><strong>{invoice.number}</strong></div>
+              <div data-label="Emisión">{compactDate(invoice.issuedAt)}</div>
+              <div data-label="Vencimiento"><strong>{compactDate(invoice.dueAt)}</strong></div>
+              <div data-label="Plazo de la factura"><strong>{invoice.creditTermDays != null ? `${invoice.creditTermDays} días` : 'Sin dato'}</strong><small>emisión → vencimiento</small></div>
+              <div data-label="Saldo pendiente"><strong>{money(invoice.outstanding)}</strong><small>original {money(invoice.amount, true)}</small></div>
+              <div className="finance-card-behavior" data-label="Cuenta corriente / conducta" title={creditTermDetail(invoice.client)}><strong>{creditTermLabel(invoice.client)}</strong><small>{invoice.paymentMethod || 'Sin forma de pago informada'}</small><small>{invoice.client.paymentSampleSize ? `${paymentDelay(invoice.client.avgPaymentDelayDays)} · ${invoice.client.onTimePaymentRate}% en término` : 'sin muestra conciliada'}</small></div>
+              <div data-label="Riesgo"><span className={`score-badge ${invoice.client.health}`}>{invoice.client.collectionRisk}</span></div>
+            </article>)}
+          </div>
         </div>
         <div className="table-pagination"><span>Mostrando {number((currentPage - 1) * pageSize + (visibleInvoices.length ? 1 : 0))}–{number((currentPage - 1) * pageSize + visibleInvoices.length)} de {number(filtered.length)}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{number(currentPage)} / {number(pageCount)}</strong><button className="button secondary" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div></div>
       </section>

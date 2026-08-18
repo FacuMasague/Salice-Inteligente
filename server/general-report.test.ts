@@ -77,9 +77,18 @@ describeWithDatabase('Reporte General construido desde GESI', () => {
       kilos: 123,
       accounts: null,
       invoicing: null,
+    }, {
+      id: 'objetivo-incompleto-ignorado',
+      month,
+      product: '',
+      seller: 'Reventas',
+      kilos: 999,
+      accounts: 999,
+      invoicing: null,
     }];
     const report = buildGeneralReport({ mode: 'core', month }, customGoals);
     expect(report?.target).toBe(123);
+    expect(report?.clientGoals.target).toBe(0);
     expect(report?.sellers.find((row) => row.name === 'Reventas')?.target).toBe(123);
     expect(report?.actual).toBeGreaterThanOrEqual(0);
   });

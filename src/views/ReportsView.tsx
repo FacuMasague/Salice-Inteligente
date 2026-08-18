@@ -4,9 +4,10 @@ import type { Client, DashboardData, GeneralPerformanceRow, GeneralReportMeta, G
 import { matchesMultiFilter } from '../../shared/multi-filter';
 import { AiNarrativeCard } from '../components/AiInsights';
 import { CommercialGoalsManager } from '../components/CommercialGoalsManager';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { ReportContext, ReportExportActions, ReportFilterActions, ReportState } from '../components/ReportExperience';
+import { ReportContext, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount } from '../components/ReportExperience';
 import { SingleSelectFilter } from '../components/SingleSelectFilter';
 import { SortButton } from '../components/SortButton';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
@@ -14,6 +15,7 @@ import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 import { money, number } from '../lib/format';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { reportFiltersFromLocation } from '../lib/report-links';
+import { usePinnedChart } from '../lib/use-pinned-chart';
 
 interface ReportsViewProps {
   data: DashboardData;
@@ -54,7 +56,8 @@ function change(value: number, base: number) {
 }
 
 function TrendChart({ report }: { report: GeneralReportPayload }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const chart = usePinnedChart<number>();
+  const hovered = chart.active;
   const width = 980;
   const height = 330;
   const inset = { left: 54, right: 24, top: 24, bottom: 46 };
@@ -68,13 +71,13 @@ function TrendChart({ report }: { report: GeneralReportPayload }) {
   const targetLine = report.trend.map((point, index) => `${x(index)},${y(point.target)}`).join(' ');
   const active = hovered == null ? null : report.trend[hovered];
 
-  return <div className="general-trend-stage" onMouseLeave={() => setHovered(null)}>
+  return <div className="general-trend-stage" onMouseLeave={chart.clearHover}>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolución mensual de resultado real y objetivo">
       {[0, .25, .5, .75, 1].map((ratio) => <g key={ratio}>
         <line x1={inset.left} x2={width - inset.right} y1={inset.top + plotHeight * (1 - ratio)} y2={inset.top + plotHeight * (1 - ratio)} className="general-chart-grid" />
         <text x={inset.left - 10} y={inset.top + plotHeight * (1 - ratio) + 4} textAnchor="end" className="general-axis-label">{metric(max * ratio, report.unit, true)}</text>
       </g>)}
-      {report.trend.map((point, index) => <g key={point.month} tabIndex={0} aria-label={`${monthLabel(point.month, true)}. Real ${metric(point.actual, report.unit)}. Objetivo ${metric(point.target, report.unit)}.`} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} onMouseEnter={() => setHovered(index)}>
+      {report.trend.map((point, index) => <g key={point.month} tabIndex={0} role="button" aria-pressed={chart.pinned === index} aria-label={`${monthLabel(point.month, true)}. Real ${metric(point.actual, report.unit)}. Objetivo ${metric(point.target, report.unit)}.`} onFocus={() => chart.setHovered(index)} onBlur={chart.clearHover} onMouseEnter={() => chart.setHovered(index)} onClick={() => chart.togglePinned(index)}>
         <rect x={x(index) - step / 2} y={inset.top} width={step} height={plotHeight} className={`general-chart-hit ${hovered === index ? 'active' : ''}`} />
         <rect x={x(index) - barWidth / 2} y={y(point.actual)} width={barWidth} height={Math.max(1, inset.top + plotHeight - y(point.actual))} rx="5" className={point.isPartial ? 'general-chart-bar partial' : 'general-chart-bar'} />
         <text x={x(index)} y={height - 15} textAnchor="middle" className="general-month-label">{monthLabel(point.month)}</text>
@@ -82,7 +85,7 @@ function TrendChart({ report }: { report: GeneralReportPayload }) {
       <polyline points={targetLine} className="general-target-line" />
       {report.trend.map((point, index) => <circle key={point.month} cx={x(index)} cy={y(point.target)} r={hovered === index ? 5.5 : 3.5} className="general-target-dot" />)}
     </svg>
-    {active && hovered != null && <aside className="general-chart-tooltip" style={{ left: `${Math.min(84, Math.max(8, x(hovered) / width * 100))}%` }}>
+    {active && hovered != null && <aside className={`general-chart-tooltip ${hovered < 2 ? 'align-start' : hovered > report.trend.length - 3 ? 'align-end' : ''}`} style={{ left: `${x(hovered) / width * 100}%` }}>
       <strong>{monthLabel(active.month, true)}{active.isPartial ? ' · parcial' : ''}</strong>
       <span><i className="actual" />Real <b>{metric(active.actual, report.unit)}</b></span>
       <span><i className="target" />Objetivo <b>{metric(active.target, report.unit)}</b></span>
@@ -178,6 +181,8 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
 
   if (error && !report) return <ReportState state="error" title="Reporte General no disponible" detail={error} onRetry={() => location.reload()} />;
   if (!meta || !report) return <ReportState state="loading" title="Preparando Reporte General…" detail="Calculando resultados y objetivos desde las fuentes conciliadas." />;
+  const defaultFilters = { mode: 'core' as GeneralReportMode, month: meta.latestMonth, seller: '', category: '', brand: '' };
+  const selectedFilterCount = reportActiveFilterCount(savedFilters, defaultFilters);
 
   return <div className={`page-view general-report-page ${loading ? 'is-loading' : ''}`}>
     <section className="data-card general-plan-toolbar">
@@ -188,13 +193,19 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
     <section className="data-card general-filter-card" data-tour="reports-overview">
       <div className="general-filter-heading"><span className="section-kicker"><Gauge size={14} /> Estado Salice</span><h2>Resultado real frente al plan mensual</h2><p>Resultados reales y objetivos del plan mensual activo se consultan juntos en este reporte.</p></div>
       <div className="general-mode-switch">{modes.map((item) => <button key={item.id} className={mode === item.id ? 'active' : ''} onClick={() => changeMode(item.id)}><strong>{item.label}</strong><small>{item.note}</small></button>)}</div>
-      <div className="general-filters">
-        <SingleSelectFilter label="Mes y objetivos" value={month} options={meta.months.map((item) => ({ value: item, label: `${monthLabel(item, true)} · ${meta.targetSource.monthPlans.find((plan) => plan.month === item)?.name ?? 'Plan vigente'}` }))} onChange={setMonth} />
-        <MultiSelectFilter label="Vendedor" value={seller} options={sellerOptions} onChange={setSeller} />
-        {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
-        {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
-      </div>
-      <ReportFilterActions view="reports" filters={savedFilters} labels={{ mode: { label: 'Universo', value: (value) => modes.find((item) => item.id === value)?.label ?? value }, month: { label: 'Mes', value: (value) => monthLabel(value, true) }, seller: { label: 'Vendedor' }, category: { label: 'Rubro' }, brand: { label: 'Marca' } }} onClear={(key) => key === 'mode' ? changeMode('core') : key === 'month' ? setMonth(meta.latestMonth) : key === 'seller' ? setSeller('') : key === 'category' ? setCategory('') : setBrand('')} onReset={() => { setMode('core'); setMonth(meta.latestMonth); setSeller(''); setCategory(''); setBrand(''); }}><SavedViewsBar viewKey="reports" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      <MobileFilterSheet
+        title="Filtros del Reporte General"
+        description="Elegí el mes y los criterios comerciales para el universo visible."
+        activeCount={selectedFilterCount}
+      >
+        <div className="general-filters">
+          <SingleSelectFilter label="Mes y objetivos" value={month} options={meta.months.map((item) => ({ value: item, label: `${monthLabel(item, true)} · ${meta.targetSource.monthPlans.find((plan) => plan.month === item)?.name ?? 'Plan vigente'}` }))} onChange={setMonth} />
+          <MultiSelectFilter label="Vendedor" value={seller} options={sellerOptions} onChange={setSeller} />
+          {mode === 'core' && <MultiSelectFilter label="Rubro" value={category} options={meta.options.coreCategories} onChange={setCategory} />}
+          {mode !== 'autoservice' && <MultiSelectFilter label="Marca" value={brand} options={mode === 'strategic' ? meta.options.strategicBrands : meta.options.coreBrands} onChange={setBrand} />}
+        </div>
+        <ReportFilterActions view="reports" filters={savedFilters} defaults={defaultFilters} labels={{ mode: { label: 'Universo', value: (value) => modes.find((item) => item.id === value)?.label ?? value }, month: { label: 'Mes', value: (value) => monthLabel(value, true) }, seller: { label: 'Vendedor' }, category: { label: 'Rubro' }, brand: { label: 'Marca' } }} onClear={(key) => key === 'mode' ? changeMode('core') : key === 'month' ? setMonth(meta.latestMonth) : key === 'seller' ? setSeller('') : key === 'category' ? setCategory('') : setBrand('')} onReset={() => { setMode('core'); setMonth(meta.latestMonth); setSeller(''); setCategory(''); setBrand(''); }}><SavedViewsBar viewKey="reports" filters={savedFilters} onApply={applySaved} /></ReportFilterActions>
+      </MobileFilterSheet>
     </section>
 
     <ReportContext universe={`${modes.find((item) => item.id === mode)?.label} · empresa 3 / sucursal 3`} period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes fuente no disponibles en GESI.`] : []} related={[{ view: 'spt', label: 'Abrir SPT' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: `/api/admin/goals/export?format=xlsx&month=${encodeURIComponent(month)}`, label: 'Plan mensual Excel', kind: 'xlsx' }, { href: `/api/admin/goals/export?format=pdf&month=${encodeURIComponent(month)}`, label: 'Plan y avance PDF', kind: 'pdf' }]} />} />

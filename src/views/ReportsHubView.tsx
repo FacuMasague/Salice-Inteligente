@@ -288,7 +288,7 @@ export function ReportsHubView({
               <option value="">Elegir número…</option>
               {sortedSheets.map((sheet) => <option value={sheet.id} key={sheet.id}>Foja {sheet.id} · {sheet.status === 'closed' ? 'cerrada' : 'abierta'}</option>)}
             </select></label>
-            <button className="button secondary compact" disabled={!sheetLookup} onClick={() => onOpenSheet(Number(sheetLookup))}><FolderOpen size={14} /> Abrir</button>
+            <button className="button secondary compact" disabled={!sheetLookup} aria-label={sheetLookup ? `Abrir foja ${sheetLookup}` : 'Abrir foja seleccionada'} onClick={() => onOpenSheet(Number(sheetLookup))}><FolderOpen size={14} /> Abrir</button>
           </div>
         </div>
       </section>
@@ -329,7 +329,7 @@ export function ReportsHubView({
                   <div><dt><CalendarDays size={13} /> Período disponible</dt><dd>{periodLabel(meta)}</dd></div>
                   <div><dt><Clock3 size={13} /> Actualización</dt><dd>{formatDate(meta?.capturedAt || data.meta.generatedAt, true)}</dd></div>
                 </dl>
-                <button className="report-hub-open" onClick={() => onOpenReport(report.id)}>Abrir reporte <ArrowRight size={15} /></button>
+                <button className="report-hub-open" aria-label={`Abrir ${report.name}`} onClick={() => onOpenReport(report.id)}>Abrir reporte <ArrowRight size={15} /></button>
               </article>;
             })}
           </div>

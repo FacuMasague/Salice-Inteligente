@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 
 export type TutorialView = 'map' | 'agenda' | 'clients' | 'sellers' | 'finance' | 'products' | 'brands' | 'routes' | 'sales-explorer' | 'receivables' | 'report-center' | 'reports' | 'spt' | 'commercial-sales' | 'mars' | 'nutripet' | 'baires' | 'non-buyers' | 'pending-balances' | 'settings';
@@ -85,13 +85,26 @@ interface FocusRect { top: number; left: number; width: number; height: number }
 export function TutorialOverlay({ definition, stepIndex, onBack, onNext, onClose }: { definition: TutorialDefinition; stepIndex: number; onBack: () => void; onNext: () => void; onClose: () => void }) {
   const step = definition.steps[stepIndex];
   const [focus, setFocus] = useState<FocusRect | null>(null);
+  const [popoverHeight, setPopoverHeight] = useState(390);
+  const popoverRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    let targetScrolled = false;
     const update = () => {
       const target = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
       if (!target) return setFocus(null);
+      if (!targetScrolled) {
+        targetScrolled = true;
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+      }
       const rect = target.getBoundingClientRect();
-      setFocus({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const left = Math.max(8, rect.left);
+      const top = Math.max(8, rect.top);
+      const right = Math.min(viewportWidth - 8, rect.right);
+      const bottom = Math.min(viewportHeight - 8, rect.bottom);
+      setFocus(right > left && bottom > top ? { top, left, width: right - left, height: bottom - top } : null);
     };
     const observer = new MutationObserver(update);
     observer.observe(document.body, { childList: true, subtree: true });
@@ -106,6 +119,21 @@ export function TutorialOverlay({ definition, stepIndex, onBack, onNext, onClose
     };
   }, [step.target]);
 
+  useLayoutEffect(() => {
+    const popover = popoverRef.current;
+    if (!popover) return;
+    const measure = () => setPopoverHeight(popover.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(popover);
+    return () => observer.disconnect();
+  }, [stepIndex]);
+
+  useEffect(() => {
+    document.documentElement.classList.add('tutorial-open');
+    return () => document.documentElement.classList.remove('tutorial-open');
+  }, []);
+
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -116,23 +144,24 @@ export function TutorialOverlay({ definition, stepIndex, onBack, onNext, onClose
     return () => window.removeEventListener('keydown', keydown);
   }, [onBack, onClose, onNext, stepIndex]);
 
-  const popoverWidth = Math.min(430, window.innerWidth - 32);
-  const popoverHeight = 390;
+  const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const popoverWidth = Math.min(430, viewportWidth - 32);
   const popoverLeft = focus
-    ? Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, focus.left + focus.width / 2 - popoverWidth / 2))
-    : Math.max(16, (window.innerWidth - popoverWidth) / 2);
+    ? Math.max(16, Math.min(viewportWidth - popoverWidth - 16, focus.left + focus.width / 2 - popoverWidth / 2))
+    : Math.max(16, (viewportWidth - popoverWidth) / 2);
   const popoverTop = focus
-    ? focus.top + focus.height + popoverHeight + 14 < window.innerHeight
+    ? focus.top + focus.height + popoverHeight + 14 < viewportHeight
       ? focus.top + focus.height + 14
       : Math.max(16, focus.top - popoverHeight - 14)
-    : Math.max(20, window.innerHeight / 2 - popoverHeight / 2);
+    : Math.max(20, viewportHeight / 2 - popoverHeight / 2);
   const finalStep = stepIndex === definition.steps.length - 1;
 
   return (
     <div className="tutorial-layer" aria-live="polite">
       <div className={`tutorial-blocker ${focus ? '' : 'dimmed'}`} />
       {focus && <div className="tutorial-focus" style={{ top: focus.top - 6, left: focus.left - 6, width: focus.width + 12, height: focus.height + 12 }} />}
-      <section className="tutorial-popover" role="dialog" aria-modal="true" aria-label={`Tutorial: ${step.title}`} style={{ top: popoverTop, left: popoverLeft, width: popoverWidth }}>
+      <section ref={popoverRef} className="tutorial-popover" role="dialog" aria-modal="true" aria-label={`Tutorial: ${step.title}`} style={{ top: popoverTop, left: popoverLeft, width: popoverWidth }}>
         <button className="tutorial-close" onClick={onClose} aria-label="Cerrar tutorial"><X size={17} /></button>
         <div className="tutorial-progress"><span>{definition.label === step.eyebrow ? definition.label : `${definition.label} · ${step.eyebrow}`}</span><strong>{stepIndex + 1} / {definition.steps.length}</strong></div>
         <h2>{step.title}</h2>

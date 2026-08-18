@@ -1,6 +1,6 @@
 import L from 'leaflet';
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents, ZoomControl } from 'react-leaflet';
 import { SALICE_DEPOT, type Client, type Product } from '../../shared/models';
 import { money, number } from '../lib/format';
 import { clientPrimaryName, clientSecondaryName } from '../lib/client-name';
@@ -9,8 +9,8 @@ import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
 const markerIcon = (client: Client, selected: boolean) => L.divIcon({
   className: 'client-marker-shell',
   html: `<div class="client-marker ${client.active ? client.health : 'inactive'} ${client.locationStatus === 'corrected' ? 'corrected' : ''} ${selected ? 'selected' : ''}"><span></span></div>`,
-  iconSize: [32, 38],
-  iconAnchor: [16, 33],
+  iconSize: [44, 44],
+  iconAnchor: [22, 38],
 });
 
 const clusterIcon = (count: number) => L.divIcon({
@@ -31,11 +31,24 @@ type GeocodedClient = Client & { coordinates: [number, number] };
 
 function FitClients({ clients }: { clients: GeocodedClient[] }) {
   const map = useMap();
+  const clientGeometry = JSON.stringify(clients.map((client) => client.coordinates));
   useEffect(() => {
-    if (!clients.length) return;
-    const bounds = L.latLngBounds([...clients.map((client) => client.coordinates), SALICE_DEPOT.coordinates]);
+    const coordinates = JSON.parse(clientGeometry) as [number, number][];
+    if (!coordinates.length) return;
+    const bounds = L.latLngBounds([...coordinates, SALICE_DEPOT.coordinates]);
     map.fitBounds(bounds, { padding: [48, 48], maxZoom: 12 });
-  }, [clients, map]);
+  }, [clientGeometry, map]);
+  return null;
+}
+
+function KeepMapSized() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
   return null;
 }
 
@@ -73,11 +86,11 @@ function ClusteredMarkers({ clients, contentByProduct, selectedId, onSelect }: {
     if (group.clients.length === 1) {
       const client = group.clients[0];
       const kilos = clientKilos90d(client, contentByProduct);
-      return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} eventHandlers={{ click: () => onSelect(client) }}>
+      return <Marker key={client.id} position={client.coordinates} icon={markerIcon(client, selectedId === client.id)} title={clientPrimaryName(client)} alt={`Cliente ${clientPrimaryName(client)}`} eventHandlers={{ click: () => onSelect(client) }}>
         <Tooltip direction="top" offset={[0, -26]} opacity={1}><div className="map-tooltip"><strong>{clientPrimaryName(client)}</strong>{clientSecondaryName(client) && <span>{clientSecondaryName(client)}</span>}<span>{client.locality} · {client.segment} · {client.active ? 'Activo' : 'Inactivo'}</span>{client.locationStatus === 'corrected' && <span className="map-location-correction">Ubicación corregida · referencia aproximada de la localidad</span>}<span>90d: {money(client.sales90d, true)} · {number(kilos.kilos, 2)} kg{kilos.complete ? '' : ' parciales'}</span><span>Riesgo de cobranza {client.collectionRisk}/100</span></div></Tooltip>
       </Marker>;
     }
-    return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>
+    return <Marker key={group.key} position={group.coordinates} icon={clusterIcon(group.clients.length)} title={`${group.clients.length} clientes agrupados`} alt={`${group.clients.length} clientes agrupados`} eventHandlers={{ click: () => map.setView(group.coordinates, Math.min(16, zoom + 2), { animate: true }) }}>
       <Tooltip direction="top" offset={[0, -20]} opacity={1}><div className="map-tooltip"><strong>{group.clients.length} clientes agrupados</strong><span>{group.clients.slice(0, 3).map(clientPrimaryName).join(' · ')}{group.clients.length > 3 ? '…' : ''}</span><span>Hacé clic para acercar</span></div></Tooltip>
     </Marker>;
   })}</>;
@@ -93,6 +106,8 @@ export function ClientMap({ clients, products, selectedId, onSelect }: ClientMap
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitClients clients={geocoded} />
+      <KeepMapSized />
+      <ZoomControl position="bottomright" />
       <Marker position={SALICE_DEPOT.coordinates} icon={depotIcon} zIndexOffset={1000}><Tooltip direction="top" offset={[0, -31]} opacity={1}><div className="map-tooltip depot-tooltip"><strong>{SALICE_DEPOT.name}</strong><span>{SALICE_DEPOT.address}, {SALICE_DEPOT.locality}</span><span>Origen y regreso de los recorridos</span></div></Tooltip></Marker>
       <ClusteredMarkers clients={geocoded} contentByProduct={contentByProduct} selectedId={selectedId} onSelect={onSelect} />
     </MapContainer>

@@ -6,6 +6,7 @@ import type {
   CommercialGoalRow,
   CommercialGoalsPayload,
 } from '../../shared/models';
+import { COMMERCIAL_GOAL_AUTOSERVICE_SELLERS } from '../../shared/commercial-goals-scope';
 import { readApiJson } from '../lib/api-response';
 import { money, number } from '../lib/format';
 import { CommercialGoalsUpload } from './CommercialGoalsUpload';
@@ -36,8 +37,6 @@ function upcomingMonths(months: string[], amount = 12) {
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
   }).filter((value) => !months.includes(value));
 }
-
-const AUTOSERVICE_GOAL_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'];
 
 export function CommercialGoalsManager({
   currentMonth,
@@ -212,10 +211,12 @@ export function CommercialGoalsManager({
   };
 
   const save = async () => {
-    const rows = draftRows.filter((row) => row.kilos != null || row.accounts != null || row.invoicing != null).map((row) => ({
-      month: selectedMonth, product: row.product, seller: row.seller,
-      kilos: row.kilos, accounts: row.accounts, invoicing: row.invoicing,
-    }));
+    const rows = draftRows.map((row) => ({
+      month: selectedMonth, product: row.product.trim(), seller: row.seller.trim(),
+      kilos: row.product.trim() ? row.kilos : null,
+      accounts: row.product.trim() ? row.accounts : null,
+      invoicing: row.invoicing,
+    })).filter((row) => row.kilos != null || row.accounts != null || row.invoicing != null);
     if (!name.trim()) { setError('Escribí un nombre para reconocer estos objetivos más adelante.'); return; }
     if (!rows.length) { setError('Cargá al menos un objetivo antes de guardar.'); return; }
     setBusy(true); setError('');
@@ -265,7 +266,7 @@ export function CommercialGoalsManager({
               <aside><strong>Producto o rubro</strong><div>{products.map((product) => <button key={product} className={selectedProduct === product ? 'active' : ''} onClick={() => setSelectedProduct(product)}><span>{product}</span><small>{number(draftRows.filter((row) => row.product === product).reduce((sum, row) => sum + Number(row.kilos ?? 0), 0), 1)} kg</small></button>)}</div></aside>
               <div className="goal-manager-grid"><header><div><span>Objetivos por vendedor</span><strong>{selectedProduct}</strong></div><small>Cargá kilos y cantidad de clientes objetivo para este producto o rubro.</small></header><div className="goal-manager-table"><div className="goal-manager-table-head"><span>Vendedor</span><span>Kilos</span><span>Clientes objetivo</span></div>{selectedRows.map((row) => <div className="goal-manager-table-row" key={row.seller}><strong>{row.seller}</strong><input aria-label={`Kilos · ${selectedProduct} · ${row.seller}`} inputMode="decimal" value={row.kilos ?? ''} onChange={(event) => setMetric(selectedProduct, row.seller, 'kilos', event.target.value)} /><input aria-label={`Clientes objetivo · ${selectedProduct} · ${row.seller}`} inputMode="numeric" value={row.accounts ?? ''} onChange={(event) => setMetric(selectedProduct, row.seller, 'accounts', event.target.value)} /></div>)}</div></div>
             </section>
-            <details className="goal-manager-invoicing" open><summary>Facturación de Autoservicio</summary><p>Esta sección queda siempre visible para cargar rápidamente los objetivos de Ana y Julieta.</p><div className="goal-manager-invoice-grid">{AUTOSERVICE_GOAL_SELLERS.map((seller) => <label key={seller}><span>{seller}</span><input aria-label={`Facturación · ${seller}`} inputMode="numeric" value={sellerInvoice(seller) ? Math.round(sellerInvoice(seller)) : ''} onChange={(event) => setInvoice(seller, event.target.value)} /></label>)}</div></details>
+            <details className="goal-manager-invoicing" open><summary>Facturación de Autoservicio</summary><p>Esta sección queda siempre visible para cargar rápidamente los objetivos de Ana y Julieta.</p><div className="goal-manager-invoice-grid">{COMMERCIAL_GOAL_AUTOSERVICE_SELLERS.map((seller) => <label key={seller}><span>{seller}</span><input aria-label={`Facturación · ${seller}`} inputMode="numeric" value={sellerInvoice(seller) ? Math.round(sellerInvoice(seller)) : ''} onChange={(event) => setInvoice(seller, event.target.value)} /></label>)}</div></details>
           </>}
           {tab === 'history' && <section className="goal-manager-history"><header><div><span>Registros conservados</span><strong>Excel histórico y cambios hechos desde la web</strong></div><div className="goal-manager-history-actions"><CommercialGoalsUpload currentMonth={selectedMonth} onImported={importedHistoricalGoals} buttonLabel="Importar otro histórico" buttonClassName="button secondary goal-history-inline" /><Archive size={18} /></div></header>{history.map((revision) => <article key={revision.id} className={revision.active ? 'active' : ''}><div className="goal-manager-history-date"><strong>{monthLabel(revision.month)}</strong><span>{revision.sourceKind === 'excel' ? 'Excel histórico' : 'Creado desde la web'}</span></div><div className="goal-manager-history-name"><strong>{revision.name}</strong><small>{timestampLabel(revision.createdAt)} · {revision.createdBy}</small></div><div className="goal-manager-history-total"><strong>{number(revision.totals.kilos, 1)} kg</strong><span>{revision.active ? 'En uso' : 'Registro anterior'}</span></div><button aria-label={`Usar ${revision.name} como base`} onClick={() => void openRevision(revision)}>Usar como base <ChevronRight size={13} /></button></article>)}</section>}
         </div>

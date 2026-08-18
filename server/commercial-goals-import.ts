@@ -179,8 +179,8 @@ function normalizedTable(workbook: ExcelJS.Workbook) {
         if (!month) continue;
         const product = canonicalProduct(cellValue(sheet.getCell(rowNumber, productColumn)));
         const seller = canonicalSeller(cellValue(sheet.getCell(rowNumber, sellerColumn)));
-        const kilos = kilosColumn ? optionalNumber(cellValue(sheet.getCell(rowNumber, kilosColumn))) : null;
-        const accounts = accountsColumn ? optionalNumber(cellValue(sheet.getCell(rowNumber, accountsColumn))) : null;
+        const kilos = product && kilosColumn ? optionalNumber(cellValue(sheet.getCell(rowNumber, kilosColumn))) : null;
+        const accounts = product && accountsColumn ? optionalNumber(cellValue(sheet.getCell(rowNumber, accountsColumn))) : null;
         const invoicing = invoicingColumn ? optionalNumber(cellValue(sheet.getCell(rowNumber, invoicingColumn))) : null;
         if (kilos == null && accounts == null && invoicing == null) continue;
         if (!product && invoicing == null) continue;

@@ -11,6 +11,7 @@ import type {
 } from '../shared/models.js';
 import { decodeMultiFilter, matchesMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.js';
 import {
+  COMMERCIAL_GOAL_AUTOSERVICE_SELLERS,
   COMMERCIAL_GOAL_CORE_BRANDS,
   COMMERCIAL_GOAL_STRATEGIC_BRANDS,
   commercialGoalSellerOptions,
@@ -31,7 +32,7 @@ const UNIVERSE = EXECUTABLE_UNIVERSES.general;
 const COMPANIES = [...UNIVERSE.companies];
 const BRANCHES = [...UNIVERSE.branches];
 const ALLOWED_ISSUERS = [...UNIVERSE.allowedIssuers];
-const AUTOSERVICE_SELLERS = ['Ana Ottaviano', 'Julieta Errecart'];
+const AUTOSERVICE_SELLERS: string[] = [...COMMERCIAL_GOAL_AUTOSERVICE_SELLERS];
 const CORE_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'C&T'];
 const CORE_SQL_CATEGORIES = ['Alimento Húmedo', 'Alimentos Balanceados', 'Snacks'];
 const CORE_BRANDS: string[] = [...COMMERCIAL_GOAL_CORE_BRANDS];

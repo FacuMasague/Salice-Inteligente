@@ -19,6 +19,8 @@ import {
 } from '../../shared/inventory-decisions';
 import type { Product } from '../../shared/models';
 import { encodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
+import { AnimatedLayer } from './AnimatedLayer';
+import { MobileFilterSheet } from './MobileFilterSheet';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
 import { SortButton } from './SortButton';
@@ -149,6 +151,8 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
   const affectedFamilies = new Set(attentionRows.map((row) => useful(row.product.family))).size;
   const brandSummary = aggregate(filtered, 'brand');
   const familySummary = aggregate(filtered, 'family');
+  const activeFilterCount = [status, brand, family, group, rotation, reviewState].filter(Boolean).length
+    + (activity === 'active' ? 0 : 1);
 
   const openReview = (row: InventoryRow) => {
     setEditing(row);
@@ -196,11 +200,18 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
     </section>
     <section className="data-card inventory-filter-card">
       <div className="inventory-filter-primary"><label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU o marca…" /></label>
-        <MultiSelectFilter label="Estado" value={status} options={statusOptions} onChange={(value) => { setStatus(value); setPage(1); }} />
-        <MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} />
-        <MultiSelectFilter label="Revisión" value={reviewState} options={[{ value: 'unreviewed', label: INVENTORY_REVIEW_LABELS.unreviewed }, { value: 'in_review', label: INVENTORY_REVIEW_LABELS.in_review }, { value: 'reviewed', label: INVENTORY_REVIEW_LABELS.reviewed }]} onChange={(value) => { setReviewState(value); setPage(1); }} />
+        <MobileFilterSheet
+          title="Filtrar inventario"
+          description="Acotá productos por estado, marca, revisión, familia, actividad o rotación."
+          activeCount={activeFilterCount}
+          applyLabel={`Ver ${number(sorted.length)} productos`}
+        >
+          <MultiSelectFilter label="Estado" value={status} options={statusOptions} onChange={(value) => { setStatus(value); setPage(1); }} />
+          <MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} />
+          <MultiSelectFilter label="Revisión" value={reviewState} options={[{ value: 'unreviewed', label: INVENTORY_REVIEW_LABELS.unreviewed }, { value: 'in_review', label: INVENTORY_REVIEW_LABELS.in_review }, { value: 'reviewed', label: INVENTORY_REVIEW_LABELS.reviewed }]} onChange={(value) => { setReviewState(value); setPage(1); }} />
+          <details className="inventory-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros <ChevronDown size={14} /></summary><div className="inventory-filter-grid"><MultiSelectFilter label="Familia" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Actividad" value={activity} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setActivity(value); setPage(1); }} /><MultiSelectFilter label="Rotación" value={rotation} options={[{ value: 'with_rotation', label: 'Con movimiento 90d' }, { value: 'without_rotation', label: 'Stock sin movimiento' }, { value: 'not_evaluable', label: 'No evaluable' }]} onChange={(value) => { setRotation(value); setPage(1); }} /></div></details>
+        </MobileFilterSheet>
       </div>
-      <details className="inventory-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros <ChevronDown size={14} /></summary><div className="inventory-filter-grid"><MultiSelectFilter label="Familia" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Actividad" value={activity} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setActivity(value); setPage(1); }} /><MultiSelectFilter label="Rotación" value={rotation} options={[{ value: 'with_rotation', label: 'Con movimiento 90d' }, { value: 'without_rotation', label: 'Stock sin movimiento' }, { value: 'not_evaluable', label: 'No evaluable' }]} onChange={(value) => { setRotation(value); setPage(1); }} /></div></details>
       {loadError && <p className="form-error">{loadError}</p>}
     </section>
     <details className="data-card inventory-secondary-summary"><summary><span><strong>Resumen por marca y familia</strong><small>{number(affectedBrands)} marcas · {number(affectedFamilies)} familias con alertas en el filtro</small></span><ChevronDown size={15} /></summary><section className="inventory-aggregate-grid"><article className="data-card"><div className="data-card-header"><div><span className="section-kicker">Indicador por marca</span><h2>Marcas con más alertas</h2></div></div><div className="inventory-aggregate-list">{brandSummary.map((item) => <button key={item.name} onClick={() => item.name !== 'No informado' && onOpenBrand(item.name)}><span><strong>{item.name}</strong><small>{item.products} productos en el filtro</small></span><em>{item.critical} críticas · {item.alerts} alertas</em><ChevronRight size={15} /></button>)}</div></article><article className="data-card"><div className="data-card-header"><div><span className="section-kicker">Indicador por familia</span><h2>Familias con más alertas</h2></div></div><div className="inventory-aggregate-list">{familySummary.map((item) => <button key={item.name} onClick={() => { if (item.name !== 'No informado') setFamily(item.name); setPage(1); }}><span><strong>{item.name}</strong><small>{item.products} productos en el filtro</small></span><em>{item.critical} críticas · {item.alerts} alertas</em><ChevronRight size={15} /></button>)}</div></article></section></details>
@@ -213,18 +224,19 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
         <th><SortButton label="Rotación/mes" direction={direction('rotation')} onClick={() => changeSort('rotation')} /></th>
         <th><SortButton label="Cobertura" direction={direction('coverage')} onClick={() => changeSort('coverage')} /></th>
         <th><SortButton label="Revisión" direction={direction('review')} onClick={() => changeSort('review')} /></th>
-      </tr></thead><tbody>{visible.map((row) => <tr key={row.product.id} className={row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'inventory-reopened-row' : row.review?.status === 'reviewed' ? 'inventory-reviewed-row' : row.review?.status === 'in_review' ? 'inventory-in-review-row' : ''}>
-        <td><button className="entity-link inventory-product-link" onClick={() => onOpenProduct(row.product)}><strong>{row.product.name}</strong><small>{row.product.sku} · {useful(row.product.brand)} · {useful(row.product.family)}</small></button></td>
+      </tr></thead><tbody>{visible.map((row) => <tr key={row.product.id} className={row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'inventory-reopened-row' : row.review?.status === 'reviewed' ? 'inventory-reviewed-row' : row.review?.status === 'in_review' ? 'inventory-in-review-row' : ''} tabIndex={0} role="button" aria-label={`Abrir producto ${row.product.name}`} onClick={() => onOpenProduct(row.product)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenProduct(row.product); } }}>
+        <td><button className="entity-link inventory-product-link" onClick={(event) => { event.stopPropagation(); onOpenProduct(row.product); }}><strong>{row.product.name}</strong><small>{row.product.sku} · {useful(row.product.brand)} · {useful(row.product.family)}</small></button></td>
         <td><span className={`inventory-status-badge ${statusTone(row.decision.status)}`}>{row.decision.label}</span></td>
         <td><strong>{row.product.inventory.rawAvailableUnit1 == null ? 'Sin dato' : row.product.inventory.rawAvailableUnit1.toLocaleString('es-AR')}</strong><small>{row.product.unit || 'U1 no informada'}</small></td>
         <td><strong>{row.product.monthlyUnits.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong><small>{row.product.units90d.toLocaleString('es-AR')} en 90d</small></td>
         <td><strong>{row.product.stockCoverageMonths == null ? 'No calculable' : `${row.product.stockCoverageMonths.toLocaleString('es-AR', { maximumFractionDigits: 2 })} meses`}</strong><small>umbral {row.decision.thresholdSource === 'general' ? 'general' : 'familiar'}</small></td>
-        <td><button className={`inventory-review-button ${reviewStatus(row.review)} ${row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'reopened' : ''}`} onClick={() => openReview(row)}>{row.review?.status === 'unreviewed' && row.review.reopenedAt ? <RotateCcw size={14} /> : row.review?.status === 'reviewed' ? <Check size={14} /> : <ClipboardCheck size={14} />}<span>{inventoryReviewDisplayLabel(row.review)}</span></button>{row.review && row.review.incidentNumber > 1 && <small>Incidencia {row.review.incidentNumber}</small>}{row.review?.note && <small title={row.review.note}>{noteExcerpt(row.review.note)}</small>}</td>
+        <td><button className={`inventory-review-button ${reviewStatus(row.review)} ${row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'reopened' : ''}`} onClick={(event) => { event.stopPropagation(); openReview(row); }}>{row.review?.status === 'unreviewed' && row.review.reopenedAt ? <RotateCcw size={14} /> : row.review?.status === 'reviewed' ? <Check size={14} /> : <ClipboardCheck size={14} />}<span>{inventoryReviewDisplayLabel(row.review)}</span></button>{row.review && row.review.incidentNumber > 1 && <small>Incidencia {row.review.incidentNumber}</small>}{row.review?.note && <small title={row.review.note}>{noteExcerpt(row.review.note)}</small>}</td>
       </tr>)}</tbody></table></div>
       {!visible.length && <div className="empty-state"><Info size={22} /><h2>No hay productos para estos filtros</h2><p>Probá ampliar estado, actividad o rotación.</p></div>}
       <div className="table-pagination"><span>Mostrando {visible.length ? (currentPage - 1) * pageSize + 1 : 0}–{(currentPage - 1) * pageSize + visible.length} de {sorted.length}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentPage} / {pageCount}</strong><button className="button secondary" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div></div>
     </section>
-    {editing && <div className="inventory-review-layer">
+    <AnimatedLayer open={Boolean(editing)} className="inventory-review-layer">
+      {editing && <>
       <button className="inventory-review-backdrop" aria-label="Cerrar revisión" onClick={() => setEditing(null)} />
       <section className="data-card inventory-review-panel" role="dialog" aria-modal="true" aria-label={`Revisar ${editing.product.name}`}>
         <header><div><span className="section-kicker">Revisión local de oficina · incidencia {editing.review?.incidentNumber ?? 1}</span><h2>{editing.product.name}</h2><p>{editing.decision.label}</p></div><button className="icon-button" aria-label="Cerrar" onClick={() => setEditing(null)}><X size={18} /></button></header>
@@ -250,6 +262,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
         </div>
         <footer><span>{editing.review?.updatedAt ? `Última actualización ${shortDate(editing.review.updatedAt.slice(0, 10))}` : 'Todavía sin revisión local'}</span><button className="button primary" disabled={saving} onClick={saveReview}>{saving ? 'Guardando…' : 'Guardar revisión'}</button></footer>
       </section>
-    </div>}
+      </>}
+    </AnimatedLayer>
   </div>;
 }

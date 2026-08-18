@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, CalendarDays, Clock3, History, LogIn, MailWarning, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { DeveloperActivityPayload, UserRole } from '../../shared/auth';
 import type { DeveloperAlertStatus } from '../../shared/developer-observability';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { number } from '../lib/format';
 
 const roleLabel: Record<UserRole, string> = {
@@ -90,6 +91,7 @@ export function UserActivityView() {
     activeSeconds: result.activeSeconds + item.activeSeconds,
     changes: result.changes + item.changeCount,
   }), { accesses: 0, activeSeconds: 0, changes: 0 });
+  const activeFilterCount = (periodDays === 30 ? 0 : 1) + (userId ? 1 : 0);
 
   const testAlert = async () => {
     setTestingAlert(true);
@@ -110,7 +112,16 @@ export function UserActivityView() {
   return <div className="page-view developer-activity-page">
     <section className="data-card developer-activity-hero">
       <div><span className="section-kicker"><ShieldCheck size={15} /> Vista Developer</span><h2>Actividad de usuarios</h2><p>Accesos, tiempo de uso real y cambios registrados desde v1.2.1. Nunca se muestran contraseñas ni contenido privado de los formularios.</p></div>
-      <div className="developer-filter"><label><span>Período</span><select value={periodDays} onChange={(event) => setPeriodDays(Number(event.target.value))}><option value={7}>Últimos 7 días</option><option value={30}>Últimos 30 días</option><option value={90}>Últimos 90 días</option><option value={365}>Último año</option><option value={0}>Todo el historial</option></select></label><label><span>Usuario</span><select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">Todos</option>{payload?.users.map((item) => <option key={item.user.id} value={item.user.id}>{item.user.displayName}</option>)}</select></label><button className="button ghost compact" onClick={reload}><RefreshCw className={loading ? 'spin' : ''} size={14} /> Actualizar</button></div>
+      <div className="developer-filter">
+        <MobileFilterSheet
+          title="Filtrar actividad"
+          description="Elegí el período y, si hace falta, un usuario específico."
+          activeCount={activeFilterCount}
+        >
+          <div className="developer-filter"><label><span>Período</span><select value={periodDays} onChange={(event) => setPeriodDays(Number(event.target.value))}><option value={7}>Últimos 7 días</option><option value={30}>Últimos 30 días</option><option value={90}>Últimos 90 días</option><option value={365}>Último año</option><option value={0}>Todo el historial</option></select></label><label><span>Usuario</span><select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">Todos</option>{payload?.users.map((item) => <option key={item.user.id} value={item.user.id}>{item.user.displayName}</option>)}</select></label></div>
+        </MobileFilterSheet>
+        <button className="button ghost compact" onClick={reload}><RefreshCw className={loading ? 'spin' : ''} size={14} /> Actualizar</button>
+      </div>
     </section>
 
     <section className="data-card developer-user-metrics">

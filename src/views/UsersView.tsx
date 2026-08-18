@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Clock3, RefreshCw, ShieldCheck, UserRoundCheck, UserRoundX, Users } from 'lucide-react';
+import { Check, Clock3, RefreshCw, Search, ShieldCheck, UserRoundCheck, UserRoundX, Users } from 'lucide-react';
 import type { AuthUser, UserRole, UserStatus } from '../../shared/auth';
 import { useAuth } from '../auth';
+import { MobileFilterSheet } from '../components/MobileFilterSheet';
 
 const statusLabel: Record<UserStatus, string> = {
   pending: 'Pendiente',
@@ -26,7 +27,16 @@ export function UsersView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<UserStatus | 'all'>('all');
+  const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const pending = useMemo(() => users.filter((user) => user.status === 'pending'), [users]);
+  const normalizedQuery = query.trim().toLocaleLowerCase('es');
+  const visibleUsers = useMemo(() => users.filter((user) => (
+    (!normalizedQuery || `${user.displayName} ${user.username}`.toLocaleLowerCase('es').includes(normalizedQuery))
+    && (statusFilter === 'all' || user.status === statusFilter)
+    && (roleFilter === 'all' || user.role === roleFilter)
+  )), [normalizedQuery, roleFilter, statusFilter, users]);
 
   const reload = () => {
     setLoading(true);
@@ -85,9 +95,22 @@ export function UsersView() {
 
     <section className="data-card">
       <div className="data-card-header"><div><span className="section-kicker"><Users size={15} /> Accesos registrados</span><h2>Todos los usuarios</h2><p>Los cambios de estado invalidan inmediatamente las sesiones de una cuenta bloqueada.</p></div><button className="button ghost compact" onClick={reload}><RefreshCw className={loading ? 'spin' : ''} size={14} /> Actualizar</button></div>
+      <div className="page-tools">
+        <label className="large-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar persona o usuario" aria-label="Buscar usuarios" /></label>
+        <MobileFilterSheet
+          title="Filtros de usuarios"
+          description="Acotá la lista por estado de acceso o rol. Las solicitudes pendientes continúan visibles arriba."
+          activeCount={(statusFilter === 'all' ? 0 : 1) + (roleFilter === 'all' ? 0 : 1)}
+        >
+          <div className="client-filter-bar">
+            <label><span>Estado</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as UserStatus | 'all')}><option value="all">Todos los estados</option><option value="pending">Pendiente</option><option value="active">Habilitado</option><option value="rejected">Rechazado</option><option value="disabled">Deshabilitado</option></select></label>
+            <label><span>Rol</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UserRole | 'all')}><option value="all">Todos los roles</option><option value="office">Oficina</option><option value="admin">Administrador</option><option value="developer">Developer</option></select></label>
+          </div>
+        </MobileFilterSheet>
+      </div>
       <div className="users-table">
         <header><span>Persona</span><span>Rol</span><span>Estado</span><span>Último ingreso</span><span>Acceso</span></header>
-        {users.map((user) => {
+        {visibleUsers.map((user) => {
           const protectedDeveloper = user.role === 'developer' && currentUser.role !== 'developer';
           const protectedTitle = protectedDeveloper ? 'Sólo otro Developer puede modificar esta cuenta.' : undefined;
           return <article key={user.id}>
@@ -102,7 +125,7 @@ export function UsersView() {
             </div>
           </article>;
         })}
-        {!loading && !users.length && <div className="users-empty">No hay usuarios registrados.</div>}
+        {!loading && !visibleUsers.length && <div className="users-empty">{users.length ? 'No hay usuarios que coincidan con la búsqueda y los filtros.' : 'No hay usuarios registrados.'}</div>}
       </div>
       {error && <div className="auth-message error users-error">{error}</div>}
     </section>

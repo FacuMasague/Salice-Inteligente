@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { CalendarRange, ChevronDown, Database, Filter, RefreshCw } from 'lucide-react';
+import { MobileFilterSheet } from './MobileFilterSheet';
 
 export interface BusinessReportKpi {
   label: string;
@@ -18,6 +19,7 @@ export function BusinessReportFilters({
   primary,
   advanced,
   activeFilterCount,
+  mobileActiveFilterCount,
   expanded,
   onToggle,
   loading,
@@ -31,6 +33,7 @@ export function BusinessReportFilters({
   primary: ReactNode;
   advanced?: ReactNode;
   activeFilterCount: number;
+  mobileActiveFilterCount?: number;
   expanded: boolean;
   onToggle: () => void;
   loading: boolean;
@@ -43,19 +46,25 @@ export function BusinessReportFilters({
       <p>{description}</p>
       {introExtra}
     </div>
-    <div className="business-report-filter-controls">
-      {primary}
-      <button
-        className={`button secondary business-report-more-button ${activeFilterCount ? 'active' : ''}`}
-        onClick={onToggle}
-        aria-expanded={expanded}
-      >
-        <Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}
-        <ChevronDown size={13} />
-      </button>
-    </div>
-    {expanded && <div className="business-report-filter-expanded">{advanced}</div>}
-    {children}
+    <MobileFilterSheet
+      title="Filtros del reporte"
+      description="Elegí el período y los criterios comerciales. También podés aplicar o guardar una vista."
+      activeCount={mobileActiveFilterCount ?? activeFilterCount}
+    >
+      <div className="business-report-filter-controls">
+        {primary}
+        <button
+          className={`button secondary business-report-more-button ${activeFilterCount ? 'active' : ''}`}
+          onClick={onToggle}
+          aria-expanded={expanded}
+        >
+          <Filter size={14} /> Más filtros {activeFilterCount ? `(${activeFilterCount})` : ''}
+          <ChevronDown size={13} />
+        </button>
+      </div>
+      {expanded && <div className="business-report-filter-expanded">{advanced}</div>}
+      {children}
+    </MobileFilterSheet>
     {loading && <div className="business-report-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
   </section>;
 }
