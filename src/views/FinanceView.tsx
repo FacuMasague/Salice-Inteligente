@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, CircleDollarSign, Search } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, CircleDollarSign, Database, Search } from 'lucide-react';
 import type { Client, Invoice } from '../../shared/models';
 import { decodeMultiFilter, encodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import {
@@ -148,14 +148,14 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
       </section>
 
       <section className="data-card finance-table-card">
-        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original. Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)} emitidos por los seis vendedores habilitados.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
+        <div className="data-card-header"><div><span className="section-kicker">Cuenta corriente</span><h2>Bandeja de cobranzas</h2><p>El saldo mostrado es el pendiente real del comprobante, no su importe original.</p></div><span className="count-badge">{number(filtered.length)} resultados</span></div>
         <div className="table-wrap">
           <table className="data-table finance-table">
             <thead><tr><th className="finance-compact-hide" aria-sort={ariaSort('status')}><SortButton label="Estado" direction={direction('status')} onClick={() => changeTableSort('status')} /></th><th aria-sort={ariaSort('client')}><SortButton label="Cliente" direction={direction('client')} onClick={() => changeTableSort('client')} /></th><th aria-sort={ariaSort('invoice')}><SortButton label="Comprobante" direction={direction('invoice')} onClick={() => changeTableSort('invoice')} /></th><th aria-sort={ariaSort('issuedAt')}><SortButton label="Emisión" direction={direction('issuedAt')} onClick={() => changeTableSort('issuedAt')} /></th><th aria-sort={ariaSort('dueAt')}><SortButton label="Vencimiento" direction={direction('dueAt')} onClick={() => changeTableSort('dueAt')} /></th><th aria-sort={ariaSort('term')}><SortButton label="Plazo factura" direction={direction('term')} onClick={() => changeTableSort('term')} /></th><th aria-sort={ariaSort('outstanding')}><SortButton label="Saldo pendiente" direction={direction('outstanding')} onClick={() => changeTableSort('outstanding')} /></th><th className="finance-compact-hide" aria-sort={ariaSort('behavior')}><SortButton label="Cuenta corriente / conducta" direction={direction('behavior')} onClick={() => changeTableSort('behavior')} /></th><th className="finance-compact-hide" aria-sort={ariaSort('risk')}><SortButton label="Riesgo" direction={direction('risk')} onClick={() => changeTableSort('risk')} /></th><th className="finance-compact-hide" /></tr></thead>
             <tbody>
               {visibleInvoices.map((invoice) => <tr key={invoice.id} onClick={() => onOpenInvoice(invoice.id)}>
                 <td className="finance-compact-hide"><span className={`invoice-pill ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span></td>
-                <td><span className={`invoice-pill finance-compact-status ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong></button>{clientSecondaryName(invoice.client) && <span className="cell-sub client-trade-name">{clientSecondaryName(invoice.client)}</span>}<span className="cell-sub"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span></td>
+                <td><span className={`invoice-pill finance-compact-status ${invoice.status}`}>{invoice.status === 'overdue' ? 'Vencida' : invoice.status === 'due_soon' ? 'Por vencer' : 'Abierta'}</span><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong></button>{clientSecondaryName(invoice.client) && <span className="cell-sub client-trade-name">{clientSecondaryName(invoice.client)}</span>}<span className="cell-sub"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo'}</span></td>
                 <td><strong className="normal-weight">{invoice.number}</strong></td>
                 <td>{compactDate(invoice.issuedAt)}</td><td><strong>{compactDate(invoice.dueAt)}</strong></td>
                 <td><strong>{invoice.creditTermDays != null ? `${invoice.creditTermDays} días` : 'Sin dato'}</strong><span className="cell-sub">emisión → vencimiento</span></td>
@@ -173,7 +173,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
                 <button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpen(invoice.client); }}><strong>{clientPrimaryName(invoice.client)}</strong>{clientSecondaryName(invoice.client) && <small>{clientSecondaryName(invoice.client)}</small>}</button>
                 <ChevronRight size={17} />
               </header>
-              <span className="finance-card-seller"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo GESI'}</span>
+              <span className="finance-card-seller"><button className="entity-link" onClick={(event) => { event.stopPropagation(); onOpenSeller(invoice.seller ?? invoice.client.seller); }}>{invoice.seller ?? invoice.client.seller}</button> · {invoice.client.active ? 'Activo' : 'Inactivo'}</span>
               <div data-label="Comprobante"><strong>{invoice.number}</strong></div>
               <div data-label="Emisión">{compactDate(invoice.issuedAt)}</div>
               <div data-label="Vencimiento"><strong>{compactDate(invoice.dueAt)}</strong></div>
@@ -186,6 +186,7 @@ export function FinanceView({ clients, onOpen, onOpenSeller, onOpenInvoice, snap
         </div>
         <div className="table-pagination"><span>Mostrando {number((currentPage - 1) * pageSize + (visibleInvoices.length ? 1 : 0))}–{number((currentPage - 1) * pageSize + visibleInvoices.length)} de {number(filtered.length)}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{number(currentPage)} / {number(pageCount)}</strong><button className="button secondary" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div></div>
       </section>
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de Cartera</summary><div><strong>Alcance de los comprobantes</strong><span>Se incluyen saldos desde {money(MIN_RECEIVABLE_DOCUMENT_AMOUNT)} asignados en el comprobante a los seis vendedores personales definidos para cobranzas. Se excluyen las entidades internas y genéricas documentadas en Configuración.</span></div></details>
     </div>
   );
 }

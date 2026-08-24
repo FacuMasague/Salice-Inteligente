@@ -1,5 +1,5 @@
-import { BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Map, PlayCircle } from 'lucide-react';
-import { TUTORIALS, type TutorialSection } from '../components/TutorialOverlay';
+import { BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Map, PlayCircle, ReceiptText, Search, Target, WalletCards } from 'lucide-react';
+import { TASK_JOURNEYS, TUTORIALS, type TaskJourneyId, type TutorialSection } from '../components/TutorialOverlay';
 
 const tutorialCards: { id: TutorialSection; icon: typeof Map }[] = [
   { id: 'operations', icon: Map },
@@ -7,9 +7,17 @@ const tutorialCards: { id: TutorialSection; icon: typeof Map }[] = [
   { id: 'reports', icon: BarChart3 },
 ];
 
-export function HelpView({ tutorialCompleted, onStartTutorial }: {
+const journeyCards: { id: TaskJourneyId; icon: typeof Map }[] = [
+  { id: 'review-client', icon: Search },
+  { id: 'manage-collection', icon: WalletCards },
+  { id: 'find-document', icon: ReceiptText },
+  { id: 'review-month', icon: Target },
+];
+
+export function HelpView({ tutorialCompleted, onStartTutorial, onStartJourney }: {
   tutorialCompleted: Record<TutorialSection, boolean>;
   onStartTutorial: (section: TutorialSection) => void;
+  onStartJourney: (journey: TaskJourneyId) => void;
 }) {
   return <div className="page-view help-view">
     <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
@@ -29,6 +37,10 @@ export function HelpView({ tutorialCompleted, onStartTutorial }: {
           </article>;
         })}
       </div>
+    </section>
+    <section className="data-card help-journeys-card">
+      <div className="data-card-header"><div><span className="section-kicker"><PlayCircle size={14} /> Recorridos prácticos</span><h2>Aprendé una tarea concreta</h2><p>Son guías más cortas que los tutoriales generales y te llevan por las pantallas necesarias para completar un trabajo habitual.</p></div></div>
+      <div className="help-journey-grid">{journeyCards.map(({ id, icon: Icon }) => { const journey = TASK_JOURNEYS[id]; return <article key={id}><span><Icon size={20} /></span><div><strong>{journey.title}</strong><p>{journey.description}</p><small>{journey.steps.length} {journey.steps.length === 1 ? 'paso' : 'pasos'}</small></div><button className="button secondary" onClick={() => onStartJourney(id)}><PlayCircle size={15} /> Comenzar</button></article>; })}</div>
     </section>
   </div>;
 }

@@ -92,7 +92,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
 
   const blocks: ComparisonBlock[] = selected.length < 2 ? [] : [
     {
-      id: 'identity', title: 'Identidad y clasificación', description: 'Campos declarados por el maestro de GESI.', rows: [
+      id: 'identity', title: 'Identidad y clasificación', description: 'Datos registrados para cada producto.', rows: [
         { id: 'sku', label: 'Código / SKU', values: selected.map((product) => value(product.sku, product.sku)) },
         { id: 'brand', label: 'Marca', values: selected.map((product) => value(<button className="entity-link" onClick={() => onOpenBrand(product.brand)}>{useful(product.brand)}</button>, product.brand)) },
         { id: 'family', label: 'Rubro / familia', values: selected.map((product) => value(useful(product.family), product.family)) },
@@ -102,7 +102,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'presentation', title: 'Presentación y contenido', description: 'No se equiparan envases cuando GESI no permite normalizarlos.', rows: [
+      id: 'presentation', title: 'Presentación y contenido', description: 'No se equiparan envases cuando la información disponible no permite normalizarlos.', rows: [
         { id: 'presentation', label: 'Presentación', values: selected.map((product) => value(productPresentationLabel(product), productPresentationLabel(product))) },
         { id: 'content', label: 'Contenido neto reconocido', values: selected.map((product) => value(product.contentKg ? `${product.contentKg.toLocaleString('es-AR')} kg` : 'No calculable', raw(product.contentKg), product.contentKg)), comparable: selected.every((product) => Boolean(product.contentKg)), note: 'Sólo se reconoce cuando la presentación es inequívoca.' },
         { id: 'unit1', label: 'Unidad primaria', values: selected.map((product) => value(useful(product.unit), product.unit)) },
@@ -112,7 +112,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
     },
     {
       id: 'price', title: 'Precio y precio por kilo', description: 'Una ventaja se marca sólo con una unidad realmente equivalente.', rows: [
-        { id: 'price', label: 'Precio de referencia GESI', values: selected.map((product) => value(product.price > 0 ? money(product.price) : 'Sin precio', raw(product.price), product.price)), comparable: presentationComparable && selected.every((product) => product.price > 0), advantage: 'min', note: presentationComparable ? 'Misma presentación observable; no es el precio efectivo facturado.' : 'No se resalta: las presentaciones no son equivalentes.' },
+        { id: 'price', label: 'Precio de referencia', values: selected.map((product) => value(product.price > 0 ? money(product.price) : 'Sin precio', raw(product.price), product.price)), comparable: presentationComparable && selected.every((product) => product.price > 0), advantage: 'min', note: presentationComparable ? 'Misma presentación observable; no es el precio efectivo facturado.' : 'No se resalta: las presentaciones no son equivalentes.' },
         { id: 'price-kg', label: 'Precio por kilo', values: selected.map((product) => value(product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg` : 'No calculable', raw(product.referencePricePerKg), product.referencePricePerKg)), comparable: pricePerKgComparable, advantage: 'min', note: pricePerKgComparable ? 'Mismo uso principal y unidad $/kg.' : 'No comparable: falta peso inequívoco o el uso principal es diferente.' },
         { id: 'position', label: 'Posicionamiento relativo', values: selected.map((product) => value(positionLabel(product), product.pricePosition)), comparable: pricePerKgComparable },
       ],
@@ -135,7 +135,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'features', title: 'Características principales', description: 'Lectura determinística de señales descriptivas; un vacío no se completa.', rows: [
+      id: 'features', title: 'Características principales', description: 'Lectura de la descripción disponible; un dato faltante no se completa.', rows: [
         { id: 'summary', label: 'Lectura rápida', values: selected.map((product) => value(summarizeProductForOffice(product), summarizeProductForOffice(product))) },
         { id: 'species', label: 'Especie y etapa', values: selected.map((product) => value(dominantFeatures(product, ['perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior']), dominantFeatures(product, ['perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior']))) },
         { id: 'type', label: 'Tipo y uso', values: selected.map((product) => value(dominantFeatures(product, ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano']), dominantFeatures(product, ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano']))) },

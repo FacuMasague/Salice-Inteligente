@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, EyeOff, MapPinned, TrendingUp, Users, WalletCards } from 'lucide-react';
+import { AlertCircle, ChevronDown, Database, EyeOff, MapPinned, TrendingUp, Users, WalletCards } from 'lucide-react';
 import type { Client, LogisticsSnapshot, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { ClientMap } from '../components/ClientMap';
@@ -123,6 +123,7 @@ export function MapDashboard({ clients, products, logistics, selected, quickView
           {selected && <ClientPanel client={selected} products={products} logistics={logistics} onClose={() => onSelect(null)} onPlanRoute={onPlanRoute} onNoteSaved={onNoteSaved} onExpand={onExpandClient} onOpenSeller={onOpenSeller} onOpenProduct={onOpenProduct} onOpenInvoice={onOpenInvoice} snapshotDate={snapshotDate} />}
         </AnimatedLayer>
       </div>
+      <details className="business-report-source-note map-technical-note"><summary><Database size={15} /> Información técnica del Mapa</summary><div><strong>Ubicaciones y alcance</strong><span>El mapa muestra únicamente clientes con una ubicación utilizable dentro del alcance elegido en Configuración. Las ubicaciones aproximadas se identifican como tales y no se usan para calcular rutas.</span></div></details>
     </div>
   );
 }

@@ -10,7 +10,7 @@ describe('preferencias de interfaz', () => {
 
   it('usa la densidad compacta cuando todavía no hay una preferencia', () => {
     vi.stubGlobal('localStorage', storageWith(null));
-    expect(readPreferences().density).toBe(DEFAULT_PREFERENCES.density);
+    expect(readPreferences()).toMatchObject({ density: DEFAULT_PREFERENCES.density, informationView: 'complete' });
     expect(localStorage.getItem).toHaveBeenCalledWith(PREFERENCES_STORAGE_KEY);
   });
 
@@ -25,5 +25,13 @@ describe('preferencias de interfaz', () => {
   it('descarta una densidad desconocida y vuelve a compacta', () => {
     vi.stubGlobal('localStorage', storageWith(JSON.stringify({ density: 'invalid' })));
     expect(readPreferences().density).toBe('compact');
+  });
+
+  it('conserva la vista simple y descarta valores desconocidos', () => {
+    vi.stubGlobal('localStorage', storageWith(JSON.stringify({ informationView: 'simple' })));
+    expect(readPreferences().informationView).toBe('simple');
+
+    vi.stubGlobal('localStorage', storageWith(JSON.stringify({ informationView: 'minimal' })));
+    expect(readPreferences().informationView).toBe('complete');
   });
 });

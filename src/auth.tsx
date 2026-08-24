@@ -60,7 +60,7 @@ function AccessScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =
       <div>
         <span><ShieldCheck size={17} /> Acceso privado</span>
         <h1>Toda la operación de Salice, en un solo lugar.</h1>
-        <p>Consultá ventas, clientes, productos, stock, cobranzas, rutas y reportes comerciales con información actualizada de GESI.</p>
+        <p>Consultá ventas, clientes, productos, stock, cobranzas, rutas y reportes comerciales con información actualizada.</p>
       </div>
     </section>
     <section className="auth-card">

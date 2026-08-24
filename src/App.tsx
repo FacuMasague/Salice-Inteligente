@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, ArrowLeft, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, LayoutDashboard, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, UserCircle, Users, WalletCards, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeft, Bell, Boxes, ChevronDown, ChevronRight, ChevronUp, CircleDollarSign, ClipboardCheck, Database, HelpCircle, House, LayoutDashboard, LayoutList, LogOut, Map, Menu, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search, Settings2, ShieldCheck, ShoppingBasket, Store, Table2, UserCircle, Users, WalletCards, X } from 'lucide-react';
 import { type Client, type DashboardData, type NotificationItem, type Product, type ReceivableDashboardFilters, type SalesExplorerFilters } from '../shared/models';
 import { encodeMultiFilter } from '../shared/multi-filter';
 import {
@@ -14,17 +14,17 @@ import { DeliverySheetDetailDrawer } from './components/DeliverySheetDetailDrawe
 import { InvoiceDetailDrawer } from './components/InvoiceDetailDrawer';
 import { ProductPanel } from './components/ProductPanel';
 import { BrandPanel } from './components/BrandPanel';
-import { MobileFilterSheet } from './components/MobileFilterSheet';
-import { TUTORIALS, TutorialOverlay, type TutorialSection, type TutorialView } from './components/TutorialOverlay';
+import { GUIDED_EXPERIENCES, TutorialOverlay, type GuidedExperienceId, type TaskJourneyId, type TutorialSection, type TutorialView } from './components/TutorialOverlay';
 import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
 import { number } from './lib/format';
 import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportViewId } from './lib/report-center';
 import { replaceViewInLocation, reportViewFromLocation } from './lib/report-links';
-import { PREFERENCES_CHANGED_EVENT, readPreferences, type AppPreferences } from './lib/preferences';
+import { PREFERENCES_CHANGED_EVENT, readPreferences, savePreferences, type AppPreferences } from './lib/preferences';
 import type { ClientVisibility } from './views/MapDashboard';
 import { ACTIVE_VIEW_CHANGED_EVENT, useAuth } from './auth';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
+const HomeView = lazy(() => import('./views/HomeView').then((module) => ({ default: module.HomeView })));
 const ClientsView = lazy(() => import('./views/ClientsView').then((module) => ({ default: module.ClientsView })));
 const FinanceView = lazy(() => import('./views/FinanceView').then((module) => ({ default: module.FinanceView })));
 const MapDashboard = lazy(() => import('./views/MapDashboard').then((module) => ({ default: module.MapDashboard })));
@@ -48,44 +48,31 @@ const ReceivablesView = lazy(() => import('./views/ReceivablesView').then((modul
 const UsersView = lazy(() => import('./views/UsersView').then((module) => ({ default: module.UsersView })));
 const UserActivityView = lazy(() => import('./views/UserActivityView').then((module) => ({ default: module.UserActivityView })));
 
-type View = TutorialView | 'report-center' | 'users' | 'user-activity' | 'help';
-type SidebarSection = 'operations' | 'administration' | 'reports' | 'system';
+type View = TutorialView | 'home' | 'report-center' | 'users' | 'user-activity' | 'help';
+type SidebarSection = 'work' | 'commercial' | 'planning' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
-  map: 'operations', clients: 'operations', sellers: 'operations', products: 'operations', brands: 'operations', routes: 'operations',
-  finance: 'administration', agenda: 'administration', 'sales-explorer': 'administration', receivables: 'administration',
+  home: 'work', agenda: 'work', finance: 'work', receivables: 'work',
+  clients: 'commercial', products: 'commercial', brands: 'commercial', 'sales-explorer': 'commercial',
+  map: 'planning', sellers: 'planning', routes: 'planning',
   'report-center': 'reports', reports: 'reports', spt: 'reports', 'commercial-sales': 'reports', mars: 'reports', nutripet: 'reports', baires: 'reports', 'non-buyers': 'reports', 'pending-balances': 'reports',
   settings: 'system', help: 'system', users: 'system', 'user-activity': 'system',
 };
 
-const clientScopeViews = new Set<View>([
-  'map',
-  'routes',
-  'clients',
-  'sellers',
-  'products',
-  'finance',
-  'agenda',
-  'sales-explorer',
-  'receivables',
-  'report-center',
-  'reports',
-  'non-buyers',
-]);
-
 const APP_FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])';
 
 const titles: Record<View, { title: string; subtitle: string }> = {
+  home: { title: 'Inicio', subtitle: 'Prioridades, cobranzas y oportunidades para empezar' },
   map: { title: 'Pulso comercial', subtitle: 'Clientes, oportunidades y riesgo sobre el territorio' },
   agenda: { title: 'Bandeja comercial', subtitle: 'Señales, oportunidades, compromisos y notas de oficina' },
   clients: { title: 'Clientes', subtitle: 'Toda la cartera comercial en una sola vista' },
   sellers: { title: 'Vendedores y carteras', subtitle: 'Clientes activos, ventas, localidades y señales por responsable' },
-  finance: { title: 'Cartera y cobranzas', subtitle: 'Vencimientos, saldos y comportamiento de pago' },
-  products: { title: 'Inteligencia de producto', subtitle: 'Inventario, catálogo y oportunidades con análisis avanzados agrupados' },
+  finance: { title: 'Cobranzas', subtitle: 'Resumen de cartera, vencimientos y comprobantes' },
+  products: { title: 'Productos', subtitle: 'Inventario, catálogo, oportunidades y análisis adicionales' },
   brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
   routes: { title: 'Rutas de reparto', subtitle: 'Facturas, fojas y recorridos estimados desde la oficina' },
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
-  receivables: { title: 'Cuentas por cobrar', subtitle: 'Cartera, responsables, estados y seguimiento administrativo' },
+  receivables: { title: 'Cobranzas', subtitle: 'Responsables, promesas y seguimiento administrativo' },
   'report-center': { title: 'Reportes', subtitle: 'Accesos organizados por finalidad y cobertura' },
   reports: { title: 'Reporte General', subtitle: 'Objetivos, resultados y estado comercial de Salice' },
   spt: { title: 'Volumen SPT', subtitle: 'Kilos, evolución, vendedores y comparación entre períodos' },
@@ -101,35 +88,27 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   'user-activity': { title: 'Actividad de usuarios', subtitle: 'Accesos, tiempo activo y cambios realizados' },
 };
 
-const nav: { id: View; label: string; icon: typeof Map }[] = [
-  { id: 'map', label: 'Mapa operativo', icon: Map },
-  { id: 'routes', label: 'Rutas', icon: Route },
-  { id: 'clients', label: 'Clientes', icon: Users },
-  { id: 'sellers', label: 'Vendedores', icon: Users },
-  { id: 'products', label: 'Productos', icon: Boxes },
-  { id: 'brands', label: 'Marcas', icon: Store },
-];
-
 const contextualHelp: Record<View, { purpose: string; tips: string[] }> = {
+  home: { purpose: 'Empezá por los compromisos, riesgos y oportunidades que requieren atención.', tips: ['Cada tarjeta abre el módulo completo.', 'Inicio resume información existente y no cambia estados.'] },
   map: { purpose: 'Ubicá clientes y detectá prioridades comerciales sobre el territorio.', tips: ['Usá “Ubicaciones corregidas” para auditar ajustes.', 'Abrí una ficha antes de planificar una ruta.'] },
   routes: { purpose: 'Armá recorridos con clientes cuya ubicación es suficientemente confiable.', tips: ['Los puntos aproximados quedan excluidos por seguridad.', 'La distancia y el tiempo son estimaciones para planificación.'] },
   clients: { purpose: 'Buscá y filtrá toda la cartera desde una lista única.', tips: ['Abrí la ficha para ver compras, cobranzas y notas.', 'Combiná filtros y guardá las vistas que repetís.'] },
   sellers: { purpose: 'Compará carteras y abrí el detalle de cada responsable.', tips: ['Las señales priorizan revisión; no reemplazan criterio comercial.', 'El corte coincide con la actualización visible.'] },
   products: { purpose: 'Revisá catálogo, disponibilidad y oportunidades por producto.', tips: ['Las herramientas de clasificación están dentro del modo avanzado.', 'Una señal incompleta se muestra como tal y no se completa artificialmente.'] },
   brands: { purpose: 'Analizá venta, compra y disponibilidad agrupadas por marca.', tips: ['Abrí cualquier producto para revisar su ficha completa.', 'Los importes usan el mismo corte que el resto del programa.'] },
-  finance: { purpose: 'Priorizá vencimientos, saldos y comportamiento de pago.', tips: ['Saldo abierto y monto original son conceptos distintos.', 'Las alertas no ocultan documentos de bajo importe.'] },
+  finance: { purpose: 'Consultá cuánto está pendiente, qué venció y qué comprobantes explican el saldo.', tips: ['Saldo abierto y monto original son conceptos distintos.', 'La pestaña Seguimiento organiza el trabajo humano.'] },
   agenda: { purpose: 'Concentrá oportunidades, compromisos y tareas de oficina.', tips: ['La explicación con IA es complementaria.', 'Las gestiones humanas quedan separadas de los datos comerciales.'] },
   'sales-explorer': { purpose: 'Pasá de un indicador al comprobante que lo explica.', tips: ['Podés combinar varias opciones dentro de un mismo filtro.', 'La información técnica permanece plegada.'] },
-  receivables: { purpose: 'Administrá casos de cobranza sin alterar los documentos fuente.', tips: ['Registrá seguimiento y promesas con contexto.', 'Abrí la factura para verificar vencimientos e importes.'] },
+  receivables: { purpose: 'Administrá responsables, promesas y próximos pasos sin alterar los importes.', tips: ['Registrá seguimiento y promesas con contexto.', 'La pestaña Cartera conserva el detalle de comprobantes.'] },
   'report-center': { purpose: 'Elegí el reporte según la decisión que necesitás tomar.', tips: ['Favoritos y recientes aceleran accesos repetidos.', 'Cada reporte documenta su período y alcance.'] },
-  reports: { purpose: 'Leé primero el resultado general y después profundizá.', tips: ['“Cómo se calcula” contiene metodología y universo.', 'La asistencia con IA no modifica las cifras.'] },
+  reports: { purpose: 'Leé primero el resultado general y después profundizá.', tips: ['“Cómo se calcula” explica el alcance y los criterios usados.', 'La asistencia con IA no modifica las cifras.'] },
   spt: { purpose: 'Compará volumen SPT entre períodos equivalentes.', tips: ['Revisá el período elegido antes de interpretar la variación.', 'La exportación conserva filtros y corte.'] },
   'commercial-sales': { purpose: 'Analizá venta neta y composición comercial.', tips: ['Usá el explorador para llegar al comprobante.', 'Compará siempre períodos completos equivalentes.'] },
-  mars: { purpose: 'Revisá volumen, clientes y evolución comercial de Mars.', tips: ['El reporte mantiene un universo documentado.', 'La IA se oculta si no supera los controles de calidad.'] },
-  nutripet: { purpose: 'Revisá cobertura y evolución mensual de NutriPet.', tips: ['Abrí marcas o productos para profundizar.', 'Las cifras determinísticas siguen disponibles sin IA.'] },
+  mars: { purpose: 'Revisá volumen, clientes y evolución comercial de Mars.', tips: ['El reporte explica qué operaciones incluye.', 'La explicación asistida se oculta si no es suficientemente confiable.'] },
+  nutripet: { purpose: 'Revisá cobertura y evolución mensual de NutriPet.', tips: ['Abrí marcas o productos para profundizar.', 'Los resultados calculados siguen disponibles sin la explicación asistida.'] },
   baires: { purpose: 'Compará Baires SPT y Baires Masivo con el mismo corte.', tips: ['Verificá la composición antes de atribuir una variación.', 'Las exportaciones usan los filtros visibles.'] },
   'non-buyers': { purpose: 'Detectá cuentas recuperables y marcas sin compra reciente.', tips: ['La ausencia se calcula sobre el período elegido.', 'Abrí el cliente antes de iniciar una gestión.'] },
-  'pending-balances': { purpose: 'Dimensioná cartera abierta y presión sobre ventas recientes.', tips: ['Vencido y pendiente no significan lo mismo.', 'Podés continuar la gestión en Cuentas por cobrar.'] },
+  'pending-balances': { purpose: 'Dimensioná cartera abierta y presión sobre ventas recientes.', tips: ['Vencido y pendiente no significan lo mismo.', 'Podés continuar la gestión en Cobranzas → Seguimiento.'] },
   settings: { purpose: 'Ajustá la experiencia y consultá datos, IA, ayuda y diagnóstico.', tips: ['La información técnica está separada del uso cotidiano.', 'Los cambios de apariencia se guardan en este navegador.'] },
   help: { purpose: 'Aprendé a usar cada área con recorridos guiados y seguros.', tips: ['Los recorridos no cambian ningún dato.', 'Podés repetirlos todas las veces que necesites.'] },
   users: { purpose: 'Revisá quién puede acceder a la información privada del negocio.', tips: ['Confirmá personalmente cada solicitud.', 'Deshabilitar una cuenta cierra sus sesiones activas.'] },
@@ -142,7 +121,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [view, setView] = useState<View>(() => {
     const linked = reportViewFromLocation();
-    return linked && isReportViewId(linked) ? linked : 'map';
+    return linked && isReportViewId(linked) ? linked : 'home';
   });
   const [salesExplorerRequest, setSalesExplorerRequest] = useState<{ id: number; filters: Partial<SalesExplorerFilters> } | null>(null);
   const [receivablesRequest, setReceivablesRequest] = useState<{ id: number; filters: Partial<ReceivableDashboardFilters> } | null>(null);
@@ -155,13 +134,13 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [narrowDisplay, setNarrowDisplay] = useState(() => window.matchMedia('(max-width: 900px)').matches);
-  const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ operations: true, administration: true, reports: true, system: true });
+  const [sidebarSections, setSidebarSections] = useState<Record<SidebarSection, boolean>>({ work: true, commercial: true, planning: true, reports: true, system: true });
   const [mapClientVisibility, setMapClientVisibility] = useState<ClientVisibility>('');
   const [clientScope, setClientScope] = useState<ClientScopeMode>(() => {
     const stored = localStorage.getItem(`salice-client-scope-v123-${user.id}`);
     return CLIENT_SCOPE_OPTIONS.some((option) => option.value === stored) ? stored as ClientScopeMode : 'recent3';
   });
-  const [tutorial, setTutorial] = useState<{ section: TutorialSection; stepIndex: number } | null>(null);
+  const [tutorial, setTutorial] = useState<{ experienceId: GuidedExperienceId; stepIndex: number } | null>(null);
   const [tutorialCompleted, setTutorialCompleted] = useState<Record<TutorialSection, boolean>>(() => ({
     operations: localStorage.getItem('salice-tutorial-v121-operations') === 'completed',
     administration: localStorage.getItem('salice-tutorial-v121-administration') === 'completed',
@@ -430,7 +409,7 @@ export default function App() {
 
   useEffect(() => {
     if (!tutorial || !data) return;
-    const step = TUTORIALS[tutorial.section].steps[tutorial.stepIndex];
+    const step = GUIDED_EXPERIENCES[tutorial.experienceId].steps[tutorial.stepIndex];
     setView(step.view);
     setSidebarOpen(false);
     if (step.target === 'client-panel') {
@@ -518,11 +497,14 @@ export default function App() {
     setClientProfileOpen(false);
   };
   const noteSaved = (clientId: number, note: string) => setData((current) => current ? ({ ...current, clients: current.clients.map((client) => client.id === clientId ? { ...client, note } : client) }) : current);
-  const startTutorial = (section: TutorialSection) => setTutorial({ section, stepIndex: 0 });
+  const startTutorial = (section: TutorialSection) => setTutorial({ experienceId: section, stepIndex: 0 });
+  const startJourney = (experienceId: TaskJourneyId) => setTutorial({ experienceId, stepIndex: 0 });
   const finishTutorial = () => {
     if (!tutorial) return;
-    localStorage.setItem(`salice-tutorial-v121-${tutorial.section}`, 'completed');
-    setTutorialCompleted((current) => ({ ...current, [tutorial.section]: true }));
+    if (tutorial.experienceId === 'operations' || tutorial.experienceId === 'administration' || tutorial.experienceId === 'reports') {
+      localStorage.setItem(`salice-tutorial-v121-${tutorial.experienceId}`, 'completed');
+      setTutorialCompleted((current) => ({ ...current, [tutorial.experienceId]: true }));
+    }
     setTutorial(null);
     setSelectedId(null);
     setView('help');
@@ -548,7 +530,7 @@ export default function App() {
     .sort((a, b) => b.sales90d - a.sales90d || a.brand.localeCompare(b.brand, 'es')).slice(0, 5), [data, normalizedGlobalQuery]);
   const nextTutorialStep = () => {
     if (!tutorial) return;
-    if (tutorial.stepIndex === TUTORIALS[tutorial.section].steps.length - 1) finishTutorial();
+    if (tutorial.stepIndex === GUIDED_EXPERIENCES[tutorial.experienceId].steps.length - 1) finishTutorial();
     else setTutorial((current) => current ? { ...current, stepIndex: current.stepIndex + 1 } : null);
   };
 
@@ -560,12 +542,12 @@ export default function App() {
   const snapshotDay = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short' }).format(snapshotDate).replace('.', '');
   const snapshotTime = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(snapshotDate);
   const snapshotLabel = `${snapshotDay} · ${snapshotTime}`;
-  const clientScopeLabel = CLIENT_SCOPE_OPTIONS.find((option) => option.value === clientScope)?.label ?? 'Alcance de clientes';
+  const effectiveInformationView = narrowDisplay ? 'simple' : preferences.informationView;
   const sidebarInactive = narrowDisplay ? !sidebarOpen : sidebarCollapsed;
   const focusedDeliverySheet = sheetFocusId == null ? null : data.logistics.sheets.find((sheet) => sheet.id === sheetFocusId) ?? null;
 
   return (
-    <div className={`app-shell density-${preferences.density}`}>
+    <div className={`app-shell density-${preferences.density} information-view-${effectiveInformationView}`}>
       <aside
         ref={sidebarElement}
         id="app-sidebar-navigation"
@@ -579,12 +561,12 @@ export default function App() {
       >
         <div className="brand"><div className="brand-mark"><img src="/salice-isotipo.png" alt="" /></div><div><strong>SALICE</strong><small>INTELIGENTE</small></div><button ref={sidebarCloseButton} className="mobile-close" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)}><X size={19} /></button></div>
         <div className="sidebar-scroll">
-          <button className="sidebar-section-label" aria-expanded={sidebarSections.operations} aria-controls="sidebar-operations" onClick={() => toggleSidebarSection('operations')}><span>Centro operativo</span>{sidebarSections.operations ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          {sidebarSections.operations && <nav className="main-nav" id="sidebar-operations">
-            {nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => selectView(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}
-          </nav>}
-          <button className="sidebar-section-label lower" aria-expanded={sidebarSections.administration} aria-controls="sidebar-administration" onClick={() => toggleSidebarSection('administration')}><span>Administración</span>{sidebarSections.administration ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          {sidebarSections.administration && <nav className="main-nav" id="sidebar-administration"><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Explorador de ventas</span></button><button className={view === 'finance' ? 'active' : ''} onClick={() => selectView('finance')}><CircleDollarSign size={19} /><span>Cartera</span></button><button className={view === 'receivables' ? 'active' : ''} onClick={() => selectView('receivables')}><WalletCards size={19} /><span>Cuentas por cobrar</span></button><button className={view === 'agenda' ? 'active' : ''} onClick={() => selectView('agenda')}><ClipboardCheck size={19} /><span>Bandeja comercial</span></button></nav>}
+          <button className="sidebar-section-label" aria-expanded={sidebarSections.work} aria-controls="sidebar-work" onClick={() => toggleSidebarSection('work')}><span>Trabajo diario</span>{sidebarSections.work ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+          {sidebarSections.work && <nav className="main-nav" id="sidebar-work"><button className={view === 'home' ? 'active' : ''} onClick={() => selectView('home')}><House size={19} /><span>Inicio</span></button><button className={view === 'agenda' ? 'active' : ''} onClick={() => selectView('agenda')}><ClipboardCheck size={19} /><span>Bandeja comercial</span></button><button className={view === 'finance' || view === 'receivables' ? 'active' : ''} onClick={() => selectView('finance')}><WalletCards size={19} /><span>Cobranzas</span></button></nav>}
+          <button className="sidebar-section-label lower" aria-expanded={sidebarSections.commercial} aria-controls="sidebar-commercial" onClick={() => toggleSidebarSection('commercial')}><span>Clientes y ventas</span>{sidebarSections.commercial ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+          {sidebarSections.commercial && <nav className="main-nav" id="sidebar-commercial"><button className={view === 'clients' ? 'active' : ''} onClick={() => selectView('clients')}><Users size={19} /><span>Clientes</span></button><button className={view === 'sales-explorer' ? 'active' : ''} onClick={() => selectView('sales-explorer')}><ShoppingBasket size={19} /><span>Ventas</span></button><button className={view === 'products' ? 'active' : ''} onClick={() => selectView('products')}><Boxes size={19} /><span>Productos</span></button><button className={view === 'brands' ? 'active' : ''} onClick={() => selectView('brands')}><Store size={19} /><span>Marcas</span></button></nav>}
+          <button className="sidebar-section-label lower" aria-expanded={sidebarSections.planning} aria-controls="sidebar-planning" onClick={() => toggleSidebarSection('planning')}><span>Planificación</span>{sidebarSections.planning ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+          {sidebarSections.planning && <nav className="main-nav" id="sidebar-planning"><button className={view === 'map' ? 'active' : ''} onClick={() => selectView('map')}><Map size={19} /><span>Mapa operativo</span></button><button className={view === 'routes' ? 'active' : ''} onClick={() => selectView('routes')}><Route size={19} /><span>Rutas</span></button><button className={view === 'sellers' ? 'active' : ''} onClick={() => selectView('sellers')}><Users size={19} /><span>Vendedores</span></button></nav>}
           <button className="sidebar-section-label lower" aria-expanded={sidebarSections.reports} aria-controls="sidebar-reports" onClick={() => toggleSidebarSection('reports')}><span>Reportes</span>{sidebarSections.reports ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
           {sidebarSections.reports && <nav className="main-nav" id="sidebar-reports"><button className={viewSection[view] === 'reports' ? 'active' : ''} onClick={() => selectView('report-center')}><LayoutDashboard size={19} /><span>Reportes</span></button></nav>}
           <button className="sidebar-section-label lower compact" aria-expanded={sidebarSections.system} aria-controls="sidebar-system" onClick={() => toggleSidebarSection('system')}><span>Sistema</span>{sidebarSections.system ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
@@ -601,22 +583,7 @@ export default function App() {
           {isReportViewId(view) && <button type="button" className="report-center-back" aria-label="Volver a Reportes" title="Volver a Reportes" onClick={() => selectView('report-center')}><ArrowLeft size={18} /><span>Reportes</span></button>}
           <div className="topbar-title"><h1>{currentTitle.title}</h1><p>{currentTitle.subtitle}</p></div>
           <div className="topbar-actions">
-            {clientScopeViews.has(view) && <MobileFilterSheet
-              mobileOnly
-              className="mobile-client-scope-sheet"
-              title="Alcance de clientes"
-              description="Este alcance se comparte entre los módulos que trabajan con clientes para mantener resultados consistentes."
-              triggerLabel="Alcance"
-              applyLabel="Usar este alcance"
-            >
-              <label className="mobile-client-scope-control">
-                <span>Mostrar clientes que</span>
-                <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
-                  {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <small>Selección actual: {clientScopeLabel}</small>
-              </label>
-            </MobileFilterSheet>}
+            <div className="information-view-toggle" role="group" aria-label="Cantidad de información visible"><button className={preferences.informationView === 'simple' ? 'active' : ''} aria-pressed={preferences.informationView === 'simple'} onClick={() => savePreferences({ ...preferences, informationView: 'simple' })}><LayoutList size={15} /><span>Vista simple</span></button><button className={preferences.informationView === 'complete' ? 'active' : ''} aria-pressed={preferences.informationView === 'complete'} onClick={() => savePreferences({ ...preferences, informationView: 'complete' })}><Table2 size={15} /><span>Vista completa</span></button></div>
             <div ref={searchContainer} className={`global-search ${searchOpen ? 'open' : ''}`} onClick={() => { setSearchOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); }}><Search className="global-search-leading-icon" size={17} /><button ref={mobileSearchButton} type="button" className="global-search-mobile-trigger" aria-label="Abrir búsqueda global" aria-expanded={searchOpen} aria-controls="global-search-input" onClick={(event) => { event.stopPropagation(); setSearchOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); }}><Search size={17} /></button><input id="global-search-input" ref={searchInput} value={globalQuery} aria-label="Buscar cliente, vendedor, marca o producto" onFocus={() => setSearchOpen(true)} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Buscar cliente, vendedor, marca o producto" /><kbd>⌘ K</kbd>
               {searchOpen && <div className="global-search-results" onClick={(event) => event.stopPropagation()}>
                 {normalizedGlobalQuery.length < 2 && <p>Escribí al menos 2 caracteres para buscar en toda la base.</p>}
@@ -629,35 +596,22 @@ export default function App() {
             </div>
             <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
             {preferences.contextualHelp && <div className="context-help-wrap"><button className="context-help-button" aria-label={`Ayuda sobre ${currentTitle.title}`} aria-expanded={helpOpen} onClick={() => { setHelpOpen((value) => !value); setSearchOpen(false); setNotificationsOpen(false); }}><HelpCircle size={18} /></button>{helpOpen && <aside className="context-help-panel"><header><span>Ayuda de esta pantalla</span><button aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={15} /></button></header><h3>{currentTitle.title}</h3><p>{contextualHelp[view].purpose}</p><ul>{contextualHelp[view].tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button className="button secondary" onClick={() => { selectView('help'); setHelpOpen(false); }}>Abrir Ayuda</button></aside>}</div>}
-            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!visibleNotifications.length && <i>{number(visibleNotifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{visibleNotifications.map((item) => { const client = visibleClients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!visibleNotifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir cuentas por cobrar</button></div>}</div>
+            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!visibleNotifications.length && <i>{number(visibleNotifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{visibleNotifications.map((item) => { const client = visibleClients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!visibleNotifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir Seguimiento de cobranzas</button></div>}</div>
             <div className="user-menu-wrap"><button className="user-menu-button" aria-label="Menú de usuario" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((value) => !value); setNotificationsOpen(false); setSearchOpen(false); }}><UserCircle size={20} /><span>{user.displayName.split(' ')[0]}</span><ChevronDown size={13} /></button>{userMenuOpen && <aside className="user-menu-panel"><div><strong>{user.displayName}</strong><span>@{user.username} · {user.role === 'developer' ? 'Developer' : user.role === 'admin' ? 'Administrador' : 'Oficina'}</span></div>{user.role !== 'office' && <button onClick={() => { selectView('users'); setUserMenuOpen(false); }}><ShieldCheck size={15} /> Administrar usuarios</button>}{user.role === 'developer' && <button onClick={() => { selectView('user-activity'); setUserMenuOpen(false); }}><Activity size={15} /> Ver actividad</button>}<button className="logout" onClick={() => void logout()}><LogOut size={15} /> Cerrar sesión</button></aside>}</div>
           </div>
         </header>
 
-        {clientScopeViews.has(view) && <section className="client-scope-context" aria-label="Alcance de clientes">
-          <div>
-            <span><Users size={15} /></span>
-            <p><strong>Alcance de clientes</strong><small>{number(visibleClients.length)} clientes visibles en este módulo</small></p>
-          </div>
-          <label>
-            <span>Mostrar</span>
-            <select value={clientScope} onChange={(event) => { setClientScope(event.target.value as ClientScopeMode); setSelectedId(null); setClientProfileOpen(false); }}>
-              {CLIENT_SCOPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </label>
-        </section>}
-
         <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
+          {view === 'home' && <HomeView data={visibleData!} notifications={visibleNotifications} onOpenClient={openClient} onOpenAgenda={() => selectView('agenda')} onOpenPortfolio={() => selectView('finance')} onOpenFollowup={() => selectView('receivables')} onOpenProducts={() => selectView('products')} onOpenReports={() => selectView('report-center')} />}
           {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} quickViewOpen={mapQuickClientId === selected?.id} onSelect={(client) => { setSelectedId(client?.id ?? null); setMapQuickClientId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => { setMapQuickClientId(null); setClientProfileOpen(true); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
           {view === 'agenda' && <AgendaView clients={visibleClients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={visibleClients} products={data.products} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={visibleClients} products={data.products} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
-          {view === 'finance' && <FinanceView clients={visibleClients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} />}
+          {(view === 'finance' || view === 'receivables') && <div className="collections-workspace"><nav className="collections-mode-nav" aria-label="Secciones de Cobranzas"><button className={view === 'finance' ? 'active' : ''} aria-current={view === 'finance' ? 'page' : undefined} onClick={() => selectView('finance')}><CircleDollarSign size={16} /><span>Cartera</span><small>Importes y comprobantes</small></button><button className={view === 'receivables' ? 'active' : ''} aria-current={view === 'receivables' ? 'page' : undefined} onClick={() => selectView('receivables')}><ClipboardCheck size={16} /><span>Seguimiento</span><small>Responsables y promesas</small></button></nav>{view === 'finance' ? <FinanceView clients={visibleClients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} /> : <ReceivablesView dataClients={visibleClients} navigationRequest={receivablesRequest} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}</div>}
           {view === 'products' && <ProductsView products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} focusProductId={productFocusId} focusFamily={productFamilyFocus} comparisonProductIds={productComparisonIds} comparisonRequest={productComparisonRequest} onComparisonChange={setProductComparisonIds} onFocusFamilyConsumed={() => setProductFamilyFocus('')} tutorialVectorMode={false} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenClient={openClient} onOpenSeller={openSeller} onDataChanged={() => reloadLocalData(true)} />}
           {view === 'brands' && <BrandsView products={data.products} focusBrand={brandFocus} onOpenProduct={openProduct} />}
           {view === 'routes' && <RoutesView clients={visibleClients} logistics={data.logistics} initialClientId={routeClientId} onOpenClient={openClient} onOpenInvoice={openInvoice} />}
           {view === 'sales-explorer' && <SalesExplorerView clients={visibleClients} navigationRequest={salesExplorerRequest} onOpenClient={openClientById} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} />}
-          {view === 'receivables' && <ReceivablesView dataClients={visibleClients} navigationRequest={receivablesRequest} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}
           {view === 'report-center' && <ReportsHubView
             data={visibleData!}
             onOpenReport={(report: ReportViewId) => selectView(report)}
@@ -674,8 +628,8 @@ export default function App() {
           {view === 'pending-balances' && <PendingBalancesReportView onOpenSeller={openSeller} onOpenReceivables={openReceivables} />}
           {view === 'users' && user.role !== 'office' && <UsersView />}
           {view === 'user-activity' && user.role === 'developer' && <UserActivityView />}
-          {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} />}
-          {view === 'help' && <HelpView tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} />}
+          {view === 'settings' && <SettingsView data={data} dataHealth={dataHealth} clientScope={clientScope} onClientScopeChange={(nextScope) => { setClientScope(nextScope); setSelectedId(null); setClientProfileOpen(false); }} />}
+          {view === 'help' && <HelpView tutorialCompleted={tutorialCompleted} onStartTutorial={startTutorial} onStartJourney={startJourney} />}
         </Suspense></div>
       </main>
       <AnimatedLayer open={clientProfileOpen && Boolean(selected)} className="client-drawer-layer">
@@ -700,7 +654,7 @@ export default function App() {
           onOpenInvoice={openInvoice}
         />}
       </AnimatedLayer>
-      {tutorial && <TutorialOverlay definition={TUTORIALS[tutorial.section]} stepIndex={tutorial.stepIndex} onBack={() => setTutorial((current) => current ? { ...current, stepIndex: Math.max(0, current.stepIndex - 1) } : null)} onNext={nextTutorialStep} onClose={() => setTutorial(null)} />}
+      {tutorial && <TutorialOverlay definition={GUIDED_EXPERIENCES[tutorial.experienceId]} stepIndex={tutorial.stepIndex} onBack={() => setTutorial((current) => current ? { ...current, stepIndex: Math.max(0, current.stepIndex - 1) } : null)} onNext={nextTutorialStep} onClose={() => setTutorial(null)} />}
     </div>
   );
 }

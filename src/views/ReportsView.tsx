@@ -186,7 +186,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
 
   return <div className={`page-view general-report-page ${loading ? 'is-loading' : ''}`}>
     <section className="data-card general-plan-toolbar">
-      <div className="general-plan-current"><span className="section-kicker"><Target size={14} /> Objetivos seleccionados</span><strong>{selectedMonthPlan?.name ?? meta.targetSource.label}</strong><small>{monthLabel(month, true)} · los resultados reales siguen viniendo de GESI</small></div>
+      <div className="general-plan-current"><span className="section-kicker"><Target size={14} /> Objetivos seleccionados</span><strong>{selectedMonthPlan?.name ?? meta.targetSource.label}</strong><small>{monthLabel(month, true)} · los resultados reales no se modifican al editar objetivos</small></div>
       <div className="general-plan-actions"><CommercialGoalsManager currentMonth={month} onSaved={goalsImported} /><a className="button secondary goal-history-export" href="/api/admin/goals/export-history"><FileDown size={15} /> Exportar objetivos</a></div>
     </section>
     {goalUpdateMessage && <div className="general-plan-success"><CheckCircle2 size={15} /><span>{goalUpdateMessage}</span><button onClick={() => setGoalUpdateMessage('')}>Cerrar</button></div>}
@@ -208,7 +208,7 @@ export function ReportsView({ data, onOpen, onOpenSeller, onOpenBrand }: Reports
       </MobileFilterSheet>
     </section>
 
-    <ReportContext universe={`${modes.find((item) => item.id === mode)?.label} · empresa 3 / sucursal 3`} period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes fuente no disponibles en GESI.`] : []} related={[{ view: 'spt', label: 'Abrir SPT' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: `/api/admin/goals/export?format=xlsx&month=${encodeURIComponent(month)}`, label: 'Plan mensual Excel', kind: 'xlsx' }, { href: `/api/admin/goals/export?format=pdf&month=${encodeURIComponent(month)}`, label: 'Plan y avance PDF', kind: 'pdf' }]} />} />
+    <ReportContext universe={`${modes.find((item) => item.id === mode)?.label} · empresa 3 / sucursal 3`} period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison="Mes anterior y mismo período del año anterior" partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes fuente no están disponibles.`] : []} related={[{ view: 'spt', label: 'Abrir SPT' }, { view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: `/api/admin/goals/export?format=xlsx&month=${encodeURIComponent(month)}`, label: 'Plan mensual Excel', kind: 'xlsx' }, { href: `/api/admin/goals/export?format=pdf&month=${encodeURIComponent(month)}`, label: 'Plan y avance PDF', kind: 'pdf' }]} />} />
     <AiNarrativeCard artifact={report.aiNarrative} />
 
     <div className="general-kpis">

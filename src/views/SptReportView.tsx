@@ -217,7 +217,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   const advancedFilterCount = useMemo(() => (['brand', 'category', 'product', 'client', 'line', 'subcategory', 'clientType', 'grouping', 'locality'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof SptFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando el modelo SPT" detail="Leyendo facturas, notas de crédito y maestros de la API de GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando el modelo SPT" detail="Leyendo facturas, notas de crédito y datos comerciales…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir el reporte SPT" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando comparaciones" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -246,7 +246,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
 
   return <div className="page-view spt-page">
     <section className="data-card spt-filter-card" data-tour="spt-overview">
-      <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Universo SPT conciliado</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan directamente sobre facturas, notas de crédito y maestros de GESI.</p></div>
+      <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Información SPT conciliada</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan sobre facturas, notas de crédito y datos comerciales.</p></div>
       <MobileFilterSheet
         title="Filtros de Volumen SPT"
         description="Elegí el mes y acotá el universo comercial sin perder de vista el resumen del reporte."
@@ -270,8 +270,8 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     {incompleteHistoricalCoverage
-      ? <section className="spt-coverage-warning"><AlertTriangle size={17} /><div><strong>Histórico todavía incompleto</strong><span>GESI está cubierto desde {meta.coverageFrom}. No interpretes como cero las comparaciones con períodos anteriores a esa fecha.</span></div></section>
-      : <section className="spt-coverage-warning is-complete"><Database size={17} /><div><strong>Histórico 2025 incorporado</strong><span>Cobertura desde {meta.coverageFrom} con los filtros actuales. GESI no entregó el detalle de {number(meta.unavailableDocumentCount)} de {number(meta.sourceDocumentCount + meta.unavailableDocumentCount)} comprobantes ({number(unavailableDocumentRate)}%).</span></div></section>}
+      ? <section className="spt-coverage-warning"><AlertTriangle size={17} /><div><strong>Histórico todavía incompleto</strong><span>La información disponible comienza el {meta.coverageFrom}. No interpretes como cero las comparaciones con períodos anteriores a esa fecha.</span></div></section>
+      : <section className="spt-coverage-warning is-complete"><Database size={17} /><div><strong>Histórico 2025 incorporado</strong><span>Cobertura desde {meta.coverageFrom} con los filtros actuales. No está disponible el detalle de {number(meta.unavailableDocumentCount)} de {number(meta.sourceDocumentCount + meta.unavailableDocumentCount)} comprobantes ({number(unavailableDocumentRate)}%).</span></div></section>}
 
     <div className="spt-tabs"><button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}><Gauge size={15} /> Resumen mensual</button><button className={tab === 'sellers' ? 'active' : ''} onClick={() => setTab('sellers')}><Users size={15} /> Vendedores</button><button className={tab === 'quarters' ? 'active' : ''} onClick={() => setTab('quarters')}><CalendarRange size={15} /> Trimestre</button></div>
 

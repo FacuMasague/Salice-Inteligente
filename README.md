@@ -1,6 +1,8 @@
-# Salice Inteligente · v2.0.1
+# Salice Inteligente · v2.1.0
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.0.1 corrige la edición de objetivos comerciales con celdas no especificadas y conserva la experiencia móvil integral incorporada en v2.0.0. Mantiene sin cambios los universos, cálculos, permisos, persistencia y controles determinísticos de v1.5.1.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.0 reorganiza la experiencia cotidiana de la oficina: incorpora Inicio, reúne Cartera y Seguimiento dentro de Cobranzas, permite elegir entre vista simple y completa en computadoras, simplifica el lenguaje visible y agrega recorridos prácticos en Ayuda. En teléfonos se conserva siempre la vista simple de v2.0.
+
+La versión no modifica cifras, universos, permisos ni persistencia. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -45,21 +47,33 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 
 ## Recorrido principal
 
-### Centro operativo
+### Inicio
+
+- Resume compromisos, saldo vencido, oportunidades comerciales e inventario que requiere revisión.
+- Muestra una lista breve de prioridades y accesos a los módulos completos.
+- No crea tareas, no cambia estados y no modifica importes.
+
+### Trabajo diario
+
+- Inicio: prioridades y accesos para comenzar la jornada.
+- Bandeja comercial: señales y notas reunidas para revisión.
+- Cobranzas: una sola entrada con las pestañas Cartera y Seguimiento.
+
+### Clientes y ventas
+
+- Explorador de ventas: del indicador al comprobante.
+- Clientes: directorio completo, estados, ubicación y fichas.
+- Productos: inventario, catálogo, oportunidades y análisis adicionales.
+- Marcas: venta, stock y productos agrupados por marca.
+
+### Planificación
 
 - Mapa operativo: clientes y prioridades sobre el territorio.
 - Rutas: facturas y recorridos estimados con ubicaciones verificadas.
-- Clientes: directorio completo, estados, ubicación y fichas.
 - Vendedores: desempeño y composición de cada cartera.
-- Productos: inventario, catálogo, oportunidades y análisis avanzados.
-- Marcas: venta, stock y productos agrupados por marca.
 
-### Administración
+### Administración comercial
 
-- Explorador de ventas: del indicador al comprobante.
-- Cartera: saldos y vencimientos.
-- Cuentas por cobrar: seguimiento humano, responsables y promesas.
-- Bandeja comercial: señales y notas reunidas para revisión.
 - Reporte General: objetivos y resultados sobre el mismo período, sin un módulo administrativo duplicado.
 
 ### Reportes
@@ -124,11 +138,12 @@ Configuración se divide en:
 1. Preferencias.
 2. Inteligencia artificial.
 3. Datos y actualizaciones.
-4. Ayuda.
-5. Diagnóstico avanzado.
-6. Acerca del programa.
+4. Diagnóstico avanzado.
+5. Acerca del programa.
 
-Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los tutoriales independientes de Centro operativo, Administración y Reportes explican qué mirar, cómo trabajar y qué salvedades respetar en cada módulo. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
+Las preferencias de densidad, vista y ayuda contextual se guardan en el navegador. La vista completa es la predeterminada en computadoras; en teléfonos y pantallas pequeñas siempre se usa la vista simple. El alcance de clientes también se elige en Configuración y deja de ocupar una franja superior de trabajo.
+
+Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Ayuda conserva los tutoriales de Centro operativo, Administración y Reportes y agrega recorridos breves para revisar un cliente, gestionar una cobranza, buscar un comprobante o revisar el mes. Los horarios de actualización que muestra Configuración provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
 Developer puede comparar la adopción durante 7, 30, 90 o 365 días y consultar el histórico. La medición por sección respeta el control anti-AFK y no registra contraseñas, textos de notas ni contenido libre de formularios. Las fallas de actualización, IA y errores no controlados quedan auditados y, si SMTP está configurado, se notifican por correo sin bloquear el flujo principal.
 
@@ -155,7 +170,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.0.1
+## Alcance que continúa fuera de v2.1.0
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -190,3 +205,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.5.1.md`
 - `docs/release-v2.0.0.md`
 - `docs/release-v2.0.1.md`
+- `docs/release-v2.1.0.md`

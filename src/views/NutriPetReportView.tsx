@@ -206,7 +206,7 @@ export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProdu
     return { ...current, [key]: value };
   });
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte NutriPet" detail="Reconstruyendo ventas, clientes y comparaciones desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte NutriPet" detail="Reconstruyendo ventas, clientes y comparaciones…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte NutriPet" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando el reporte NutriPet" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -235,7 +235,7 @@ export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProdu
       dataTour="nutripet-overview"
       kicker={<><ShoppingBag size={14} /> Reporte NutriPet</>}
       title={<>Nutri Pet · {monthLabel(report.selectedMonth, true)}</>}
-      description="Volumen y cobertura del proveedor calculados directamente sobre facturas y notas de crédito de GESI."
+      description="Volumen y cobertura del proveedor calculados sobre facturas y notas de crédito."
       primary={<><SingleSelectFilter label="Año" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Mes" value={filters.month} options={(meta.monthsByYear[filters.year] ?? []).map((month) => ({ value: month, label: monthName(month) }))} onChange={(value) => update('month', value)} /><SelectFilter label={FILTER_LABELS.channelGroup} value={filters.channelGroup} options={meta.options.channelGroup} onChange={(value) => update('channelGroup', value)} /></>}
       advanced={<>{filterKeys.map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}
       activeFilterCount={advancedFilterCount}

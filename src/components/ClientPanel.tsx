@@ -339,8 +339,8 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
         {tab === 'operations' && (
           <>
             <section className="panel-section first">
-              <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14} /> Cuentas por cobrar</span><h3>Seguimientos administrativos</h3></div><span className="count-badge">{activeReceivableEvents.length}</span></div>
-              {!activeReceivableEvents.length && <p className="section-description">Todavía no hay seguimientos guardados desde Cuentas por cobrar.</p>}
+              <div className="section-title-row"><div><span className="section-kicker"><WalletCards size={14} /> Cobranzas</span><h3>Seguimientos administrativos</h3></div><span className="count-badge">{activeReceivableEvents.length}</span></div>
+              {!activeReceivableEvents.length && <p className="section-description">Todavía no hay seguimientos guardados desde Cobranzas.</p>}
               <div className="panel-operation-list receivable-events">{activeReceivableEvents.map((event) => <article key={event.id}><span>{receivableEventLabels[event.eventType]}</span><div><strong>{event.comment || receivableEventLabels[event.eventType]}</strong><small>{longDate(event.createdAt)} · {event.actor}</small></div></article>)}</div>
             </section>
             <section className="panel-section first">

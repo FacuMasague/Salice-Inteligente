@@ -192,7 +192,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     return { ...current, [key]: value };
   });
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Mars" detail="Reconstruyendo el calendario comercial y los movimientos desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Mars" detail="Reconstruyendo el calendario comercial y los movimientos…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte Mars" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando períodos Mars" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -216,7 +216,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
       dataTour="mars-overview"
       kicker={<><PawPrint size={14} /> Reporte Mars</>}
       title={<>Pet Nutrition · {report.filters.year} {report.filters.period}</>}
-      description="Períodos comerciales Mars de cuatro semanas, calculados directamente sobre facturas y notas de crédito de GESI."
+      description="Períodos comerciales Mars de cuatro semanas, calculados sobre facturas y notas de crédito."
       introExtra={<div className="mars-mode-tabs" role="group" aria-label="Unidad de clientes"><button type="button" className={filters.clientMode === 'branch' ? 'active' : ''} aria-pressed={filters.clientMode === 'branch'} onClick={() => update('clientMode', 'branch')}><Store size={14} /> Por sucursal</button><button type="button" className={filters.clientMode === 'account' ? 'active' : ''} aria-pressed={filters.clientMode === 'account'} onClick={() => update('clientMode', 'account')}><Building2 size={14} /> Por cuenta</button></div>}
       primary={<><SingleSelectFilter label="Año Mars" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Período Mars" value={filters.period} options={(meta.periods[filters.year] ?? []).map((period) => period.label)} onChange={(value) => update('period', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /></>}
       advanced={<>{filterKeys.filter((key) => key !== 'branch').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}

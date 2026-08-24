@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  Database,
   MapPin,
   Search,
   Target,
@@ -233,7 +234,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
         </section>
 
         <section className="data-card seller-locality-card">
-          <div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Distribución observada</span><h2>Localidades informadas</h2><p>Localidad del maestro GESI; no equivale a territorio ni propone reasignaciones.</p></div><span className="count-badge">{selected.localities.length}</span></div>
+          <div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Distribución observada</span><h2>Localidades informadas</h2><p>Es la localidad registrada del cliente; no equivale a territorio ni propone reasignaciones.</p></div><span className="count-badge">{selected.localities.length}</span></div>
           <div className="seller-locality-table">
             <div className="seller-locality-head"><span>Localidad y señales</span><span>Clientes</span><span>Facturación / kilos · 90d</span></div>
             {selected.localities.map((row) => <article key={row.name}>
@@ -244,6 +245,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
           </div>
         </section>
       </div>
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de Vendedores</summary><div><strong>Alcance de la cartera</strong><span>Las ventas, kilos, cobranza y oportunidades se calculan con los clientes visibles y el mismo corte del programa. Riesgo, oportunidad y prioridad son señales diferentes; la prioridad sólo ordena la revisión.</span></div></details>
     </div>
   </div>;
 }

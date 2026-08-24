@@ -111,7 +111,7 @@ export function ProductDemandAnalysis({ products, onOpenProduct, onOpenBrand, on
 
   return <div className="product-demand-workspace">
     <header className="data-card demand-hero">
-      <div><span className="section-kicker"><Activity size={15} /> Historia comercial GESI</span><h2>Demanda y rotación</h2><p>Ventanas móviles equivalentes, compradores y estabilidad calculados con reglas visibles. No se usan pronósticos de IA.</p></div>
+      <div><span className="section-kicker"><Activity size={15} /> Historia comercial</span><h2>Demanda y rotación</h2><p>Ventanas móviles equivalentes, compradores y estabilidad calculados con reglas visibles. No se usan pronósticos de IA.</p></div>
       <div className="demand-window-switch" aria-label="Ventana de análisis">{([30, 90, 180] as DemandWindowDays[]).map((days) => <button key={days} className={windowDays === days ? 'active' : ''} onClick={() => setWindowDays(days)}>{days} días</button>)}</div>
     </header>
 

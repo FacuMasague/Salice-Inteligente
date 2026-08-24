@@ -41,7 +41,7 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
     <button className="invoice-drawer-backdrop" aria-label="Cerrar comprobante" onClick={onClose} />
     <aside className="invoice-detail-drawer" aria-label="Detalle completo del comprobante">
       <header className="invoice-detail-header">
-        <div><span className="section-kicker"><ReceiptText size={14} /> Comprobante GESI</span><h2>{detail?.number || 'Cargando comprobante…'}</h2>{detail && <p>{detail.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} · corte {compactDate(detail.sourceMaxDate)}</p>}</div>
+        <div><span className="section-kicker"><ReceiptText size={14} /> Comprobante</span><h2>{detail?.number || 'Cargando comprobante…'}</h2>{detail && <p>{detail.kind === 'credit_note' ? 'Nota de crédito' : 'Factura'} · información al {compactDate(detail.sourceMaxDate)}</p>}</div>
         <button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={18} /></button>
       </header>
 
@@ -70,7 +70,7 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
         {deliveryInvoice && <section className={`invoice-logistics-card ${deliveryInvoice.assignmentStatus}`}>
           <div className="invoice-logistics-icon"><Truck size={20} /></div>
           <div>
-            <span>Estado en fojas GESI</span>
+            <span>Estado en fojas</span>
             <strong>{deliveryAssignmentText(deliveryInvoice.assignmentStatus, deliveryInvoice.sheet?.id)}</strong>
             <small>Envío sugerido {compactDate(deliveryInvoice.suggestedDeliveryAt)} · no confirma expedición ni entrega.</small>
           </div>
@@ -81,7 +81,7 @@ export function InvoiceDetailDrawer({ invoiceId, logistics, onClose, onOpenClien
 
         <section className="invoice-line-section">
           <div className="section-title-row"><div><span className="section-kicker"><Package size={14} /> Renglones</span><h3>Detalle de productos</h3></div><span className="count-badge">{number(detail.lineItems.length)}</span></div>
-          {!detail.detailAvailable && <div className="invoice-coverage-warning"><AlertTriangle size={17} /><span>GESI no entregó el detalle de esta factura. Se muestran todos los datos de encabezado y saldo que sí están disponibles, sin completar información artificialmente.</span></div>}
+          {!detail.detailAvailable && <div className="invoice-coverage-warning"><AlertTriangle size={17} /><span>El detalle de productos de esta factura no está disponible. Se muestran el encabezado y el saldo existentes, sin completar información artificialmente.</span></div>}
           {!!detail.lineItems.length && <div className="invoice-line-table"><header><span>Producto</span><span>Unidades</span><span>Kilos</span><span>Venta neta</span></header>{detail.lineItems.map((item, index) => <article key={`${item.productId}-${index}`}><div><strong>{item.product}</strong><small>{item.productId} · {item.brand} · {item.category}</small></div><span>{number(item.units)}</span><span>{number(item.kilos, 3)}</span><strong>{money(item.netAmount)}</strong></article>)}</div>}
         </section>
       </div>}

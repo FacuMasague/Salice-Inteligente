@@ -174,7 +174,7 @@ export function SalesExplorerView({ clients, navigationRequest, onOpenClient, on
 
   return <div className={`page-view admin-sales-page ${loading ? 'is-loading' : ''}`}>
     <section className="data-card admin-filter-card" data-tour="sales-explorer-overview">
-      <div className="data-card-header"><div><span className="section-kicker"><Search size={14} /> Exploración administrativa</span><h2>De la venta al comprobante</h2><p>Todos los indicadores y desgloses usan el mismo universo comercial y los mismos filtros.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
+      <div className="data-card-header"><div><span className="section-kicker"><Search size={14} /> Exploración administrativa</span><h2>De la venta al comprobante</h2><p>Todos los indicadores y desgloses usan el mismo alcance comercial y los mismos filtros.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
       <MobileFilterSheet
         title="Filtrar el explorador de ventas"
         description="Definí el período y las dimensiones comerciales antes de recorrer clientes, productos y comprobantes."

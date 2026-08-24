@@ -106,7 +106,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
 
   const advancedFilterCount = useMemo(() => (['brand', 'subcategory', 'branch'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof BairesFilters, value: string) => setFilters((current) => { if (key === 'year' && meta) { const available = meta.monthsByYear[value] ?? []; return { ...current, year: value, month: available.includes(current.month) ? current.month : available.at(-1) ?? current.month }; } return { ...current, [key]: value }; });
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Baires" detail="Reconstruyendo volumen, clientes y comparaciones desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Baires" detail="Reconstruyendo volumen, clientes y comparaciones…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte Baires" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando Reporte Baires" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -128,7 +128,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
       dataTour="baires-overview"
       kicker={<><PackageOpen size={14} /> Reporte Baires</>}
       title={<>Baires · {monthLabel(report.selectedMonth, true)}</>}
-      description="Volumen y cobertura de Baires SPT y Baires Masivo calculados directamente desde GESI."
+      description="Volumen y cobertura de Baires SPT y Baires Masivo calculados sobre los movimientos disponibles."
       primary={<><SingleSelectFilter label="Año" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Mes" value={filters.month} options={(meta.monthsByYear[filters.year] ?? []).map((month) => ({ value: month, label: monthName(month) }))} onChange={(value) => update('month', value)} /><SelectFilter label={FILTER_LABELS.segment} value={filters.segment} options={meta.options.segment} onChange={(value) => update('segment', value)} /></>}
       advanced={<><SelectFilter label={FILTER_LABELS.brand} value={filters.brand} options={meta.options.brand} onChange={(value) => update('brand', value)} /><SelectFilter label={FILTER_LABELS.subcategory} value={filters.subcategory} options={meta.options.subcategory} onChange={(value) => update('subcategory', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /><button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}
       activeFilterCount={advancedFilterCount}

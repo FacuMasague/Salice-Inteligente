@@ -173,7 +173,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
   const advancedFilterCount = Number(Boolean(filters.brand)) + Number(Boolean(filters.productGroup));
   const update = (key: keyof CommercialSalesFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Ventas · Comercial" detail="Leyendo los movimientos capturados desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Ventas · Comercial" detail="Leyendo los movimientos disponibles…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir el reporte comercial" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando indicadores comerciales" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -221,7 +221,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
       dataTour="commercial-sales-overview"
       kicker={<><BarChart3 size={14} /> Reporte Ventas - Comercial</>}
       title={<>Venta neta · {periodTitle}</>}
-      description={`${report.periodMode === 'year' ? `Vista anual del ${dateLabel(report.periodStart)} al ${dateLabel(report.periodEnd)}` : 'Vista mensual'} calculada sobre facturas y notas de crédito de GESI.`}
+      description={`${report.periodMode === 'year' ? `Vista anual del ${dateLabel(report.periodStart)} al ${dateLabel(report.periodEnd)}` : 'Vista mensual'} calculada sobre facturas y notas de crédito.`}
       introExtra={<div className="business-report-mode-tabs" role="group" aria-label="Frecuencia del reporte"><button type="button" className={filters.periodMode === 'month' ? 'active' : ''} aria-pressed={filters.periodMode === 'month'} onClick={() => update('periodMode', 'month')}>Mensual</button><button type="button" className={filters.periodMode === 'year' ? 'active' : ''} aria-pressed={filters.periodMode === 'year'} onClick={() => update('periodMode', 'year')}>Anual</button></div>}
       primary={<><SingleSelectFilter label={filters.periodMode === 'year' ? 'Año' : 'Mes'} value={filters.periodMode === 'year' ? filters.year : filters.month} options={filters.periodMode === 'year' ? meta.years : meta.months.map((month) => ({ value: month, label: monthLabel(month, true) }))} onChange={(value) => update(filters.periodMode === 'year' ? 'year' : 'month', value)} /><SelectFilter label={FILTER_LABELS.seller} value={filters.seller} options={meta.options.seller} onChange={(value) => update('seller', value)} /><SelectFilter label={FILTER_LABELS.category} value={filters.category} options={meta.options.category} onChange={(value) => update('category', value)} /></>}
       advanced={<><SelectFilter label={FILTER_LABELS.brand} value={filters.brand} options={meta.options.brand} onChange={(value) => update('brand', value)} /><SelectFilter label={FILTER_LABELS.productGroup} value={filters.productGroup} options={meta.options.productGroup} onChange={(value) => update('productGroup', value)} /><button className="button secondary" disabled={!activeFilterCount} onClick={resetFilters}><X size={14} /> Restablecer</button></>}
@@ -252,7 +252,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
 
     <div className="commercial-main-kpis">
       <article><span className="commercial-kpi-icon green"><CircleDollarSign size={21} /></span><div><small>Facturación / kilos</small><strong>{money(report.current.netAmount, true)}</strong><em>{kilos(report.current.kilos)} kg · {dateLabel(report.periodStart)}–{dateLabel(report.periodEnd)}</em></div></article>
-      <article><span className="commercial-kpi-icon blue"><BarChart3 size={21} /></span><div><small>{comparisonTitle}</small><strong>{report.comparisonAvailable ? money(report.comparison.netAmount, true) : 'Sin cobertura'}</strong><em>{report.comparisonAvailable ? `${kilos(report.comparison.kilos)} kg · ${dateLabel(report.comparisonStart)}–${dateLabel(report.comparisonEnd)}` : `GESI comienza en ${meta.coverageFrom}`}</em></div></article>
+      <article><span className="commercial-kpi-icon blue"><BarChart3 size={21} /></span><div><small>{comparisonTitle}</small><strong>{report.comparisonAvailable ? money(report.comparison.netAmount, true) : 'Sin cobertura'}</strong><em>{report.comparisonAvailable ? `${kilos(report.comparison.kilos)} kg · ${dateLabel(report.comparisonStart)}–${dateLabel(report.comparisonEnd)}` : `La información disponible comienza en ${meta.coverageFrom}`}</em></div></article>
       <article className={!hasComparison ? '' : positive ? 'positive' : 'negative'}><span className={`commercial-kpi-icon ${!hasComparison ? 'blue' : positive ? 'green' : 'red'}`}>{!hasComparison ? <BarChart3 size={21} /> : positive ? <TrendingUp size={21} /> : <TrendingDown size={21} />}</span><div><small>{differenceTitle}</small><strong>{hasComparison ? `${report.difference >= 0 ? '+' : ''}${money(report.difference, true)}` : 'Sin base'}</strong><em>{hasComparison ? percent(report.variation, true) : 'Período anterior fuera de cobertura'}</em></div></article>
     </div>
 

@@ -142,7 +142,7 @@ function ReceivableDrawer({ row, detail, responsibles, onClose, onSaved, onOpenC
         <label className="full-field"><span>Comentario del seguimiento</span><textarea value={comment} maxLength={2000} placeholder="Qué se habló, qué falta o por qué cambia el estado…" onChange={(event) => setComment(event.target.value)} /></label>
         {error && <small className="form-error">{error}</small>}
         <button className="button primary" disabled={saving} onClick={save}><Save size={15} /> {saving ? 'Guardando…' : 'Guardar seguimiento'}</button>
-        <p className="workflow-note">Los importes y saldos siguen viniendo de GESI. Los cambios internos se registran con fecha y responsable.</p>
+        <p className="workflow-note">Los importes y saldos no se modifican desde esta pantalla. Cada seguimiento se registra con fecha y responsable.</p>
       </section>
 
       <section className="receivable-documents">
@@ -178,7 +178,7 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
     const controller = new AbortController();
     setLoading(true); setError('');
     fetch(`/api/admin/receivables?${new URLSearchParams(asRecord(filters))}`, { signal: controller.signal }).then((response) => {
-      if (!response.ok) throw new Error('No se pudo abrir el tablero de cuentas por cobrar.');
+      if (!response.ok) throw new Error('No se pudo abrir el seguimiento de cobranzas.');
       return response.json();
     }).then((value: ReceivableDashboardPayload) => { setPayload(value); setLoading(false); }).catch((cause: Error) => {
       if (cause.name !== 'AbortError') { setError(cause.message); setLoading(false); }
@@ -205,8 +205,8 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
   const applySaved = (savedFilters: Record<string, string>) => setFilters((current) => ({ ...current, ...savedFilters }));
   const today = argentinaToday();
 
-  if (error && !payload) return <div className="page-view"><section className="data-card report-error"><AlertTriangle size={22} /><div><h2>Cuentas por cobrar no disponible</h2><p>{error}</p></div></section></div>;
-  if (!payload) return <div className="page-view"><section className="data-card report-loading"><span /><h2>Consolidando la cartera…</h2><p>Uniendo saldos GESI con el seguimiento administrativo local.</p></section></div>;
+  if (error && !payload) return <div className="page-view"><section className="data-card report-error"><AlertTriangle size={22} /><div><h2>Seguimiento de cobranzas no disponible</h2><p>{error}</p></div></section></div>;
+  if (!payload) return <div className="page-view"><section className="data-card report-loading"><span /><h2>Consolidando la cartera…</h2><p>Uniendo saldos pendientes con el seguimiento administrativo.</p></section></div>;
 
   const activeStatuses = decodeMultiFilter(filters.internalStatus);
   const toggleStatus = (status: ReceivableCaseStatus) => changeFilter('internalStatus', activeStatuses.length === 1 && activeStatuses[0] === status ? '' : encodeMultiFilter([status]));
@@ -214,10 +214,10 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
 
   return <div className={`page-view receivables-page ${loading ? 'is-loading' : ''}`} data-tour="receivables-overview">
     <section className="data-card admin-filter-card">
-      <div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Centro administrativo</span><h2>Cartera abierta y trabajo pendiente</h2><p>La deuda proviene de GESI; responsables, promesas y seguimientos son información humana separada.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
+      <div className="data-card-header"><div><span className="section-kicker"><WalletCards size={14} /> Centro administrativo</span><h2>Cartera abierta y trabajo pendiente</h2><p>La deuda y el seguimiento se muestran juntos, pero se conservan como información separada.</p></div><div className="admin-export-actions"><a className="button ghost compact" href={exportUrl('csv')}><Download size={14} /> CSV</a><a className="button ghost compact" href={exportUrl('xlsx')}><FileSpreadsheet size={14} /> Excel</a></div></div>
       <div className="receivable-filter-grid"><label className="admin-search-field"><Search size={15} /><input value={filters.query} placeholder="Cliente, vendedor o comentario" onChange={(event) => changeFilter('query', event.target.value)} /></label></div>
       <MobileFilterSheet
-        title="Filtrar cuentas por cobrar"
+        title="Filtrar seguimientos"
         description="Acotá la bandeja por vendedor, saldo y estado de seguimiento. La búsqueda principal queda siempre visible."
         activeCount={activeFilterCount}
       >
@@ -234,7 +234,7 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
     </div>
 
     <section className="data-card receivable-table-card">
-      <div className="data-card-header"><div><span className="section-kicker"><MessageSquareText size={14} /> Bandeja de trabajo</span><h2>Cuentas por cobrar</h2><p>En móvil, el encabezado abre el cliente y el cuerpo de la ficha permite editar el seguimiento.</p></div><span className="count-badge">{number(payload.rows.length)} cuentas</span></div>
+      <div className="data-card-header"><div><span className="section-kicker"><MessageSquareText size={14} /> Bandeja de trabajo</span><h2>Seguimiento de cobranzas</h2><p>En móvil, el encabezado abre el cliente y el cuerpo de la ficha permite editar el seguimiento.</p></div><span className="count-badge">{number(payload.rows.length)} cuentas</span></div>
       <div className="admin-table receivables">
         <header><SortButton label="Cliente" direction={direction('name')} onClick={() => setSort((state) => cycleSort(state, 'name'))} /><SortButton label="Vendedor" direction={direction('seller')} onClick={() => setSort((state) => cycleSort(state, 'seller'))} /><SortButton label="Responsable / estado" direction={direction('responsible')} onClick={() => setSort((state) => cycleSort(state, 'responsible'))} /><SortButton label="Pendiente" direction={direction('pendingBalance')} onClick={() => setSort((state) => cycleSort(state, 'pendingBalance'))} /><SortButton label="Vencido" direction={direction('overdueBalance')} onClick={() => setSort((state) => cycleSort(state, 'overdueBalance'))} /><SortButton label="Antigüedad" direction={direction('oldestOverdueDays')} onClick={() => setSort((state) => cycleSort(state, 'oldestOverdueDays'))} /><SortButton label="Próximo seguimiento" direction={direction('nextFollowUpAt')} onClick={() => setSort((state) => cycleSort(state, 'nextFollowUpAt'))} /><span>Modificar</span></header>
         {sorted.map((row) => <article key={row.clientId} className={row.workflow.nextFollowUpAt && row.workflow.nextFollowUpAt <= today && row.workflow.status !== 'resolved' ? 'follow-up-due' : ''}>
@@ -250,7 +250,7 @@ export function ReceivablesView({ dataClients, navigationRequest, onOpenClient, 
         </article>)}
       </div>
     </section>
-    <section className="general-source-note"><ShieldCheck size={18} /><div><strong>Separación de responsabilidades</strong><span>Los importes y vencimientos corresponden a los datos del {payload.sourceMaxDate}. El seguimiento interno se conserva entre actualizaciones.</span><small>“Cerrado internamente” no cancela ni modifica una deuda; sólo cierra el seguimiento dentro del programa.</small></div></section>
+    <details className="business-report-source-note"><summary><ShieldCheck size={15} /> Información técnica de Seguimiento</summary><div><strong>Separación de responsabilidades</strong><span>Los importes y vencimientos corresponden a los datos del {payload.sourceMaxDate}. El seguimiento interno se conserva entre actualizaciones.</span><small>“Cerrado internamente” no cancela ni modifica una deuda; sólo cierra el seguimiento dentro del programa.</small></div></details>
     <AnimatedLayer open={Boolean(selected)} className="admin-drawer-layer">
       {selected && <ReceivableDrawer key={selected.clientId} row={selected} detail={detail} responsibles={payload.options.responsibles} onClose={() => { setSelected(null); setDetail(null); }} onSaved={saved} onOpenClient={() => { const clientId = selected.clientId; setSelected(null); setDetail(null); openProfile(clientId); }} onOpenInvoice={onOpenInvoice} />}
     </AnimatedLayer>

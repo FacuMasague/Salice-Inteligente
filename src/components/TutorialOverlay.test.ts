@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TUTORIALS } from './TutorialOverlay';
+import { GUIDED_EXPERIENCES, TASK_JOURNEYS, TUTORIALS } from './TutorialOverlay';
 
 describe('tutoriales interactivos v1.2.1', () => {
   it('ofrece recorridos extensos e independientes para las tres áreas', () => {
@@ -17,6 +17,20 @@ describe('tutoriales interactivos v1.2.1', () => {
         expect(step.details.every((detail) => detail.length > 60)).toBe(true);
         expect(step.tip.length).toBeGreaterThan(45);
       }
+    }
+  });
+
+  it('conserva los tutoriales generales y agrega recorridos prácticos independientes', () => {
+    expect(Object.keys(TASK_JOURNEYS)).toEqual([
+      'review-client',
+      'manage-collection',
+      'find-document',
+      'review-month',
+    ]);
+    expect(Object.keys(GUIDED_EXPERIENCES)).toHaveLength(7);
+    for (const journey of Object.values(TASK_JOURNEYS)) {
+      expect(journey.steps.length).toBeGreaterThanOrEqual(2);
+      expect(journey.steps.every((step) => step.target.length > 0 && step.view.length > 0)).toBe(true);
     }
   });
 });
