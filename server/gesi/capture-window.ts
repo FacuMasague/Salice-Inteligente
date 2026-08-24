@@ -5,6 +5,8 @@ interface SptFetchWindowOptions {
   bootstrapHistoryFrom?: string;
 }
 
+export const DEFAULT_SPT_BOOTSTRAP_HISTORY_FROM = '2025-01-01';
+
 export function resolveSptFetchFrom({
   hasExistingCapture,
   historyFrom,
@@ -14,6 +16,6 @@ export function resolveSptFetchFrom({
   const explicit = explicitHistoryFrom?.trim();
   if (explicit) return explicit;
   const bootstrap = bootstrapHistoryFrom?.trim();
-  if (!hasExistingCapture && bootstrap) return bootstrap;
+  if (!hasExistingCapture) return bootstrap || DEFAULT_SPT_BOOTSTRAP_HISTORY_FROM;
   return historyFrom;
 }

@@ -12,6 +12,13 @@ describe('resolveSptFetchFrom', () => {
     })).toBe('2025-01-01');
   });
 
+  it('protege una instalación local nueva aunque falte la variable de bootstrap', () => {
+    expect(resolveSptFetchFrom({
+      hasExistingCapture: false,
+      historyFrom,
+    })).toBe('2025-01-01');
+  });
+
   it('usa la ventana móvil cuando ya existe una captura persistida', () => {
     expect(resolveSptFetchFrom({
       hasExistingCapture: true,

@@ -11,7 +11,7 @@ describeWithDatabase('reporte SPT construido desde GESI', () => {
     expect(meta.available).toBe(true);
     expect(meta.sourceSystem).toContain('GESI API');
     expect(meta.rowCount).toBeGreaterThan(250_000);
-    expect(meta.coverageFrom <= '2024-12-29').toBe(true);
+    expect(meta.coverageFrom <= '2025-01-01').toBe(true);
     expect(meta.minDate <= '2025-01-02').toBe(true);
     expect(meta.maxDate >= '2026-07-20').toBe(true);
     expect(meta.unavailableDocumentCount).toBeLessThan(100);

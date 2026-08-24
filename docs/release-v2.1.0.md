@@ -90,6 +90,13 @@ Los recorridos navegan por las pantallas necesarias y no modifican datos.
 - Continúa una sola instancia en Render con disco persistente y programador interno.
 - No se modifica el flujo atómico de actualización de datos.
 
+## Corrección del primer refresco local
+
+- Una carpeta de datos nueva inicia el histórico comercial SPT el 1 de enero de 2025 aunque la variable local de bootstrap todavía no esté declarada.
+- La configuración explícita conserva prioridad y producción mantiene el mismo valor definido en Render.
+- Esto evita que una primera captura limitada al último año llegue inevitablemente a `sales-audit` sin los primeros meses de 2025.
+- El control continúa bloqueando cualquier candidato incompleto; no se relajó ninguna auditoría.
+
 ## Publicación
 
 Esta rama no realiza merge, push ni despliegue por sí sola. Antes de publicar corresponde verificar estado de Git, sincronización con `main`, pruebas, build, `git diff --check` y ausencia de una actualización de datos en curso.
