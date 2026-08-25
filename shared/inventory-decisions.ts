@@ -1,4 +1,5 @@
 import type { Product } from './models';
+import { productAvailableStock } from './product-stock.js';
 
 export type InventoryDecisionStatus =
   | 'out_of_assortment'
@@ -80,12 +81,12 @@ export const INVENTORY_DECISION_POLICY: InventoryDecisionPolicy = {
 };
 
 export const INVENTORY_DECISION_LABELS: Record<InventoryDecisionStatus, string> = {
-  no_stock_with_demand: 'Sin stock con demanda reciente',
+  no_stock_with_demand: 'Sin disponibilidad con demanda reciente',
   critical_coverage: 'Cobertura crítica',
   low_coverage: 'Cobertura baja',
   adequate_coverage: 'Cobertura adecuada',
   high_coverage: 'Cobertura alta',
-  stock_without_movement: 'Stock sin movimiento',
+  stock_without_movement: 'Disponible sin movimiento',
   new_or_insufficient_history: 'Producto nuevo o sin historia suficiente',
   insufficient_data: 'Sin datos suficientes',
   out_of_assortment: 'Fuera de surtido o inactivo',
@@ -206,11 +207,11 @@ export function compareInventoryDecisionPriority(left: {
     if (coverageDifference) return coverageDifference;
   }
   if (status === 'stock_without_movement' || status === 'new_or_insufficient_history') {
-    const stockDifference = right.product.stock - left.product.stock;
+    const stockDifference = productAvailableStock(right.product) - productAvailableStock(left.product);
     if (stockDifference) return stockDifference;
   }
   return right.product.units90d - left.product.units90d
-    || right.product.stock - left.product.stock
+    || productAvailableStock(right.product) - productAvailableStock(left.product)
     || left.product.name.localeCompare(right.product.name, 'es');
 }
 
@@ -223,6 +224,7 @@ export function classifyInventoryProduct(
   review?: InventoryAlertReview | null,
   policy = INVENTORY_DECISION_POLICY,
 ): InventoryDecision {
+  const availableStock = productAvailableStock(product);
   const { thresholds, source } = resolveInventoryThresholds(product.family, policy);
   const result = (status: InventoryDecisionStatus, explanation: string): InventoryDecision => ({
     status,
@@ -244,16 +246,16 @@ export function classifyInventoryProduct(
     return result('insufficient_data', reasons);
   }
   if (product.inventory.status === 'zero' && product.units90d > 0) {
-    return result('no_stock_with_demand', `El sistema comercial informa stock igual a cero y se observaron ${product.units90d.toLocaleString('es-AR')} unidades vendidas en los últimos ${thresholds.demandWindowDays} días.`);
+    return result('no_stock_with_demand', `La disponibilidad para nuevas ventas es cero y se observaron ${product.units90d.toLocaleString('es-AR')} unidades vendidas en los últimos ${thresholds.demandWindowDays} días.`);
   }
   if (product.inventory.status === 'positive' && product.units90d <= 0) {
     if (!product.lastSaleAt) {
-      return result('new_or_insufficient_history', `Hay ${product.stock.toLocaleString('es-AR')} unidades disponibles, pero no existe una venta positiva fechada en el historial. No se puede distinguir automáticamente un alta reciente de una falta de historia.`);
+      return result('new_or_insufficient_history', `Hay ${availableStock.toLocaleString('es-AR')} unidades disponibles, pero no existe una venta positiva fechada en el historial. No se puede distinguir automáticamente un alta reciente de una falta de historia.`);
     }
-    return result('stock_without_movement', `Hay ${product.stock.toLocaleString('es-AR')} unidades disponibles y no se observaron unidades vendidas en los últimos ${thresholds.demandWindowDays} días. La última venta visible es del ${product.lastSaleAt}.`);
+    return result('stock_without_movement', `Hay ${availableStock.toLocaleString('es-AR')} unidades disponibles y no se observaron unidades vendidas en los últimos ${thresholds.demandWindowDays} días. La última venta visible es del ${product.lastSaleAt}.`);
   }
   if (product.inventory.status === 'zero') {
-    return result('new_or_insufficient_history', `El stock informado es cero y no hay demanda en los últimos ${thresholds.demandWindowDays} días. Sin fecha de alta ni más historia no corresponde asumir quiebre ni discontinuación.`);
+    return result('new_or_insufficient_history', `La disponibilidad informada es cero y no hay demanda en los últimos ${thresholds.demandWindowDays} días. Sin fecha de alta ni más historia no corresponde asumir quiebre ni discontinuación.`);
   }
   const coverage = product.stockCoverageMonths;
   if (coverage == null) {

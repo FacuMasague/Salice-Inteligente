@@ -11,6 +11,8 @@ export interface GesiRawCapture {
     inventoryDuplicateRows?: number;
     inventoryInvalidRows?: number;
     inventoryScopeRepairedRows?: number;
+    inventoryCommittedRows?: number;
+    inventoryStockReconciliationWarnings?: number;
     historyFrom: string;
     salesHistoryFrom: string;
     sptFetchFrom: string;

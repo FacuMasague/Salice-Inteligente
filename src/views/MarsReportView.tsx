@@ -130,8 +130,17 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
 }
 
 function QuarterChart({ report }: { report: MarsReportPayload }) {
-  const max = Math.max(1, ...report.quarters.flatMap((row) => [row.kilos, row.previousYearKilos]));
-  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className="current" style={{ height: `${row.kilos / max * 100}%` }}><i>{kilos(row.kilos, true)}</i></span><span className="previous" style={{ height: `${row.previousYearKilos / max * 100}%` }}><i>{kilos(row.previousYearKilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{money(row.netAmount)} · {percent(variation(row.kilos, row.previousYearKilos), true)}</p></article>)}</div>;
+  const max = Math.max(1, ...report.quarters.flatMap((row) => [Math.abs(row.kilos), Math.abs(row.previousYearKilos ?? 0)]));
+  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.label || row.quarter}>
+    <div>
+      <span role="img" aria-label={`${row.label || row.quarter}, período: ${kilos(row.kilos)} kilos`} className={`current${row.isPartial ? ' partial' : ''}${row.kilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.kilos, true)}</i></span>
+      {row.previousYearKilos != null && <span role="img" aria-label={`${row.label || row.quarter}, mismo tramo de ${row.year - 1}: ${kilos(row.previousYearKilos)} kilos`} className={`previous${row.previousYearKilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.previousYearKilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.previousYearKilos, true)}</i></span>}
+    </div>
+    <h3>{row.label || row.quarter}</h3>
+    <small className="quarter-range">{row.start && row.end ? `${dateLabel(row.start)}–${dateLabel(row.end)}` : ''}{row.isPartial ? ' · tramo parcial' : ''}</small>
+    <p>{money(row.netAmount)} · {number(row.clients)} clientes</p>
+    <p className="quarter-comparison">{row.comparisonAvailable ? `${percent(row.variation, true)} vs mismo tramo ${row.year - 1}` : 'Sin cobertura interanual comparable'}</p>
+  </article>)}</div>;
 }
 
 function BrandTable({ rows, onOpenBrand }: { rows: MarsBrandRow[]; onOpenBrand: (brand: string) => void }) {
@@ -246,7 +255,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
 
     <section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance acumulado</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section>
 
-    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
+    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarters Mars</span><h2>13 períodos hasta {report.selected.label} {report.selected.year}</h2><p>Todos los quarters observables; los extremos parciales comparan exactamente el mismo tramo del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Período</span><span><i className="prior" />Mismo tramo año anterior</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
 
     <section className="data-card mars-brand-card"><div className="data-card-header"><div><span className="section-kicker"><PawPrint size={14} /> Marcas</span><h2>Mix del período seleccionado</h2><p>Comparación contra la misma cantidad de días del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 

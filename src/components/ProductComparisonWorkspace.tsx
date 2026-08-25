@@ -5,6 +5,7 @@ import {
 } from '../../shared/product-comparison';
 import { productPresentationLabel, summarizeProductForOffice } from '../../shared/product-insights';
 import { VECTOR_GROUPS, VECTOR_LABELS, type Product, type VectorKey } from '../../shared/models';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../../shared/product-stock';
 import { money, number, shortDate } from '../lib/format';
 
 interface ProductComparisonWorkspaceProps {
@@ -118,8 +119,9 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'inventory', title: 'Stock, rotación y cobertura', description: 'Stock y rotación están expresados en U1; la cobertura usa meses estimados.', rows: [
-        { id: 'stock', label: 'Stock disponible U1', values: selected.map((product) => value(`${number(product.stock)} ${product.unit.toLocaleLowerCase('es')}`, `${product.stock}|${product.unit}`, product.stock)), comparable: presentationComparable, note: presentationComparable ? 'Presentaciones equivalentes.' : 'No se marca ventaja: una U1 representa contenidos diferentes.' },
+      id: 'inventory', title: 'Stock, rotación y cobertura', description: 'La existencia física y la disponibilidad están expresadas en U1; la cobertura usa lo disponible para vender.', rows: [
+        { id: 'warehouse-stock', label: 'Existencia física U1', values: selected.map((product) => { if (!hasWarehousePhysicalStock(product)) return value('Sin dato físico', 'unavailable', null); const stock = productWarehouseStock(product); return value(`${number(stock)} ${product.unit.toLocaleLowerCase('es')}`, `${stock}|${product.unit}`, stock); }), comparable: presentationComparable && selected.every(hasWarehousePhysicalStock), note: selected.every(hasWarehousePhysicalStock) ? 'Cantidad registrada en el almacén antes de pedidos pendientes.' : 'Algún producto proviene de un paquete anterior que sólo conserva disponibilidad; no se presenta esa cifra como existencia física.' },
+        { id: 'stock', label: 'Disponible para vender U1', values: selected.map((product) => { const stock = productAvailableStock(product); return value(`${number(stock)} ${product.unit.toLocaleLowerCase('es')}`, `${stock}|${product.unit}`, stock); }), comparable: presentationComparable, note: presentationComparable ? 'Cantidad posterior a pedidos pendientes; se usa para cobertura y oportunidades.' : 'No se marca ventaja: una U1 representa contenidos diferentes.' },
         { id: 'rotation', label: 'Rotación mensual', values: selected.map((product) => value(`${number(product.monthlyUnits)} U1/mes`, String(product.monthlyUnits), product.monthlyUnits)), comparable: presentationComparable, advantage: 'max', note: presentationComparable ? 'U1 equivalentes.' : 'No se marca ventaja por presentación diferente.' },
         { id: 'units90', label: 'Unidades · 90 días', values: selected.map((product) => value(`${number(product.units90d)} U1`, String(product.units90d), product.units90d)), comparable: presentationComparable },
         { id: 'coverage', label: 'Cobertura estimada', values: selected.map((product) => value(product.stockCoverageMonths == null ? 'No calculable' : `${product.stockCoverageMonths.toLocaleString('es-AR')} meses`, raw(product.stockCoverageMonths), product.stockCoverageMonths)), comparable: coverageComparable, note: coverageComparable ? 'Todos poseen stock y rotación utilizables.' : 'No comparable: al menos un producto carece de rotación o señal de inventario suficiente.' },

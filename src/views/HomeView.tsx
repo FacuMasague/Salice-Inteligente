@@ -42,32 +42,33 @@ interface HomeAccessDefinition {
   title: string;
   description: string;
   icon: LucideIcon;
+  tone: 'green' | 'blue' | 'ochre' | 'red' | 'slate';
 }
 
 const accessDefinitions: Record<HomeNavigationView, HomeAccessDefinition> = {
-  agenda: { title: 'Bandeja comercial', description: 'Señales, oportunidades, compromisos y notas', icon: ClipboardCheck },
-  finance: { title: 'Cobranzas', description: 'Comprobantes, clientes y trabajo pendiente', icon: WalletCards },
-  receivables: { title: 'Cobranzas · Clientes', description: 'Responsables, promesas y próximos pasos', icon: Users },
-  clients: { title: 'Clientes', description: 'Cartera, compras, cuenta corriente y ubicación', icon: Users },
-  sellers: { title: 'Vendedores', description: 'Carteras, cobertura y desempeño comercial', icon: Users },
-  'sales-explorer': { title: 'Ventas', description: 'Del período al comprobante que explica el resultado', icon: ShoppingBasket },
-  products: { title: 'Productos', description: 'Catálogo, inventario, demanda y oportunidades', icon: Boxes },
-  brands: { title: 'Marcas', description: 'Participación, compra, stock y productos', icon: Store },
-  map: { title: 'Mapa operativo', description: 'Clientes y prioridades sobre el territorio', icon: MapIcon },
-  routes: { title: 'Rutas', description: 'Facturas, fojas y recorridos estimados', icon: Route },
-  'report-center': { title: 'Reportes', description: 'Resultados, comparaciones y reportes específicos', icon: LayoutDashboard },
-  reports: { title: 'Reporte General', description: 'Resultados, objetivos y estado comercial', icon: BarChart3 },
-  spt: { title: 'Volumen SPT', description: 'Kilos, evolución y comparaciones', icon: BarChart3 },
-  'commercial-sales': { title: 'Ventas y composición', description: 'Facturación y mezcla del negocio', icon: BarChart3 },
-  mars: { title: 'Mars', description: 'Desempeño comercial del proveedor', icon: BarChart3 },
-  nutripet: { title: 'NutriPet', description: 'Volumen, cobertura y evolución', icon: BarChart3 },
-  baires: { title: 'Baires', description: 'Volumen, clientes y composición', icon: BarChart3 },
-  'non-buyers': { title: 'Cuentas no compradoras', description: 'Cuentas y marcas para recuperar', icon: BarChart3 },
-  'pending-balances': { title: 'Saldos pendientes', description: 'Deuda abierta y presión sobre ventas', icon: BarChart3 },
-  help: { title: 'Ayuda', description: 'Tutoriales y recorridos guiados paso a paso', icon: HelpCircle },
-  settings: { title: 'Configuración', description: 'Preferencias y criterios de trabajo', icon: Settings2 },
-  users: { title: 'Usuarios', description: 'Solicitudes, roles y permisos de acceso', icon: ShieldCheck },
-  'user-activity': { title: 'Actividad de usuarios', description: 'Uso del programa y cambios registrados', icon: Activity },
+  agenda: { title: 'Bandeja comercial', description: 'Señales, oportunidades, compromisos y notas', icon: ClipboardCheck, tone: 'ochre' },
+  finance: { title: 'Cobranzas', description: 'Comprobantes, clientes y trabajo pendiente', icon: WalletCards, tone: 'blue' },
+  receivables: { title: 'Cobranzas · Clientes', description: 'Responsables, promesas y próximos pasos', icon: Users, tone: 'blue' },
+  clients: { title: 'Clientes', description: 'Cartera, compras, cuenta corriente y ubicación', icon: Users, tone: 'green' },
+  sellers: { title: 'Vendedores', description: 'Carteras, cobertura y desempeño comercial', icon: Users, tone: 'green' },
+  'sales-explorer': { title: 'Ventas', description: 'Del período al comprobante que explica el resultado', icon: ShoppingBasket, tone: 'ochre' },
+  products: { title: 'Productos', description: 'Catálogo, inventario, demanda y oportunidades', icon: Boxes, tone: 'blue' },
+  brands: { title: 'Marcas', description: 'Participación, compra, inventario y productos', icon: Store, tone: 'red' },
+  map: { title: 'Mapa operativo', description: 'Clientes y prioridades sobre el territorio', icon: MapIcon, tone: 'green' },
+  routes: { title: 'Rutas', description: 'Facturas, fojas y recorridos estimados', icon: Route, tone: 'blue' },
+  'report-center': { title: 'Reportes', description: 'Resultados, comparaciones y reportes específicos', icon: LayoutDashboard, tone: 'ochre' },
+  reports: { title: 'Reporte General', description: 'Resultados, objetivos y estado comercial', icon: BarChart3, tone: 'green' },
+  spt: { title: 'Volumen SPT', description: 'Kilos, evolución y comparaciones', icon: BarChart3, tone: 'ochre' },
+  'commercial-sales': { title: 'Ventas y composición', description: 'Facturación y mezcla del negocio', icon: BarChart3, tone: 'blue' },
+  mars: { title: 'Mars', description: 'Desempeño comercial del proveedor', icon: BarChart3, tone: 'red' },
+  nutripet: { title: 'NutriPet', description: 'Volumen, cobertura y evolución', icon: BarChart3, tone: 'green' },
+  baires: { title: 'Baires', description: 'Volumen, clientes y composición', icon: BarChart3, tone: 'blue' },
+  'non-buyers': { title: 'Cuentas no compradoras', description: 'Cuentas y marcas para recuperar', icon: BarChart3, tone: 'ochre' },
+  'pending-balances': { title: 'Saldos pendientes', description: 'Deuda abierta y presión sobre ventas', icon: BarChart3, tone: 'red' },
+  help: { title: 'Ayuda', description: 'Tutoriales y recorridos guiados paso a paso', icon: HelpCircle, tone: 'green' },
+  settings: { title: 'Configuración', description: 'Preferencias y criterios de trabajo', icon: Settings2, tone: 'slate' },
+  users: { title: 'Usuarios', description: 'Solicitudes, roles y permisos de acceso', icon: ShieldCheck, tone: 'blue' },
+  'user-activity': { title: 'Actividad de usuarios', description: 'Uso del programa y cambios registrados', icon: Activity, tone: 'slate' },
 };
 
 const accessGroups: Array<{ title: string; description: string; views: HomeNavigationView[] }> = [
@@ -78,13 +79,13 @@ const accessGroups: Array<{ title: string; description: string; views: HomeNavig
   { title: 'Sistema', description: 'Ayuda, preferencias y opciones según tu permiso.', views: ['help', 'settings', 'users', 'user-activity'] },
 ];
 
-function AccessButton({ view, onNavigate }: { view: HomeNavigationView; onNavigate: (view: HomeNavigationView) => void }) {
+function AccessButton({ view, onNavigate, directory = false }: { view: HomeNavigationView; onNavigate: (view: HomeNavigationView) => void; directory?: boolean }) {
   const definition = accessDefinitions[view];
   const Icon = definition.icon;
-  return <button type="button" className="home-access-card" onClick={() => onNavigate(view)}>
+  return <button type="button" className={`home-access-card ${definition.tone} ${directory ? 'directory' : 'compact'}`} onClick={() => onNavigate(view)}>
     <span className="home-access-icon"><Icon size={19} /></span>
-    <span><strong>{definition.title}</strong><small>{definition.description}</small></span>
-    <ArrowRight size={16} />
+    <span className="home-access-copy"><strong>{definition.title}</strong><small>{definition.description}</small></span>
+    {directory ? <span className="home-access-open">Abrir sección <ArrowRight size={15} /></span> : <ArrowRight size={16} />}
   </button>;
 }
 
@@ -148,7 +149,7 @@ export function HomeView({ data, notifications, availableViews, recentViews, onO
           if (!groupViews.length) return null;
           return <section key={group.title} className="home-access-group">
             <header><strong>{group.title}</strong><span>{group.description}</span></header>
-            <div>{groupViews.map((view) => <AccessButton key={view} view={view} onNavigate={onNavigate} />)}</div>
+            <div>{groupViews.map((view) => <AccessButton key={view} view={view} onNavigate={onNavigate} directory />)}</div>
           </section>;
         })}
       </div>

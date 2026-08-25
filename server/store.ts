@@ -10,6 +10,7 @@ import { isCommercialSellerIncluded } from '../shared/commercial-seller-scope.js
 import { applyReceivablesPolicyToClients } from '../shared/receivables-policy.js';
 import { applyCatalogPricePositioning, resolveProductContentKg } from '../shared/product-vectors.js';
 import { referenceUnitPricePerKg } from '../shared/product-prices.js';
+import { productAvailableStock } from '../shared/product-stock.js';
 
 const legacySnapshotPath = resolve(process.cwd(), 'data/snapshot.json');
 const backupDirectory = resolve(process.cwd(), 'data/backups');
@@ -98,6 +99,7 @@ export async function loadSnapshot(): Promise<DashboardData> {
     const totals = purchaseTotals.get(product.id);
     const units90d = totals?.units ?? 0;
     const monthlyUnits = units90d / 3;
+    const availableStock = productAvailableStock(product);
     return {
       ...product,
       contentKg,
@@ -107,8 +109,8 @@ export async function loadSnapshot(): Promise<DashboardData> {
       sales90d: Math.round((totals?.sales ?? 0) * 100) / 100,
       clients90d: totals?.clients.size ?? 0,
       lastSaleAt: totals?.lastSaleAt ?? '',
-      stockCoverageMonths: product.stock > 0 && monthlyUnits > 0
-        ? Math.round(product.stock / monthlyUnits * 10) / 10
+      stockCoverageMonths: availableStock > 0 && monthlyUnits > 0
+        ? Math.round(availableStock / monthlyUnits * 10) / 10
         : null,
       kilos90d: contentKg ? Math.round(units90d * contentKg * 100) / 100 : 0,
       kiloDataStatus: units90d <= 0 || contentKg ? 'estimated' as const : 'unavailable' as const,

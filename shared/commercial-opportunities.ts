@@ -2,6 +2,7 @@ import { classifyInventoryProduct } from './inventory-decisions.js';
 import type { Client, Product, ProductClientOpportunity, Recommendation, RecommendationConfidence, RecommendationKind, VectorKey } from './models.js';
 import { VECTOR_KEYS, vectorSimilarityV2 } from './product-vectors.js';
 import { compareProductPair } from './product-comparison.js';
+import { productAvailableStock } from './product-stock.js';
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -12,7 +13,7 @@ export function isCommercialOpportunityEligible(client: Client) {
 function availableForRecommendation(product: Product) {
   return product.masterStatus !== 'inactive'
     && product.commercialStatus !== 'not_commercializable'
-    && product.stock > 0
+    && productAvailableStock(product) > 0
     && product.inventory.status === 'positive'
     && product.inventory.quality !== 'insufficient';
 }

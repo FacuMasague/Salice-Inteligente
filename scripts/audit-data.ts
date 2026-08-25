@@ -30,6 +30,7 @@ for (const product of data.products) {
   check(values.length === vectorDimensions, `${product.id}: el vector no tiene ${vectorDimensions} dimensiones`);
   check(values.every((value) => value >= 0 && value <= 100), `${product.id}: vector fuera de 0–100`);
   check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0, `${product.id}: precio, stock o rotación inválidos`);
+  check((product.warehouseStock ?? product.stock) >= 0, `${product.id}: existencia física del almacén inválida`);
 }
 
 for (const client of data.clients) {

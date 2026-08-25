@@ -10,6 +10,7 @@ import { partitionClientActivities } from '../lib/commercial-activities';
 import { ActionDialog } from './ActionDialog';
 import { AiCommercialExplanationCard } from './AiInsights';
 import type { AiCommercialExplanation, AiStoredArtifact } from '../../shared/ai';
+import { productAvailableStock } from '../../shared/product-stock';
 
 const healthLabel = { healthy: 'Riesgo bajo', attention: 'Atención', critical: 'Riesgo alto' } as const;
 const invoiceLabel = { paid: 'Pagada', open: 'Abierta', due_soon: 'Por vencer', overdue: 'Vencida' } as const;
@@ -238,7 +239,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
                 <div><span className="section-kicker"><Sparkles size={14} /> Motor de oportunidades</span><h3>Qué ofrecer en la próxima visita</h3></div>
                 <span className="algorithm-pill">Algorítmico</span>
               </div>
-              <p className="section-description">Faltantes del mix reciente, adopción en clientes comparables, sustitutos ante quiebres y stock alto con afinidad. Sólo incluye productos compatibles y con stock positivo.</p>
+              <p className="section-description">Faltantes del mix reciente, adopción en clientes comparables, sustitutos ante quiebres y alta disponibilidad con afinidad. Sólo incluye productos compatibles y disponibles para vender.</p>
               <div className="recommendation-list">
                 {recommendationLoading && <p className="section-description">Calculando sugerencias para este cliente…</p>}
                 {recommendationError && <p className="form-error">{recommendationError}</p>}
@@ -249,7 +250,7 @@ export function ClientPanel({ client, products, logistics, onClose, onPlanRoute,
                       <button className="entity-link product-entity-link" onClick={() => onOpenProduct?.(recommendation.product)}>{recommendation.product.name}<ChevronRight size={12} /></button>
                       <span>{recommendation.reason}</span>
                       <span className="recommendation-affinity-copy">{recommendation.affinityExplanation}</span>
-                      <small>{recommendation.product.price > 0 ? money(recommendation.product.price) : 'Sin precio'} · Stock {recommendation.product.stock} · {onOpenBrand ? <button className="entity-link inline-entity" onClick={() => onOpenBrand(recommendation.product.brand)}>{recommendation.product.brand}</button> : recommendation.product.brand} · <span className={`confidence ${recommendation.confidence}`}>{recommendation.confidence === 'reliable' ? 'Confianza alta' : recommendation.confidence === 'exploratory' ? 'Confianza media' : 'Confianza limitada'}</span></small>
+                      <small>{recommendation.product.price > 0 ? money(recommendation.product.price) : 'Sin precio'} · Disponible {number(productAvailableStock(recommendation.product))} · {onOpenBrand ? <button className="entity-link inline-entity" onClick={() => onOpenBrand(recommendation.product.brand)}>{recommendation.product.brand}</button> : recommendation.product.brand} · <span className={`confidence ${recommendation.confidence}`}>{recommendation.confidence === 'reliable' ? 'Confianza alta' : recommendation.confidence === 'exploratory' ? 'Confianza media' : 'Confianza limitada'}</span></small>
                     </div>
                     <div className="score-ring" style={{ '--score': recommendation.score } as React.CSSProperties}>
                       <span>{recommendation.score}</span>

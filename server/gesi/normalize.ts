@@ -33,10 +33,20 @@ import {
 import type { GesiRawCapture, GesiRow } from './types.js';
 
 const number = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const nullableNumber = (value: unknown) => value != null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
 const text = (value: unknown, fallback = '') => value == null ? fallback : String(value).trim();
 const date = (value: unknown) => text(value).slice(0, 10);
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+const versionAtLeast = (value: string, minimum: string) => {
+  const left = value.split('.').map(Number);
+  const right = minimum.split('.').map(Number);
+  for (const index of [0, 1, 2]) {
+    if ((left[index] ?? 0) > (right[index] ?? 0)) return true;
+    if ((left[index] ?? 0) < (right[index] ?? 0)) return false;
+  }
+  return true;
+};
 
 const addDays = (value: string, days: number) => {
   const result = new Date(`${value}T12:00:00Z`);
@@ -320,7 +330,12 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
   );
   const catalogProductIDs = [...new Set([
     ...capture.products.filter((row) => text(row.estado) === 'A').map((row) => text(row.productoID)).filter(Boolean),
-    ...capture.stocks.filter((row) => number(row.unidad1Disponible) !== 0 || number(row.unidad2Disponible) !== 0).map((row) => text(row.productoID)).filter(Boolean),
+    ...capture.stocks.filter((row) => (
+      number(row.unidad1) !== 0
+      || number(row.unidad2) !== 0
+      || number(row.unidad1Disponible) !== 0
+      || number(row.unidad2Disponible) !== 0
+    )).map((row) => text(row.productoID)).filter(Boolean),
     ...soldProductIDs,
   ])].sort();
 
@@ -345,8 +360,12 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     const price = selectPrice(pricesByProduct.get(id) ?? []);
     const masterStatus = text(row.estado) === 'A' ? 'active' : text(row.estado) === 'I' ? 'inactive' : 'unknown';
     const inventory = calculateInventoryMetrics({
-      availableUnit1: stockRow ? number(stockRow.unidad1Disponible) : null,
-      availableUnit2: stockRow ? number(stockRow.unidad2Disponible) : null,
+      physicalUnit1: stockRow ? nullableNumber(stockRow.unidad1) : null,
+      physicalUnit2: stockRow ? nullableNumber(stockRow.unidad2) : null,
+      availableUnit1: stockRow ? nullableNumber(stockRow.unidad1Disponible) : null,
+      availableUnit2: stockRow ? nullableNumber(stockRow.unidad2Disponible) : null,
+      pendingUnit1: stockRow ? nullableNumber(stockRow.unidad1NPEPendientes) : null,
+      pendingUnit2: stockRow ? nullableNumber(stockRow.unidad2NPEPendientes) : null,
       units90d,
       masterStatus,
       price,
@@ -358,6 +377,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     const catalogParticipation = catalogParticipationReasons({
       masterStatus,
       soldRecently: soldProductIDs.has(id),
+      physicalUnit1: inventory.rawPhysicalUnit1,
+      physicalUnit2: inventory.rawPhysicalUnit2,
       availableUnit1: inventory.rawAvailableUnit1,
       availableUnit2: inventory.rawAvailableUnit2,
     });
@@ -400,7 +421,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       contentKg,
       referencePricePerKg: null,
       pricePosition: 'unknown',
-      stock: Math.round(inventory.operationalStock * 100) / 100,
+      stock: Math.round(inventory.availableStock * 100) / 100,
+      warehouseStock: Math.round(inventory.physicalStock * 100) / 100,
       units90d: Math.round(units90d * 100) / 100,
       kilos90d: contentKg ? Math.round(units90d * contentKg * 100) / 100 : 0,
       kiloDataStatus: units90d <= 0 || contentKg ? 'estimated' : 'unavailable',
@@ -414,12 +436,18 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
         companyId: capture.captureMeta.empresaID,
         branchId: capture.captureMeta.sucursalID,
         warehouseId: capture.captureMeta.almacenPrincipalID,
-        warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(stockRow?.almacen, `Depósito ${capture.captureMeta.almacenPrincipalID}`),
+        warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(stockRow?.almacen, `Almacén ${capture.captureMeta.almacenPrincipalID}`),
         completeZeroStockUniverse: capture.captureMeta.inventoryIncludesZeroStock === true,
+        rawPhysicalUnit1: inventory.rawPhysicalUnit1,
+        rawPhysicalUnit2: inventory.rawPhysicalUnit2,
+        rawPendingUnit1: inventory.rawPendingUnit1,
+        rawPendingUnit2: inventory.rawPendingUnit2,
         rawAvailableUnit1: inventory.rawAvailableUnit1,
         rawAvailableUnit2: inventory.rawAvailableUnit2,
         unit2: text(row.unidad2),
         unit2PerUnit1: number(row.unidad2XUnidad1) > 0 ? number(row.unidad2XUnidad1) : null,
+        physicalStatus: inventory.physicalStockStatus,
+        stockBasis: inventory.stockBasis,
         status: inventory.stockStatus,
         quality: inventory.quality,
         qualityReasons: inventory.qualityReasons,
@@ -729,7 +757,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     companyId: capture.captureMeta.empresaID,
     branchId: capture.captureMeta.sucursalID,
     warehouseId: capture.captureMeta.almacenPrincipalID,
-    warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(capture.stocks.find((row) => row.almacen)?.almacen, `Depósito ${capture.captureMeta.almacenPrincipalID}`),
+    warehouseLabel: capture.captureMeta.almacenPrincipal ?? text(capture.stocks.find((row) => row.almacen)?.almacen, `Almacén ${capture.captureMeta.almacenPrincipalID}`),
     capturedAt: capture.captureMeta.capturedAt,
     completeZeroStockUniverse: capture.captureMeta.inventoryIncludesZeroStock === true,
     masterRows: capture.products.length,
@@ -742,9 +770,17 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     uniqueStockProducts: uniqueStockProductIDs.size,
     duplicateStockRows: capture.captureMeta.inventoryDuplicateRows ?? capture.stocks.length - uniqueStockProductIDs.size,
     invalidStockRows: capture.captureMeta.inventoryInvalidRows ?? capture.stocks.filter((row) => !text(row.productoID)).length,
-    positiveStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) > 0).length,
-    zeroStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) === 0).length,
-    negativeStockProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) < 0).length,
+    positiveStockProducts: stockForMaster.filter((row) => number(row.unidad1) > 0).length,
+    zeroStockProducts: stockForMaster.filter((row) => number(row.unidad1) === 0).length,
+    negativeStockProducts: stockForMaster.filter((row) => number(row.unidad1) < 0).length,
+    positiveAvailableProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) > 0).length,
+    zeroAvailableProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) === 0).length,
+    negativeAvailableProducts: stockForMaster.filter((row) => number(row.unidad1Disponible) < 0).length,
+    committedStockProducts: stockForMaster.filter((row) => number(row.unidad1NPEPendientes) > 0 || number(row.unidad2NPEPendientes) > 0).length,
+    stockReconciliationWarnings: stockForMaster.filter((row) => (
+      Math.abs(number(row.unidad1) - number(row.unidad1Disponible) - number(row.unidad1NPEPendientes)) > .01
+      || Math.abs(number(row.unidad2) - number(row.unidad2Disponible) - number(row.unidad2NPEPendientes)) > .01
+    )).length,
     missingStockProducts: [...masterProductIDs].filter((id) => !uniqueStockProductIDs.has(id)).length,
     catalogProducts: products.length,
     commercializableProducts: products.filter((product) => product.commercialStatus === 'commercializable').length,
@@ -824,6 +860,7 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   const issues: string[] = [];
   const productIDs = new Set(data.products.map((product) => product.id));
   const snapshotDate = date(data.meta.generatedAt);
+  const requiresPhysicalInventory = versionAtLeast(data.meta.version, '2.1.2');
   const current90From = addDays(snapshotDate, -90);
   const check = (condition: boolean, message: string) => { if (!condition) issues.push(message); };
 
@@ -841,8 +878,11 @@ export function validateNormalizedSnapshot(data: DashboardData) {
   check(data.meta.coverage?.inactiveClients === data.clients.filter((client) => !client.active).length, 'La cobertura de clientes inactivos no coincide');
   check(data.meta.coverage?.catalogProducts === data.products.length, 'La cobertura de productos no coincide con el snapshot');
   check(data.meta.coverage?.inventory?.completeZeroStockUniverse === true, 'El snapshot no certifica la captura de existencias cero');
-  check(data.meta.coverage?.inventory?.companyId === 3 && data.meta.coverage.inventory.branchId === 3 && data.meta.coverage.inventory.warehouseId === 2, 'El contexto de inventario no corresponde a empresa 3 / sucursal 3 / depósito 2');
+  check(data.meta.coverage?.inventory?.companyId === 3 && data.meta.coverage.inventory.branchId === 3 && data.meta.coverage.inventory.warehouseId === 2, 'El contexto de inventario no corresponde a empresa 3 / sucursal 3 / almacén 2');
   check(data.meta.coverage?.inventory?.missingStockProducts === 0, 'Hay maestros sin fila de existencias en el universo completo');
+  if (requiresPhysicalInventory) {
+    check(data.meta.coverage?.inventory?.stockReconciliationWarnings === 0, 'La existencia física, los pedidos pendientes y la disponibilidad no reconcilian');
+  }
   check(data.meta.coverage?.portfolioConfirmedClients === data.clients.filter((client) => client.portfolioStatus === 'confirmed').length, 'La cobertura de cartera confirmada no coincide');
   check(data.meta.coverage?.activePortfolioReviewClients === data.clients.filter((client) => client.active && client.portfolioStatus === 'review').length, 'La cobertura de cartera activa a revisar no coincide');
   check(data.meta.coverage?.creditTermInvoices === data.clients.reduce((sum, client) => sum + client.creditTermSampleSize, 0), 'La cobertura de facturas con plazo observado no coincide');
@@ -881,8 +921,34 @@ export function validateNormalizedSnapshot(data: DashboardData) {
     check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0 && product.sales90d >= 0 && product.clients90d >= 0, `${product.id}: precio, stock o rotación inválidos`);
     check(product.catalogParticipation.length > 0, `${product.id}: producto sin motivo de participación en catálogo`);
     check(product.discontinuationStatus === 'not_reported', `${product.id}: discontinuación inventada fuera de GESI`);
-    check(product.inventory.companyId === 3 && product.inventory.branchId === 3 && product.inventory.warehouseId === 2, `${product.id}: contexto de existencias distinto de empresa 3 / sucursal 3 / depósito 2`);
+    check(product.inventory.companyId === 3 && product.inventory.branchId === 3 && product.inventory.warehouseId === 2, `${product.id}: contexto de existencias distinto de empresa 3 / sucursal 3 / almacén 2`);
     check(product.inventory.status !== 'negative' || product.stock === 0, `${product.id}: disponibilidad negativa usada como stock operativo`);
+    if (requiresPhysicalInventory) {
+      const rawPhysical = product.inventory.rawPhysicalUnit1;
+      const rawPhysicalUnit2 = product.inventory.rawPhysicalUnit2;
+      const rawAvailable = product.inventory.rawAvailableUnit1;
+      const rawAvailableUnit2 = product.inventory.rawAvailableUnit2;
+      const rawPending = product.inventory.rawPendingUnit1;
+      const rawPendingUnit2 = product.inventory.rawPendingUnit2;
+      const expectedPhysical = rawPhysical == null ? null : Math.round(Math.max(0, rawPhysical) * 100) / 100;
+      const expectedAvailable = rawAvailable == null ? null : Math.round(Math.max(0, rawAvailable) * 100) / 100;
+      const expectedPhysicalStatus = rawPhysical == null ? 'unavailable' : rawPhysical > 0 ? 'positive' : rawPhysical < 0 ? 'negative' : 'zero';
+      const expectedAvailableStatus = rawAvailable == null ? 'unavailable' : rawAvailable > 0 ? 'positive' : rawAvailable < 0 ? 'negative' : 'zero';
+      check(product.inventory.stockBasis === 'warehouse_physical', `${product.id}: el snapshot nuevo no identifica existencia física del almacén`);
+      check(rawPhysical != null && Number.isFinite(rawPhysical), `${product.id}: existencia física U1 ausente o inválida`);
+      check(rawPhysicalUnit2 != null && Number.isFinite(rawPhysicalUnit2), `${product.id}: existencia física U2 ausente o inválida`);
+      check(rawAvailable != null && Number.isFinite(rawAvailable), `${product.id}: disponibilidad U1 ausente o inválida`);
+      check(rawAvailableUnit2 != null && Number.isFinite(rawAvailableUnit2), `${product.id}: disponibilidad U2 ausente o inválida`);
+      check(rawPending != null && Number.isFinite(rawPending), `${product.id}: pedidos pendientes U1 ausentes o inválidos`);
+      check(rawPendingUnit2 != null && Number.isFinite(rawPendingUnit2), `${product.id}: pedidos pendientes U2 ausentes o inválidos`);
+      check(product.inventory.physicalStatus === expectedPhysicalStatus, `${product.id}: estado de existencia física incoherente`);
+      check(product.inventory.status === expectedAvailableStatus, `${product.id}: estado de disponibilidad incoherente`);
+      check(product.inventory.physicalStatus !== 'negative' || (product.warehouseStock ?? 0) === 0, `${product.id}: existencia física negativa usada como stock del almacén`);
+      check(product.warehouseStock === expectedPhysical, `${product.id}: existencia física normalizada distinta de la fuente`);
+      check(product.stock === expectedAvailable, `${product.id}: disponibilidad normalizada distinta de la fuente`);
+      check(rawPhysical == null || rawAvailable == null || rawPending == null || Math.abs(rawPhysical - rawAvailable - rawPending) <= .01, `${product.id}: existencia física, pedidos y disponibilidad U1 no reconcilian`);
+      check(rawPhysicalUnit2 == null || rawAvailableUnit2 == null || rawPendingUnit2 == null || Math.abs(rawPhysicalUnit2 - rawAvailableUnit2 - rawPendingUnit2) <= .01, `${product.id}: existencia física, pedidos y disponibilidad U2 no reconcilian`);
+    }
   }
 
   for (const client of data.clients) {

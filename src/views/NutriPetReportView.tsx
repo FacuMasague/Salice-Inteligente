@@ -33,6 +33,8 @@ const monthLabel = (value: string, long = false) => new Intl.DateTimeFormat('es-
   .format(new Date(`${value}-15T12:00:00Z`)).replaceAll('.', '');
 const monthName = (value: string) => new Intl.DateTimeFormat('es-AR', { month: 'long' })
   .format(new Date(`2026-${value}-15T12:00:00Z`)).replaceAll('.', '');
+const quarterDateLabel = (value: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short' })
+  .format(new Date(`${value}T12:00:00Z`)).replaceAll('.', '');
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return <MultiSelectFilter label={label} value={value} options={options} onChange={onChange} />;
@@ -141,8 +143,17 @@ function ClientChart({ rows }: { rows: NutriPetMonthlyPoint[] }) {
 }
 
 function QuarterChart({ report }: { report: NutriPetReportPayload }) {
-  const max = Math.max(1, ...report.quarters.map((row) => row.kilos));
-  return <div className="nutripet-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className={row.isPartial ? 'partial' : ''} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i>{kilos(row.kilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{money(row.netAmount)} · {number(row.clients)} clientes{row.isPartial ? ' · parcial' : ''}</p></article>)}</div>;
+  const max = Math.max(1, ...report.quarters.flatMap((row) => [Math.abs(row.kilos), Math.abs(row.previousYearKilos ?? 0)]));
+  return <div className="nutripet-quarter-grid">{report.quarters.map((row) => <article key={row.label || row.quarter}>
+    <div>
+      <span role="img" aria-label={`${row.label || row.quarter}, período: ${kilos(row.kilos)} kilos`} className={`current${row.isPartial ? ' partial' : ''}${row.kilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.kilos, true)}</i></span>
+      {row.previousYearKilos != null && <span role="img" aria-label={`${row.label || row.quarter}, mismo tramo de ${row.year - 1}: ${kilos(row.previousYearKilos)} kilos`} className={`previous${row.previousYearKilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.previousYearKilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.previousYearKilos, true)}</i></span>}
+    </div>
+    <h3>{row.label || row.quarter}</h3>
+    <small className="quarter-range">{row.start && row.end ? `${quarterDateLabel(row.start)}–${quarterDateLabel(row.end)}` : ''}{row.isPartial ? ' · tramo parcial' : ''}</small>
+    <p>{money(row.netAmount)} · {number(row.clients)} clientes</p>
+    <p className="quarter-comparison">{row.comparisonAvailable ? `${percent(row.variation, true)} vs mismo tramo ${row.year - 1}` : 'Sin cobertura interanual comparable'}</p>
+  </article>)}</div>;
 }
 
 function BrandTable({ rows, onOpenBrand }: { rows: NutriPetBrandRow[]; onOpenBrand: (brand: string) => void }) {
@@ -264,7 +275,7 @@ export function NutriPetReportView({ onOpenProduct, onOpenBrand }: { onOpenProdu
 
     <section className="data-card nutripet-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen y acumulado interanual</h2><p>Últimos 13 meses disponibles. Las barras muestran kilos y la línea el acumulado contra el año anterior.</p></div><div className="nutripet-legend"><span><i />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Mes parcial</span></div></div><EvolutionChart report={report} /></section>
 
-    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
+    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Últimos 13 meses por trimestre</h2><p>Incluye todos los trimestres observables y marca los tramos incompletos; la comparación usa el mismo tramo del año anterior.</p></div><div className="nutripet-legend"><span><i />Período</span><span><i className="prior" />Mismo tramo año anterior</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
 
     <section className="data-card nutripet-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBag size={14} /> Marcas</span><h2>Mix del mes seleccionado</h2><p>Volumen y comparación contra el mismo corte del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 

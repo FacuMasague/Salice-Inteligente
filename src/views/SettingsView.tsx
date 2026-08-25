@@ -75,6 +75,10 @@ export function SettingsView({ data, dataHealth, clientScope, onClientScopeChang
   useEffect(() => { fetch('/api/metrics/catalog').then((response) => response.json()).then(setCatalog).catch(() => setCatalog(null)); }, []);
   const coverage = data.meta.coverage;
   const inventory = coverage?.inventory;
+  const hasSeparatedInventorySignals = inventory?.positiveAvailableProducts != null
+    && inventory.zeroAvailableProducts != null
+    && inventory.negativeAvailableProducts != null
+    && inventory.committedStockProducts != null;
   const active = coverage?.activeClients ?? data.clients.filter((client) => client.active).length;
   const inactive = coverage?.inactiveClients ?? data.clients.filter((client) => !client.active).length;
   const confirmed = coverage?.activePortfolioConfirmedClients ?? data.clients.filter((client) => client.active && client.portfolioStatus === 'confirmed').length;
@@ -217,8 +221,25 @@ export function SettingsView({ data, dataHealth, clientScope, onClientScopeChang
         <section className="data-card settings-card">
           <div className="data-card-header"><div><span className="section-kicker"><Database size={14} /> Universo de productos</span><h2>Maestro, catálogo y existencias no son lo mismo</h2></div><span className={`data-health-badge ${inventory?.completeZeroStockUniverse ? 'fresh' : 'warning'}`}>{inventory?.completeZeroStockUniverse ? 'Ceros verificados' : 'Captura anterior'}</span></div>
           <p className="settings-card-copy">El maestro completo se conserva para auditoría. El catálogo operativo incluye maestros activos, productos vendidos recientemente o artículos con existencia no nula. GESI no entrega una marca inequívoca de discontinuación.</p>
-          <div className="coverage-list"><p><span>Maestros únicos</span><strong>{number(inventory?.uniqueMasterProducts ?? coverage?.rawProducts ?? 0)}</strong></p><p><span>Activos / inactivos</span><strong>{number(inventory?.activeMasterProducts ?? 0)} / {number(inventory?.inactiveMasterProducts ?? 0)}</strong></p><p><span>Catálogo operativo</span><strong>{number(inventory?.catalogProducts ?? data.products.length)}</strong></p><p><span>Comercializables observables</span><strong>{number(inventory?.commercializableProducts ?? 0)}</strong></p><p><span>Stock U1 positivo / cero / negativo</span><strong>{number(inventory?.positiveStockProducts ?? 0)} / {number(inventory?.zeroStockProducts ?? 0)} / {number(inventory?.negativeStockProducts ?? 0)}</strong></p><p><span>Sin fila de existencia</span><strong>{number(inventory?.missingStockProducts ?? 0)}</strong></p><p><span>Duplicadas / sin productoID</span><strong>{number(inventory?.duplicateStockRows ?? 0)} / {inventory?.invalidStockRows == null ? 'no registrado en este paquete' : number(inventory.invalidStockRows)}</strong></p><p><span>Discontinuados explícitos</span><strong>{number(inventory?.explicitDiscontinuedProducts ?? 0)} · señal no disponible</strong></p></div>
-          <div className="settings-rule"><Database size={16} /><span>Corte {inventory?.capturedAt ? longDate(inventory.capturedAt) : longDate(data.meta.generatedAt)} · empresa {inventory?.companyId ?? 3} / sucursal {inventory?.branchId ?? 3} / depósito {inventory?.warehouseId ?? 2} {inventory?.warehouseLabel ? `(${inventory.warehouseLabel})` : ''}.</span></div>
+          <div className="coverage-list">
+            <p><span>Maestros únicos</span><strong>{number(inventory?.uniqueMasterProducts ?? coverage?.rawProducts ?? 0)}</strong></p>
+            <p><span>Activos / inactivos</span><strong>{number(inventory?.activeMasterProducts ?? 0)} / {number(inventory?.inactiveMasterProducts ?? 0)}</strong></p>
+            <p><span>Catálogo operativo</span><strong>{number(inventory?.catalogProducts ?? data.products.length)}</strong></p>
+            <p><span>Comercializables observables</span><strong>{number(inventory?.commercializableProducts ?? 0)}</strong></p>
+            {hasSeparatedInventorySignals ? <>
+              <p><span>Existencia física U1 · positiva / cero / negativa</span><strong>{number(inventory.positiveStockProducts)} / {number(inventory.zeroStockProducts)} / {number(inventory.negativeStockProducts)}</strong></p>
+              <p><span>Disponibilidad U1 · positiva / cero / negativa</span><strong>{number(inventory.positiveAvailableProducts!)} / {number(inventory.zeroAvailableProducts!)} / {number(inventory.negativeAvailableProducts!)}</strong></p>
+              <p><span>Productos con unidades comprometidas</span><strong>{number(inventory.committedStockProducts!)}</strong></p>
+              <p><span>Conciliaciones de inventario a revisar</span><strong>{number(inventory.stockReconciliationWarnings ?? 0)}</strong></p>
+            </> : <>
+              <p><span>Disponibilidad U1 heredada · positiva / cero / negativa</span><strong>{number(inventory?.positiveStockProducts ?? 0)} / {number(inventory?.zeroStockProducts ?? 0)} / {number(inventory?.negativeStockProducts ?? 0)}</strong></p>
+              <p><span>Existencia física y unidades comprometidas</span><strong>Se separarán en la próxima actualización</strong></p>
+            </>}
+            <p><span>Sin fila de existencia</span><strong>{number(inventory?.missingStockProducts ?? 0)}</strong></p>
+            <p><span>Duplicadas / sin productoID</span><strong>{number(inventory?.duplicateStockRows ?? 0)} / {inventory?.invalidStockRows == null ? 'no registrado en este paquete' : number(inventory.invalidStockRows)}</strong></p>
+            <p><span>Discontinuados explícitos</span><strong>{number(inventory?.explicitDiscontinuedProducts ?? 0)} · señal no disponible</strong></p>
+          </div>
+          <div className="settings-rule"><Database size={16} /><span>Corte {inventory?.capturedAt ? longDate(inventory.capturedAt) : longDate(data.meta.generatedAt)} · empresa {inventory?.companyId ?? 3} / sucursal {inventory?.branchId ?? 3} / almacén {inventory?.warehouseId ?? 2} {inventory?.warehouseLabel ? `(${inventory.warehouseLabel})` : ''}. {hasSeparatedInventorySignals ? 'La existencia física, los pedidos pendientes y la disponibilidad se auditan por separado.' : 'Este paquete anterior conserva una única señal de disponibilidad.'}</span></div>
         </section>
 
         <section className="data-card settings-card" data-tour="storage-rules">

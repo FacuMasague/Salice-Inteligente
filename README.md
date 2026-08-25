@@ -1,8 +1,8 @@
-# Salice Inteligente · v2.1.1
+# Salice Inteligente · v2.1.2
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.1 convierte Inicio en una portada navegable, llama **Comprobantes** y **Clientes** a las dos tareas de Cobranzas, mejora los análisis de producto y amplía las comparaciones de mezcla en los reportes. En teléfonos se conserva siempre la vista simple de v2.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.2 separa la existencia física del almacén, los pedidos comprometidos y la disponibilidad para vender; completa las comparaciones trimestrales de Mars, NutriPet y Baires sobre su ventana visible; y termina de pulir Inicio, Productos, Cobranzas y Volumen SPT. En teléfonos se conserva siempre la vista simple de v2.0.
 
-La versión no modifica reglas comerciales, permisos ni persistencia. Amplía la cobertura histórica de fojas de reparto, pero conserva el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
+La versión no modifica permisos ni persistencia. En inventario corrige una distinción funcional: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También amplía la cobertura histórica de fojas de reparto, pero conserva el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -90,7 +90,7 @@ El Centro de reportes organiza ocho lecturas:
 - NutriPet · desempeño comercial.
 - Baires · desempeño comercial.
 
-Cada reporte conserva filtros, período, fecha de corte, comparación, advertencias y exportaciones. Volumen SPT compara la mezcla por grupo contra mes y año anterior al mismo día; Ventas y composición agrega esos mismos grupos sobre su propia facturación y conserva un resto explícito para conciliar el total. “Cómo se calcula” mantiene el detalle metodológico plegado hasta que sea necesario.
+Cada reporte conserva filtros, período, fecha de corte, comparación, advertencias y exportaciones. Volumen SPT compara la mezcla por grupo contra mes y año anterior al mismo día; Ventas y composición agrega esos mismos grupos sobre su propia facturación y conserva un resto explícito para conciliar el total. Mars usa sus últimos 13 períodos comerciales y NutriPet/Baires sus últimos 13 meses para mostrar todos los quarters o trimestres intersectados, incluidos extremos parciales y ausencia explícita de cobertura interanual. “Cómo se calcula” mantiene el detalle metodológico plegado hasta que sea necesario.
 
 ## Ubicaciones y rutas
 
@@ -104,7 +104,7 @@ Mapa y Clientes permiten filtrar ubicaciones corregidas. La ficha explica el mot
 
 ## Productos
 
-El recorrido cotidiano muestra precio, disponibilidad, rotación, compradores y oportunidades con lenguaje comercial. Los datos faltantes o inválidos se identifican sin inventar valores.
+El recorrido cotidiano muestra precio, existencia física del almacén 2, cantidad comprometida en pedidos, disponibilidad, rotación, compradores y oportunidades con lenguaje comercial. Los datos faltantes o inválidos se identifican sin inventar valores. La cobertura, las alertas y las sugerencias comerciales usan disponibilidad para no ofrecer unidades ya comprometidas.
 
 Demanda y rotación y Precios y evolución priorizan período, cobertura, indicadores principales y comparaciones equivalentes. Sus controles y bloques se adaptan a teléfonos sin cambiar cálculos ni llamar a IA al abrirse.
 
@@ -156,6 +156,8 @@ La aplicación conserva la última actualización aprobada si un intento posteri
 
 Los movimientos de ventas, cobranzas, cartera, logística y reportes sólo se aceptan cuando pertenecen simultáneamente a empresa 3 y sucursal 3. Via Salice MDP S.A. se excluye por identidad comercial de los snapshots y bases derivadas. Los maestros compartidos que no informan empresa o sucursal se conservan mientras no exista evidencia suficiente para atribuirlos a otro alcance.
 
+El inventario consulta exclusivamente el almacén 2, **Mar del Plata [WPM]**. Conserva por separado existencia física (`unidad1`), pedidos pendientes y disponibilidad (`unidad1Disponible`); no suma los demás almacenes ni convierte U2 sin una relación maestra confiable. Una fila técnica global sólo puede normalizarse cuando declara explícitamente sucursal 3 y almacén 2, y su existencia física, disponibilidad y pedidos pendientes U1/U2 son exactamente cero.
+
 La normalización del paquete candidato tiene un límite de heap propio de 1.024 MB; las demás etapas generales conservan 512 MB y la captura 768 MB. Las etapas continúan ejecutándose de forma secuencial.
 
 Las fojas de reparto conservan el mismo año móvil que las facturas y agregan un solapamiento de 45 días para cubrir períodos que cruzan el corte. La primera actualización completa el histórico cuando detecta una captura antigua limitada; después sólo conserva detalles históricos cerrados del paquete activo y vuelve a consultar todas las fojas recientes o todavía abiertas. Un caché dudoso obliga a reconstruir el año. `pnpm run audit:delivery-sheets` permite comparar la fuente con el paquete activo sin modificar datos.
@@ -175,7 +177,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.1.1
+## Alcance que continúa fuera de v2.1.2
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -212,3 +214,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v2.0.1.md`
 - `docs/release-v2.1.0.md`
 - `docs/release-v2.1.1.md`
+- `docs/release-v2.1.2.md`

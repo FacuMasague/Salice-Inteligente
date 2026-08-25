@@ -23,6 +23,7 @@ import { replaceViewInLocation, reportViewFromLocation } from './lib/report-link
 import { PREFERENCES_CHANGED_EVENT, readPreferences, savePreferences, type AppPreferences } from './lib/preferences';
 import type { ClientVisibility } from './views/MapDashboard';
 import { ACTIVE_VIEW_CHANGED_EVENT, useAuth } from './auth';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../shared/product-stock';
 
 const AgendaView = lazy(() => import('./views/AgendaView').then((module) => ({ default: module.AgendaView })));
 const HomeView = lazy(() => import('./views/HomeView').then((module) => ({ default: module.HomeView })));
@@ -70,7 +71,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   sellers: { title: 'Vendedores y carteras', subtitle: 'Clientes activos, ventas, localidades y señales por responsable' },
   finance: { title: 'Cobranzas', subtitle: 'Resumen de cartera, vencimientos y comprobantes' },
   products: { title: 'Productos', subtitle: 'Inventario, catálogo, oportunidades y análisis adicionales' },
-  brands: { title: 'Marcas', subtitle: 'Productos, compra, stock y desempeño por marca' },
+  brands: { title: 'Marcas', subtitle: 'Productos, compra, inventario y desempeño por marca' },
   routes: { title: 'Rutas de reparto', subtitle: 'Facturas, fojas y recorridos estimados desde la oficina' },
   'sales-explorer': { title: 'Explorador de ventas', subtitle: 'Del indicador al período, cliente, producto y comprobante' },
   receivables: { title: 'Cobranzas', subtitle: 'Responsables, promesas y seguimiento administrativo' },
@@ -618,7 +619,7 @@ export default function App() {
                 {!!clientResults.length && <><span className="search-result-label">Clientes</span>{clientResults.map((client) => <button key={client.id} onMouseDown={(event) => event.preventDefault()} onClick={() => openClient(client)}><Users size={15} /><div><strong>{clientPrimaryName(client)}</strong><span>{clientSecondaryName(client) ? `${clientSecondaryName(client)} · ` : ''}{client.locality} · {client.active ? 'Activo' : 'Inactivo'} · prioridad {client.visitPriority}</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!sellerResults.length && <><span className="search-result-label">Vendedores</span>{sellerResults.map((seller) => <button key={seller} onMouseDown={(event) => event.preventDefault()} onClick={() => openSeller(seller)}><Users size={15} /><div><strong>{seller}</strong><span>Abrir cartera y desempeño</span></div><ChevronRight size={15} /></button>)}</>}
                 {!!brandResults.length && <><span className="search-result-label">Marcas</span>{brandResults.map((item) => <button key={item.brand} onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(item.brand)}><Store size={15} /><div><strong>{item.brand}</strong><span>Abrir productos y desempeño de la marca</span></div><ChevronRight size={15} /></button>)}</>}
-                {!!productResults.length && <><span className="search-result-label">Productos</span>{productResults.map((product) => <div className="global-product-search-result" key={product.id}><button onMouseDown={(event) => event.preventDefault()} onClick={() => openProduct(product)}><Package size={15} /><div><strong>{product.name}</strong><span>{product.sku} · stock {product.stock}</span></div><ChevronRight size={15} /></button><button className="global-search-brand-link" onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(product.brand)}><Store size={12} /><span>{product.brand}</span></button></div>)}</>}
+                {!!productResults.length && <><span className="search-result-label">Productos</span>{productResults.map((product) => <div className="global-product-search-result" key={product.id}><button onMouseDown={(event) => event.preventDefault()} onClick={() => openProduct(product)}><Package size={15} /><div><strong>{product.name}</strong><span>{product.sku} · {hasWarehousePhysicalStock(product) ? `almacén ${number(productWarehouseStock(product))} · ` : ''}disponible {number(productAvailableStock(product))}</span></div><ChevronRight size={15} /></button><button className="global-search-brand-link" onMouseDown={(event) => event.preventDefault()} onClick={() => openBrand(product.brand)}><Store size={12} /><span>{product.brand}</span></button></div>)}</>}
                 {normalizedGlobalQuery.length >= 2 && !clientResults.length && !sellerResults.length && !brandResults.length && !productResults.length && <p>No encontramos coincidencias.</p>}
               </div>}
             </div>

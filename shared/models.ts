@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '2.1.1';
+export const APP_VERSION = '2.1.2';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -105,10 +105,19 @@ export interface ProductInventorySignal {
   warehouseId: number;
   warehouseLabel: string;
   completeZeroStockUniverse: boolean;
+  /** Existencia física informada por el almacén antes de compromisos pendientes. */
+  rawPhysicalUnit1?: number | null;
+  rawPhysicalUnit2?: number | null;
+  /** Cantidad primaria comprometida en pedidos pendientes. */
+  rawPendingUnit1?: number | null;
+  rawPendingUnit2?: number | null;
   rawAvailableUnit1: number | null;
   rawAvailableUnit2: number | null;
   unit2: string;
   unit2PerUnit1: number | null;
+  physicalStatus?: StockSignalStatus;
+  stockBasis?: 'warehouse_physical' | 'available_fallback';
+  /** Estado de la disponibilidad posterior a compromisos pendientes. */
   status: StockSignalStatus;
   quality: StockSignalQuality;
   qualityReasons: string[];
@@ -144,7 +153,10 @@ export interface Product {
   competitorPriceSampleSize?: number;
   /** Posición relativa dentro de alimentos secos comparables. */
   pricePosition: ProductPricePosition;
+  /** Disponibilidad no negativa de U1 después de pedidos pendientes. */
   stock: number;
+  /** Existencia física no negativa de U1 en el almacén; falta en snapshots anteriores. */
+  warehouseStock?: number;
   units90d: number;
   /** Kilos inferidos desde unidades vendidas y contenido neto por U1 durante 90 días. */
   kilos90d?: number;
@@ -329,6 +341,11 @@ export interface SnapshotMeta {
       positiveStockProducts: number;
       zeroStockProducts: number;
       negativeStockProducts: number;
+      positiveAvailableProducts?: number;
+      zeroAvailableProducts?: number;
+      negativeAvailableProducts?: number;
+      committedStockProducts?: number;
+      stockReconciliationWarnings?: number;
       missingStockProducts: number;
       catalogProducts: number;
       commercializableProducts: number;
@@ -703,9 +720,18 @@ export interface MarsPeriodPoint extends MarsMetrics {
 
 export interface MarsQuarterPoint {
   quarter: string;
+  label: string;
+  year: number;
+  start: string;
+  end: string;
+  isPartial: boolean;
+  comparisonAvailable: boolean;
   kilos: number;
   netAmount: number;
-  previousYearKilos: number;
+  clients: number;
+  previousYearKilos: number | null;
+  previousYearNetAmount: number | null;
+  variation: number | null;
 }
 
 export interface MarsBrandRow extends MarsMetrics {
@@ -788,7 +814,15 @@ export interface NutriPetMonthlyPoint extends NutriPetMetrics {
 
 export interface NutriPetQuarterPoint extends NutriPetMetrics {
   quarter: string;
+  label: string;
+  year: number;
+  start: string;
+  end: string;
   isPartial: boolean;
+  comparisonAvailable: boolean;
+  previousYearKilos: number | null;
+  previousYearNetAmount: number | null;
+  variation: number | null;
 }
 
 export interface NutriPetBrandRow extends NutriPetMetrics {
@@ -882,7 +916,15 @@ export interface BairesMonthlyPoint extends BairesMetrics {
 
 export interface BairesQuarterPoint extends BairesMetrics {
   quarter: string;
+  label: string;
+  year: number;
+  start: string;
+  end: string;
   isPartial: boolean;
+  comparisonAvailable: boolean;
+  previousYearKilos: number | null;
+  previousYearNetAmount: number | null;
+  variation: number | null;
 }
 
 export interface BairesBreakdownRow extends BairesMetrics {

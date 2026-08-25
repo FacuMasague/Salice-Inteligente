@@ -307,10 +307,17 @@ const inventory = normalizeInventoryRows(stocks, {
   sucursalID,
   almacenID: almacenPrincipalID,
 });
-if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y depósito; se conservó una por producto.`);
+if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y almacén; se conservó una por producto.`);
 if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.invalidRows} fila(s) sin productoID; se excluyeron del universo de productos y quedaron contabilizadas.`);
-if (inventory.repairedScopeRows) optionalEndpointWarnings.push(`Existencias: ${inventory.repairedScopeRows} fila(s) sin alcance específico o con el marcador global 65535 y stock cero se asociaron al alcance solicitado explícitamente al endpoint (empresa 3, sucursal 3, depósito 2).`);
+if (inventory.repairedScopeRows) optionalEndpointWarnings.push(`Existencias: ${inventory.repairedScopeRows} fila(s) sin alcance específico o con el marcador global 65535 y stock cero se asociaron al alcance solicitado explícitamente al endpoint (empresa 3, sucursal 3, almacén 2).`);
 const normalizedStocks = inventory.rows;
+const inventoryNumber = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const committedStockRows = normalizedStocks.filter((row) => inventoryNumber(row.unidad1NPEPendientes) > 0 || inventoryNumber(row.unidad2NPEPendientes) > 0).length;
+const stockReconciliationWarnings = normalizedStocks.filter((row) => (
+  Math.abs(inventoryNumber(row.unidad1) - inventoryNumber(row.unidad1Disponible) - inventoryNumber(row.unidad1NPEPendientes)) > .01
+  || Math.abs(inventoryNumber(row.unidad2) - inventoryNumber(row.unidad2Disponible) - inventoryNumber(row.unidad2NPEPendientes)) > .01
+)).length;
+if (stockReconciliationWarnings) optionalEndpointWarnings.push(`Existencias: ${stockReconciliationWarnings} producto(s) no reconcilian existencia física menos pedidos pendientes con disponibilidad.`);
 
 const previousDeliverySheetById = new Map<number, GesiRow>();
 let previousDeliverySheetCacheUsable = existingCaptureIsApproved;
@@ -476,7 +483,12 @@ const collectionDetails = await fetchDocumentDetails(
 );
 
 const catalogProductIDs = [...new Set([
-  ...normalizedStocks.filter((row) => Number(row.unidad1Disponible) !== 0 || Number(row.unidad2Disponible) !== 0)
+  ...normalizedStocks.filter((row) => (
+    Number(row.unidad1) !== 0
+    || Number(row.unidad2) !== 0
+    || Number(row.unidad1Disponible) !== 0
+    || Number(row.unidad2Disponible) !== 0
+  ))
     .map((row) => String(row.productoID ?? '')).filter(Boolean),
   ...products.filter((row) => String(row.estado ?? '').trim() === 'A')
     .map((row) => String(row.productoID ?? '')).filter(Boolean),
@@ -517,11 +529,13 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   empresaID,
   sucursalID,
   almacenPrincipalID,
-  almacenPrincipal: String(normalizedStocks.find((row) => row.almacen)?.almacen ?? `Depósito ${almacenPrincipalID}`),
+  almacenPrincipal: String(normalizedStocks.find((row) => row.almacen)?.almacen ?? `Almacén ${almacenPrincipalID}`),
   inventoryIncludesZeroStock: true,
   inventoryDuplicateRows: inventory.duplicateRows,
   inventoryInvalidRows: inventory.invalidRows,
   inventoryScopeRepairedRows: inventory.repairedScopeRows,
+  inventoryCommittedRows: committedStockRows,
+  inventoryStockReconciliationWarnings: stockReconciliationWarnings,
   historyFrom,
   salesHistoryFrom: sptCoverageFrom,
   sptFetchFrom: salesHistoryFrom,
@@ -619,9 +633,14 @@ console.log(JSON.stringify({
   catalogProductsWithStockOrSales: catalogProductIDs.length,
   priceDefinitions: prices.length,
   inventoryRows: normalizedStocks.length,
-  positiveUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) > 0).length,
-  zeroUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) === 0).length,
-  negativeUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) < 0).length,
+  positivePhysicalUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1) > 0).length,
+  zeroPhysicalUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1) === 0).length,
+  negativePhysicalUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1) < 0).length,
+  positiveAvailableUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) > 0).length,
+  zeroAvailableUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) === 0).length,
+  negativeAvailableUnit1Stocks: normalizedStocks.filter((row) => Number(row.unidad1Disponible) < 0).length,
+  committedStockRows,
+  stockReconciliationWarnings,
   inventoryDuplicateRows: inventory.duplicateRows,
   inventoryInvalidRows: inventory.invalidRows,
   balances: balances.length,

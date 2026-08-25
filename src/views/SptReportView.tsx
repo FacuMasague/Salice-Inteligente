@@ -148,7 +148,7 @@ function ProductGroupMix({ report }: { report: SptReportPayload }) {
     <p className="report-mix-method">La participación usa los kilos totales del universo SPT en cada período. Las variaciones comparan el mismo corte calendario.</p>
     <div className="report-mix-card-grid">
       {report.productGroups.map((row) => <article key={row.label} className="report-mix-comparison-card">
-        <header><div><span className="report-mix-marker" /><strong>{row.label}</strong></div><b>{number(row.share, 1)}%</b></header>
+        <header><div><span className="report-mix-marker" /><strong>{row.label}</strong></div><span className="spt-mix-share-label"><small>Participación</small><b>{number(row.share, 1)}%</b></span></header>
         <div className="report-mix-current">
           <div><span>Kilos al corte</span><strong>{kilos(row.kilos)} kg</strong></div>
           <div><span>Facturación</span><strong>{money(row.netAmount, true)}</strong></div>
