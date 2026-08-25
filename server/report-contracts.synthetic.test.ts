@@ -66,6 +66,9 @@ describe('contratos de reportes sobre un fixture sintético estable', () => {
     expect(report?.current.netAmount).toBe(8_200);
     expect(report?.difference).toBeCloseTo((report?.current.netAmount ?? 0) - (report?.comparison.netAmount ?? 0), 6);
     expect(report?.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report?.current.netAmount ?? 0, 6);
+    expect(report?.productGroupMix).toHaveLength(12);
+    expect(report?.productGroupMix.at(-1)?.label).toBe('Resto de la facturación');
+    expect(report?.productGroupMix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report?.current.netAmount ?? 0, 6);
   });
 
   it('respeta el calendario Mars y reconcilia marca, período y quarter', () => {

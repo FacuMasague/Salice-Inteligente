@@ -29,7 +29,7 @@ describe('tutoriales interactivos v1.2.1', () => {
     ]);
     expect(Object.keys(GUIDED_EXPERIENCES)).toHaveLength(7);
     for (const journey of Object.values(TASK_JOURNEYS)) {
-      expect(journey.steps.length).toBeGreaterThanOrEqual(2);
+      expect(journey.steps.length).toBeGreaterThanOrEqual(4);
       expect(journey.steps.every((step) => step.target.length > 0 && step.view.length > 0)).toBe(true);
     }
   });

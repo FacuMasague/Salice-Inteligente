@@ -7,8 +7,24 @@ import { parser } from 'stream-json';
 import { pick } from 'stream-json/filters/pick.js';
 import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
-import { resolveSptFetchFrom } from '../server/gesi/capture-window.js';
+import {
+  captureCacheMatchesActiveBundle,
+  logisticsQueryFrom,
+  resolveLogisticsInvoiceValidationFrom,
+  resolveLogisticsFetchFrom,
+  resolveSptFetchFrom,
+} from '../server/gesi/capture-window.js';
 import { GesiClient } from '../server/gesi/client.js';
+import {
+  assertDeliverySheetDetail,
+  assertDeliverySheetContinuity,
+  assertDeliverySheetHeaders,
+  deliverySheetId,
+  deliverySheetIsClosed,
+  deliverySheetOverlapsCoverage,
+  deliverySheetStartsAt,
+  scopeDeliverySheetAssignments,
+} from '../server/gesi/delivery-sheet-capture.js';
 import { normalizeInventoryRows } from '../server/gesi/inventory-capture.js';
 import { priceProductIdBatches } from '../server/gesi/price-query.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
@@ -44,6 +60,13 @@ async function forEachExistingCaptureRow(key: string, handler: (row: GesiRow) =>
 const existingCaptureMeta = shouldReadExistingCapture && hasExistingCapture
   ? await readExistingCaptureValue<GesiRawCapture['captureMeta']>('captureMeta').catch(() => null)
   : null;
+const activeBundleCapturedAt = await readFile(resolve(process.cwd(), 'data/active-bundle.json'), 'utf8')
+  .then((contents) => String((JSON.parse(contents) as { capturedAt?: string }).capturedAt ?? ''))
+  .catch(() => '');
+const existingCaptureIsApproved = captureCacheMatchesActiveBundle(
+  existingCaptureMeta?.capturedAt,
+  activeBundleCapturedAt,
+);
 const previousCapture = reuseCatalog && hasExistingCapture
   ? await readFile(target, 'utf8').then((contents) => JSON.parse(contents) as GesiRawCapture).catch(() => null)
   : null;
@@ -78,13 +101,14 @@ const salesHistoryFrom = resolveSptFetchFrom({
 });
 const salesDetailFrom = process.env.GESI_SALES_DETAIL_FROM ?? isoDaysAgo(180);
 const sptSalesDetailFrom = process.env.GESI_SPT_DETAIL_FROM ?? salesHistoryFrom;
-const logisticsFrom = process.env.GESI_LOGISTICS_FROM ?? isoDaysAgo(45);
+const rollingLogisticsFrom = isoDaysAgo(45);
+const logisticsFrom = process.env.GESI_LOGISTICS_FROM?.trim() || historyFrom;
 const historyUntil = capturedAt.toISOString();
 
-const listBody = (from: string) => ({
+const listBody = (from: string, until = historyUntil) => ({
   datosOperacion: {
     fechaDesde: from,
-    fechaHasta: historyUntil,
+    fechaHasta: until,
     sucursalID,
     estadoAnulado: 'N',
   },
@@ -105,6 +129,8 @@ const documentIdentity = (row: GesiRow) => [
   Number(row.puntoDeVentaID),
   Number(row.numero),
 ].join(':');
+const emittedOn = (row: GesiRow) => String(row.fechaDeEmision ?? '').slice(0, 10);
+const onOrAfter = (row: GesiRow, from: string) => emittedOn(row) >= from.slice(0, 10);
 const optionalEndpointWarnings: string[] = [];
 
 const chunks = <T>(items: T[], size: number) => {
@@ -286,28 +312,119 @@ if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devo
 if (inventory.repairedScopeRows) optionalEndpointWarnings.push(`Existencias: ${inventory.repairedScopeRows} fila(s) sin alcance específico o con el marcador global 65535 y stock cero se asociaron al alcance solicitado explícitamente al endpoint (empresa 3, sucursal 3, depósito 2).`);
 const normalizedStocks = inventory.rows;
 
+const previousDeliverySheetById = new Map<number, GesiRow>();
+let previousDeliverySheetCacheUsable = existingCaptureIsApproved;
+if (previousDeliverySheetCacheUsable) {
+  try {
+    const previousRows: GesiRow[] = [];
+    await forEachExistingCaptureRow('deliverySheets', (row) => { previousRows.push(row); });
+    assertDeliverySheetHeaders(previousRows, 'Histórico logístico aprobado', empresaID);
+    previousRows.forEach((row) => previousDeliverySheetById.set(deliverySheetId(row), row));
+    // Un array ausente o vacío no demuestra que exista un histórico completo.
+    // Es más seguro reconstruir el año que publicar sólo la ventana reciente.
+    previousDeliverySheetCacheUsable = previousRows.length > 0;
+  } catch (error) {
+    previousDeliverySheetById.clear();
+    previousDeliverySheetCacheUsable = false;
+    optionalEndpointWarnings.push(`Fojas: no se pudo reutilizar el histórico aprobado y se reconstruyó la cobertura completa. ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+const requestedLogisticsRefreshFrom = resolveLogisticsFetchFrom({
+  hasExistingCapture: previousDeliverySheetCacheUsable,
+  historyFrom,
+  rollingFrom: rollingLogisticsFrom,
+  existingCoverageFrom: previousDeliverySheetCacheUsable ? existingCaptureMeta?.logisticsFrom : undefined,
+  explicitFrom: process.env.GESI_LOGISTICS_FROM,
+});
+const oldestOpenSheetDate = [...previousDeliverySheetById.values()]
+  .filter((row) => !deliverySheetIsClosed(row))
+  .map(deliverySheetStartsAt)
+  .filter(Boolean)
+  .sort()[0];
+const logisticsFetchFrom = [logisticsQueryFrom(requestedLogisticsRefreshFrom), oldestOpenSheetDate]
+  .filter(Boolean)
+  .sort()[0] ?? logisticsQueryFrom(requestedLogisticsRefreshFrom);
+const preservedDeliverySheets = [...previousDeliverySheetById.values()]
+  .filter((row) => deliverySheetOverlapsCoverage(row, logisticsFrom))
+  .filter((row) => deliverySheetStartsAt(row) < logisticsFetchFrom.slice(0, 10))
+  .filter(deliverySheetIsClosed);
+assertDeliverySheetHeaders(preservedDeliverySheets, 'Histórico logístico conservado', empresaID);
+preservedDeliverySheets.forEach(assertDeliverySheetDetail);
+
+const logisticsInvoiceValidationFrom = resolveLogisticsInvoiceValidationFrom({
+  sheetFetchFrom: logisticsFetchFrom,
+  salesFetchFrom: salesHistoryFrom,
+  previousCoverageFrom: previousDeliverySheetCacheUsable ? existingCaptureMeta?.logisticsFrom : undefined,
+});
+let logisticsInvoiceHeaders = allInvoiceHeaders;
+if (salesHistoryFrom.slice(0, 10) > logisticsInvoiceValidationFrom.slice(0, 10)) {
+  await client.login();
+  const overlapInvoiceHeaders = await tracked(
+    'Facturas para validar el solapamiento logístico',
+    client.postAll<GesiRow>(
+      '/api/Ventas/Comprobantes/Facturas/GetList',
+      'comprobantes',
+      listBody(logisticsInvoiceValidationFrom, salesHistoryFrom),
+      1000,
+    ),
+  );
+  logisticsInvoiceHeaders = [...new Map(
+    [...overlapInvoiceHeaders, ...allInvoiceHeaders].map((row) => [documentIdentity(row), row]),
+  ).values()];
+}
+
 await client.login();
-const deliverySheetHeaders = await tracked(
+const fetchedDeliverySheetHeaders = await tracked(
   'Fojas de reparto',
-  client.getAll<GesiRow>(`/api/Ventas/Repartos/GetList?fechaDesde=${encodeURIComponent(logisticsFrom.slice(0, 10))}`, 'fojasReparto', 1000),
+  client.getStrictAll<GesiRow>(`/api/Ventas/Repartos/GetList?fechaDesde=${encodeURIComponent(logisticsFetchFrom.slice(0, 10))}`, 'fojasReparto', 1000),
 );
-const deliverySheets: GesiRow[] = [];
+assertDeliverySheetHeaders(fetchedDeliverySheetHeaders, 'Cabeceras logísticas recibidas', empresaID);
+assertDeliverySheetContinuity(
+  [...previousDeliverySheetById.values()],
+  fetchedDeliverySheetHeaders,
+  logisticsFrom,
+  logisticsFetchFrom,
+);
+const deliverySheetHeaders = fetchedDeliverySheetHeaders
+  .filter((row) => deliverySheetOverlapsCoverage(row, logisticsFrom));
+const currentDeliverySheets: GesiRow[] = [];
+let fetchedDeliverySheetDetails = 0;
 for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
   const row = deliverySheetHeaders[index];
   try {
-    const payload = await client.request<GesiRow>(`/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${Number(row.fojaID)}`);
+    // Toda cabecera de la ventana reciente se vuelve a consultar, incluso si
+    // ya estaba cerrada: GESI puede corregir asignaciones después del cierre.
+    const payload = await client.request<GesiRow>(`/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${deliverySheetId(row)}`);
     const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
-    deliverySheets.push(detail ? { ...row, ...detail } : row);
+    if (!detail) throw new Error('la respuesta no contiene el detalle de la foja');
+    const complete = { ...row, ...detail };
+    assertDeliverySheetHeaders([complete], `Detalle de foja ${deliverySheetId(row)}`, empresaID);
+    assertDeliverySheetDetail(complete);
+    currentDeliverySheets.push(complete);
+    fetchedDeliverySheetDetails += 1;
   } catch (error) {
-    throw new Error(`No se pudo leer la foja ${Number(row.fojaID)}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`No se pudo leer la foja ${deliverySheetId(row)}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if ((index + 1) % 50 === 0) {
+  if (fetchedDeliverySheetDetails % 50 === 0) {
     console.log(`Detalle de fojas: ${index + 1}/${deliverySheetHeaders.length}`);
     await client.login();
   }
   if (index + 1 < deliverySheetHeaders.length) await new Promise((resolve) => setTimeout(resolve, 750));
 }
-console.log(`Detalle de fojas: ${deliverySheets.length}/${deliverySheetHeaders.length}`);
+assertDeliverySheetHeaders(currentDeliverySheets, 'Detalles logísticos recibidos', empresaID);
+const deliverySheetById = new Map(preservedDeliverySheets.map((row) => [deliverySheetId(row), row]));
+currentDeliverySheets.forEach((row) => deliverySheetById.set(deliverySheetId(row), row));
+const integratedDeliverySheets = [...deliverySheetById.values()];
+assertDeliverySheetHeaders(integratedDeliverySheets, 'Captura logística integrada', empresaID);
+const deliverySheets = scopeDeliverySheetAssignments(
+  integratedDeliverySheets,
+  logisticsInvoiceHeaders,
+  logisticsFrom,
+  documentIdentity,
+  empresaID,
+  sucursalID,
+);
+console.log(`Detalle de fojas: ${currentDeliverySheets.length}/${deliverySheetHeaders.length} (${fetchedDeliverySheetDetails} consultados; ${preservedDeliverySheets.length} históricos aprobados conservados)`);
 await client.login();
 let unassignedDeliveryDocuments: GesiRow[] = [];
 try {
@@ -337,14 +454,14 @@ const invoiceDetails = await fetchDocumentDetails(
   'Detalle de facturas',
   '/api/Ventas/Comprobantes/Facturas/GetItem?incluirDetalleDeVenta=S',
   allInvoiceHeaders,
-  (row) => String(row.fechaDeEmision ?? '') >= sptSalesDetailFrom,
+  (row) => onOrAfter(row, sptSalesDetailFrom),
 );
 await client.login();
 const creditNoteDetails = await fetchDocumentDetails(
   'Detalle de notas de crédito',
   '/api/Ventas/Comprobantes/NotasDeCredito/GetItem?incluirDetalleDeVenta=S',
   allCreditNoteHeaders,
-  (row) => String(row.fechaDeEmision ?? '') >= sptSalesDetailFrom,
+  (row) => onOrAfter(row, sptSalesDetailFrom),
 );
 await client.login();
 const collectionDetails = await fetchDocumentDetails(
@@ -371,8 +488,8 @@ const prices = previousCapture?.prices ?? await fetchPrices(catalogProductIDs);
 
 const invoiceDetailByKey = new Map(invoiceDetails.map((row) => [documentIdentity(row), row]));
 const invoices = allInvoiceHeaders
-  .filter((row) => String(row.fechaDeEmision ?? '') >= historyFrom)
-  .map((row) => String(row.fechaDeEmision ?? '') >= salesDetailFrom ? invoiceDetailByKey.get(documentIdentity(row)) ?? row : row);
+  .filter((row) => onOrAfter(row, historyFrom))
+  .map((row) => onOrAfter(row, salesDetailFrom) ? invoiceDetailByKey.get(documentIdentity(row)) ?? row : row);
 const creditNoteDetailByKey = new Map(creditNoteDetails.map((row) => [documentIdentity(row), row]));
 const preserveHistoricalSpt = !process.env.GESI_SPT_HISTORY_FROM && Boolean(existingCaptureMeta);
 const currentSptInvoices = allInvoiceHeaders.map((row) => invoiceDetailByKey.get(documentIdentity(row)) ?? row);
@@ -381,8 +498,8 @@ const sptCoverageFrom = preserveHistoricalSpt
   ? existingCaptureMeta?.salesHistoryFrom ?? salesHistoryFrom
   : salesHistoryFrom;
 const creditNotes = allCreditNoteHeaders
-  .filter((row) => String(row.fechaDeEmision ?? '') >= historyFrom)
-  .map((row) => String(row.fechaDeEmision ?? '') >= salesDetailFrom ? creditNoteDetailByKey.get(documentIdentity(row)) ?? row : row);
+  .filter((row) => onOrAfter(row, historyFrom))
+  .map((row) => onOrAfter(row, salesDetailFrom) ? creditNoteDetailByKey.get(documentIdentity(row)) ?? row : row);
 const collectionDetailByKey = new Map(collectionDetails.map((row) => [documentIdentity(row), row]));
 const collections = collectionHeaders.map((row) => collectionDetailByKey.get(documentIdentity(row)) ?? row);
 const currentSptDetailCoverageFrom = [...currentSptInvoices, ...currentSptCreditNotes]
@@ -411,6 +528,7 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   salesDetailFrom,
   sptSalesDetailFrom: sptDetailCoverageFrom,
   logisticsFrom,
+  logisticsFetchFrom,
   historyUntil,
   optionalEndpointWarnings,
 };
@@ -459,7 +577,7 @@ async function writeSptProperty(
   let written = 0;
   if (preserveHistoricalSpt) {
     await forEachExistingCaptureRow(name, async (row) => {
-      if (String(row.fechaDeEmision ?? '') >= salesHistoryFrom) return;
+      if (onOrAfter(row, salesHistoryFrom)) return;
       await writeChunk(output, `${written ? ',' : ''}${JSON.stringify(row)}`);
       written += 1;
     });
@@ -522,6 +640,8 @@ console.log(JSON.stringify({
   collections365d: collections.length,
   pendingDocuments: pendingDocuments.length,
   deliverySheets: deliverySheets.length,
+  fetchedDeliverySheetDetails,
+  preservedDeliverySheets: preservedDeliverySheets.length,
   unassignedDeliveryDocuments: unassignedDeliveryDocuments.length,
   warnings: optionalEndpointWarnings,
 }, null, 2));

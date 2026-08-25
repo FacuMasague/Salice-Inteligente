@@ -4,6 +4,7 @@ import chain from 'stream-chain';
 import { parser } from 'stream-json';
 import { ignore } from 'stream-json/filters/ignore.js';
 import { streamObject } from 'stream-json/streamers/stream-object.js';
+import { deliverySheetEndsAt } from '../server/gesi/delivery-sheet-capture.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 import { invoiceCreditTermDays } from '../shared/credit-terms.js';
 
@@ -140,6 +141,7 @@ const clientCoordinates = capture.clients.map((row) => ({ id: number(row.cliente
 const regionalCoordinates = clientCoordinates.filter(({ point }) => point && point[0] >= -42 && point[0] <= -34 && point[1] >= -61 && point[1] <= -55);
 const branchDefinitions = capture.clients.flatMap((row) => Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : []);
 const deliverySheets = capture.deliverySheets ?? [];
+const deliverySheetIDs = deliverySheets.map((row) => number(row.fojaID));
 const assignedDeliveryDocuments = deliverySheets.flatMap((row) => Array.isArray(row.listaDeComprobantesAsignados) ? row.listaDeComprobantesAsignados as GesiRow[] : []);
 const assignedInvoiceIDs = new Set(assignedDeliveryDocuments.map(documentKey).filter((id) => invoiceIDs.has(id)));
 const unassignedDeliveryInvoiceIDs = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentKey).filter((id) => invoiceIDs.has(id)));
@@ -251,13 +253,17 @@ const report = {
   },
   logistics: {
     coverageFrom: capture.captureMeta.logisticsFrom ?? '',
+    fetchedFrom: capture.captureMeta.logisticsFetchFrom ?? capture.captureMeta.logisticsFrom ?? '',
     sheets: deliverySheets.length,
+    uniqueSheets: distinct(deliverySheetIDs),
     openSheets: deliverySheets.filter((row) => ['1', 'A'].includes(text(row.estado).toUpperCase()) && !date(row.fechaCerrada)).length,
     closedSheets: deliverySheets.filter((row) => ['2', 'C'].includes(text(row.estado).toUpperCase()) || Boolean(date(row.fechaCerrada))).length,
     sheetsWithDriver: deliverySheets.filter((row) => number(row.repartidorID) > 0).length,
     sheetsWithAssignedDocuments: deliverySheets.filter((row) => Array.isArray(row.listaDeComprobantesAsignados) && row.listaDeComprobantesAsignados.length > 0).length,
+    sheetsWithoutCompleteDetail: deliverySheets.filter((row) => !Array.isArray(row.listaDeComprobantesAsignados)).length,
     assignedDocuments: assignedDeliveryDocuments.length,
     assignedInvoicesInCapture: assignedInvoiceIDs.size,
+    assignedDocumentsOutsideScopeOrCapture: assignedDeliveryDocuments.filter((row) => number(row.empresaID) !== 3 || !invoiceIDs.has(documentKey(row))).length,
     explicitlyUnassignedInvoicesInCapture: unassignedDeliveryInvoiceIDs.size,
     invoiceAssignmentsDuplicated: assignedDeliveryDocuments.map(documentKey).filter((id, index, rows) => invoiceIDs.has(id) && rows.indexOf(id) !== index).length,
   },
@@ -296,6 +302,20 @@ for (const [label, rows] of companyScopedCollections) {
 require(
   (capture.deliverySheets ?? []).every((row) => number(row.empresaID) === 3),
   'Hay fojas fuera de empresa 3; GESI no informa sucursalID en este recurso.',
+);
+require(deliverySheetIDs.every((id) => Number.isInteger(id) && id > 0), 'Hay fojas sin fojaID entero positivo.');
+require(deliverySheets.length === distinct(deliverySheetIDs), 'Hay fojaID duplicados en la captura logística.');
+require(
+  deliverySheets.every((row) => deliverySheetEndsAt(row) >= date(capture.captureMeta.logisticsFrom)),
+  'Hay fojas cuyo período termina antes del inicio de cobertura logística declarado.',
+);
+require(
+  deliverySheets.every((row) => Array.isArray(row.listaDeComprobantesAsignados)),
+  'Hay fojas sin un detalle completo de comprobantes asignados.',
+);
+require(
+  assignedDeliveryDocuments.every((row) => number(row.empresaID) === 3 && invoiceIDs.has(documentKey(row))),
+  'Hay comprobantes asignados a fojas fuera de empresa 3 o ausentes del universo de facturas 3/3 capturado.',
 );
 require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);

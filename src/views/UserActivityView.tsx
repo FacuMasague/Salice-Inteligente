@@ -13,7 +13,7 @@ const roleLabel: Record<UserRole, string> = {
 
 const viewLabel: Record<string, string> = {
   map: 'Mapa operativo', routes: 'Rutas', clients: 'Clientes', sellers: 'Vendedores', products: 'Productos', brands: 'Marcas',
-  finance: 'Cobranzas · Cartera', agenda: 'Bandeja comercial', 'sales-explorer': 'Explorador de ventas', receivables: 'Cobranzas · Seguimiento',
+  finance: 'Cobranzas · Comprobantes', agenda: 'Bandeja comercial', 'sales-explorer': 'Explorador de ventas', receivables: 'Cobranzas · Clientes',
   'report-center': 'Centro de reportes', reports: 'Reporte General', spt: 'Volumen SPT', 'commercial-sales': 'Ventas y composición',
   mars: 'Mars', nutripet: 'NutriPet', baires: 'Baires', 'non-buyers': 'Cuentas no compradoras', 'pending-balances': 'Saldos pendientes',
   settings: 'Configuración', help: 'Ayuda', users: 'Usuarios', 'user-activity': 'Actividad de usuarios', unknown: 'Sin identificar',

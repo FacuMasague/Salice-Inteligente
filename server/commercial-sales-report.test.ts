@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildCommercialSalesReport, buildCommercialSellerVariations, getCommercialSalesReportMeta } from './commercial-sales-report';
 import { resolveActiveDataPaths } from './data-bundle';
+import { COMMERCIAL_PRODUCT_GROUP_REST_LABEL, SPT_MAIN_PRODUCT_GROUPS } from './report-product-groups';
 
 const describeWithDatabase = existsSync(resolveActiveDataPaths().commercial) ? describe : describe.skip;
 
@@ -33,6 +34,17 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(report!.difference).toBeCloseTo(report!.current.netAmount - report!.comparison.netAmount, 6);
     expect(report!.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
     expect(report!.mix.reduce((sum, row) => sum + row.share, 0)).toBeCloseTo(100, 6);
+    expect(report!.productGroupMix).toHaveLength(12);
+    expect(report!.productGroupMix.map((row) => row.label)).toEqual([...SPT_MAIN_PRODUCT_GROUPS, COMMERCIAL_PRODUCT_GROUP_REST_LABEL]);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.share, 0)).toBeCloseTo(100, 6);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousPeriod.netAmount, 0)).toBeCloseTo(report!.comparison.netAmount, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousPeriodShare, 0)).toBeCloseTo(100, 6);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousYear.netAmount, 0)).toBeCloseTo(report!.monthly.at(-1)?.previousYear ?? 0, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousYearShare, 0)).toBeCloseTo(100, 6);
+    expect(report!.mixPeriods.current).toEqual({ start: `${meta.latestMonth}-01`, end: meta.reportingDate });
+    expect(report!.mixPeriods.previousPeriod.available).toBe(true);
+    expect(report!.mixPeriods.previousYear.available).toBe(true);
     expect(report!.segments.balanceado.netAmount).toBeGreaterThan(report!.segments.drovet.netAmount);
     expect(report!.segments.autoservicio.netAmount).toBeGreaterThan(report!.segments.sanitarios.netAmount);
     expect(report!.brands.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.brandTotal.netAmount, 4);
@@ -59,6 +71,10 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(report!.monthly.every((row) => row.currentKilos >= 0 && row.previousYearKilos >= 0)).toBe(true);
     expect(report!.monthly.reduce((sum, row) => sum + row.currentKilos, 0)).toBeCloseTo(report!.current.kilos, 4);
     expect(report!.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousPeriod.netAmount, 0)).toBeCloseTo(report!.comparison.netAmount, 4);
+    expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousYear.netAmount, 0)).toBeCloseTo(report!.comparison.netAmount, 4);
+    expect(report!.mixPeriods.previousPeriod).toEqual(report!.mixPeriods.previousYear);
   }, 15_000);
 
   it('recalcula toda la respuesta al filtrar vendedor', () => {

@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.1.1';
 
 export const SALICE_DEPOT: {
   name: string;
@@ -455,6 +455,22 @@ export interface SptBreakdownRow extends SptPeriodMetrics {
   label: string;
 }
 
+export interface SptProductGroupMixRow extends SptBreakdownRow {
+  share: number;
+  previousMonth: SptPeriodMetrics;
+  previousMonthShare: number;
+  previousYear: SptPeriodMetrics;
+  previousYearShare: number;
+  kilosVariationPreviousMonth: number | null;
+  kilosVariationPreviousYear: number | null;
+}
+
+export interface SptMixPeriods {
+  current: { start: string; end: string };
+  previousMonth: { start: string; end: string; available: boolean };
+  previousYear: { start: string; end: string; available: boolean };
+}
+
 export interface SptQuarterPoint {
   quarter: number;
   current: number;
@@ -480,7 +496,8 @@ export interface SptReportPayload {
   daily: SptDailyPoint[];
   monthly: SptMonthlyPoint[];
   sellers: SptBreakdownRow[];
-  productGroups: SptBreakdownRow[];
+  productGroups: SptProductGroupMixRow[];
+  mixPeriods: SptMixPeriods;
   quarters: SptQuarterPoint[];
 }
 
@@ -527,6 +544,23 @@ export interface CommercialSalesMetrics {
 export interface CommercialSalesMixRow extends CommercialSalesMetrics {
   label: 'Balanceado' | 'Autoservicio' | 'Drovet' | 'Sanitarios' | 'Otros';
   share: number;
+}
+
+export interface CommercialSalesProductGroupMixRow extends CommercialSalesMetrics {
+  label: string;
+  share: number;
+  previousPeriod: CommercialSalesMetrics;
+  previousPeriodShare: number;
+  previousYear: CommercialSalesMetrics;
+  previousYearShare: number;
+  netAmountVariationPreviousPeriod: number | null;
+  netAmountVariationPreviousYear: number | null;
+}
+
+export interface CommercialSalesMixPeriods {
+  current: { start: string; end: string };
+  previousPeriod: { start: string; end: string; available: boolean };
+  previousYear: { start: string; end: string; available: boolean };
 }
 
 export interface CommercialSalesMonthlyPoint {
@@ -583,6 +617,8 @@ export interface CommercialSalesReportPayload {
     autoservicio: CommercialSalesMetrics;
   };
   mix: CommercialSalesMixRow[];
+  productGroupMix: CommercialSalesProductGroupMixRow[];
+  mixPeriods: CommercialSalesMixPeriods;
   monthly: CommercialSalesMonthlyPoint[];
   brandTotal: CommercialSalesBrandTotal;
   brands: CommercialSalesBrandRow[];

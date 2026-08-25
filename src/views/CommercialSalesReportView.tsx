@@ -46,6 +46,8 @@ const price = (value: number | null) => value == null ? 'Sin base' : money(value
 const percent = (value: number | null, signed = false) => value == null
   ? 'Sin base'
   : `${signed && value > 0 ? '+' : ''}${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value)}%`;
+const sharePoints = (current: number, previous: number) => `${current - previous >= 0 ? '+' : ''}${number(current - previous, 1)} pp`;
+const periodRange = (start: string, end: string) => `${new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit' }).format(new Date(`${start}T12:00:00`))}–${new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${end}T12:00:00`))}`;
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return <MultiSelectFilter label={label} value={value} options={options} onChange={onChange} />;
@@ -111,6 +113,48 @@ function MixChart({ rows }: { rows: CommercialSalesMixRow[] }) {
       <div><strong>{money(total, true)}</strong><span>venta neta</span></div>
     </div>
     <div className="commercial-mix-list">{rows.map((row) => <article key={row.label} className={hovered === row.label ? 'active' : ''} role="button" tabIndex={0} aria-pressed={chart.pinned === row.label} onMouseEnter={() => chart.setHovered(row.label)} onMouseLeave={chart.clearHover} onFocus={() => chart.setHovered(row.label)} onBlur={chart.clearHover} onClick={() => chart.togglePinned(row.label)}><i style={{ background: MIX_COLORS[row.label] }} /><div><strong>{row.label}</strong><span>{number(row.clients)} clientes · {kilos(row.kilos, true)} kg</span></div><b>{percent(row.share)}</b><em>{money(row.netAmount, true)}</em></article>)}</div>
+  </div>;
+}
+
+function CommercialProductGroupMix({ report }: { report: CommercialSalesReportPayload }) {
+  const previousPeriodAvailable = report.mixPeriods.previousPeriod.available;
+  const previousYearAvailable = report.mixPeriods.previousYear.available;
+  const previousPeriodTotal = report.productGroupMix.reduce((sum, row) => sum + row.previousPeriod.netAmount, 0);
+  const previousYearTotal = report.productGroupMix.reduce((sum, row) => sum + row.previousYear.netAmount, 0);
+  const previousPeriodLabel = report.periodMode === 'year' ? 'Año anterior' : 'Mes anterior';
+  return <div className="report-mix-comparison commercial-product-group-mix">
+    <div className="report-mix-denominators" aria-label="Períodos y denominadores de la mezcla de facturación">
+      <div><span>Período elegido</span><strong>{money(report.current.netAmount, true)}</strong><small>{periodRange(report.mixPeriods.current.start, report.mixPeriods.current.end)}</small></div>
+      <div><span>{previousPeriodLabel}</span><strong>{previousPeriodAvailable ? money(previousPeriodTotal, true) : 'Sin cobertura'}</strong><small>{periodRange(report.mixPeriods.previousPeriod.start, report.mixPeriods.previousPeriod.end)}</small></div>
+      {report.periodMode === 'month' && <div><span>Año anterior</span><strong>{previousYearAvailable ? money(previousYearTotal, true) : 'Sin cobertura'}</strong><small>{periodRange(report.mixPeriods.previousYear.start, report.mixPeriods.previousYear.end)}</small></div>}
+    </div>
+    <p className="report-mix-method">Usa los mismos 11 nombres de grupo que Volumen SPT, pero los mide dentro del universo comercial de este reporte. “Resto de la facturación” completa el total con los demás grupos; la participación usa la facturación neta total de cada período.</p>
+    <div className="report-mix-card-grid commercial-mix-card-grid">
+      {report.productGroupMix.map((row) => {
+        const isRest = row.label === 'Resto de la facturación';
+        const color = isRest ? '#8a958f' : '#4f8b72';
+        return <article key={row.label} className={`report-mix-comparison-card${isRest ? ' is-rest' : ''}`}>
+        <header><div><span className="report-mix-marker" style={{ background: color }} /><strong>{row.label}</strong></div><b>{percent(row.share)}</b></header>
+        <div className="report-mix-share" aria-label={`${row.label}: ${percent(row.share)} de la facturación`}><i style={{ width: `${Math.max(0, Math.min(100, row.share))}%`, background: color }} /></div>
+        <div className="report-mix-current">
+          <div><span>Facturación</span><strong>{money(row.netAmount, true)}</strong></div>
+          <div><span>Kilos</span><strong>{kilos(row.kilos)} kg</strong></div>
+          <div><span>Clientes</span><strong>{number(row.clients)}</strong></div>
+        </div>
+        <div className="report-mix-comparisons">
+          <div className={!previousPeriodAvailable ? 'unavailable' : row.netAmountVariationPreviousPeriod != null && row.netAmountVariationPreviousPeriod >= 0 ? 'positive' : 'negative'}>
+            <span>vs {previousPeriodLabel.toLocaleLowerCase('es-AR')}</span>
+            <strong>{previousPeriodAvailable ? percent(row.netAmountVariationPreviousPeriod, true) : 'Sin cobertura'}</strong>
+            <small>{previousPeriodAvailable ? `${money(row.previousPeriod.netAmount, true)} antes · ${sharePoints(row.share, row.previousPeriodShare)}` : periodRange(report.mixPeriods.previousPeriod.start, report.mixPeriods.previousPeriod.end)}</small>
+          </div>
+          {report.periodMode === 'month' && <div className={!previousYearAvailable ? 'unavailable' : row.netAmountVariationPreviousYear != null && row.netAmountVariationPreviousYear >= 0 ? 'positive' : 'negative'}>
+            <span>vs año anterior</span>
+            <strong>{previousYearAvailable ? percent(row.netAmountVariationPreviousYear, true) : 'Sin cobertura'}</strong>
+            <small>{previousYearAvailable ? `${money(row.previousYear.netAmount, true)} antes · ${sharePoints(row.share, row.previousYearShare)}` : periodRange(report.mixPeriods.previousYear.start, report.mixPeriods.previousYear.end)}</small>
+          </div>}
+        </div>
+      </article>})}
+    </div>
   </div>;
 }
 
@@ -267,6 +311,7 @@ export function CommercialSalesReportView({ onOpenProduct, onOpenBrand, onOpenSa
       <section className="data-card commercial-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>{report.periodMode === 'year' ? `Evolución de ${report.selectedPeriod} por mes` : 'Evolución mensual'}</h2><p>{report.periodMode === 'year' ? `Facturación y kilos mensuales de ${report.selectedPeriod} contra ${Number(report.selectedPeriod) - 1}.` : 'Siete meses de facturación y kilos contra los mismos meses del año anterior.'}</p></div><div className="commercial-legend"><span><i className="current" />Facturación</span>{report.comparisonAvailable && <span><i className="prior" />{comparisonLegend}</span>}</div></div><EvolutionChart report={report} /></section>
       <section className="data-card commercial-mix-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Composición</span><h2>Venta neta por negocio</h2><p>Small Retail se muestra como Autoservicio.</p></div></div><MixChart rows={report.mix} /></section>
     </div>
+    <section className="data-card commercial-product-group-mix-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Mezcla</span><h2>Participación por grupo de producto</h2><p>Los mismos grupos de Volumen SPT, vistos sobre la facturación comercial.</p></div><span className="count-badge">{number(report.productGroupMix.length - 1)} grupos + resto</span></div><CommercialProductGroupMix report={report} /></section>
 
     <section className="data-card commercial-brand-card"><div className="data-card-header"><div><span className="section-kicker"><ShoppingBasket size={14} /> Detalle comercial</span><h2>Total de kilos y precio promedio por marca</h2><p>La flecha despliega productos; cada nombre abre su ficha y “Ver ventas” continúa con el mismo período.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable report={report} onOpenProduct={onOpenProduct} onOpenBrand={onOpenBrand} onExploreProduct={explore} /></section>
 

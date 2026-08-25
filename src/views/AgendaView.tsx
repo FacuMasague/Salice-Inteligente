@@ -342,7 +342,7 @@ export function AgendaView({
             </section>
 
             <footer className="agenda-detail-actions">
-              {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir Seguimiento</button>}
+              {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir Clientes de Cobranzas</button>}
               <button className="button secondary" disabled={!selectedClient.coordinates || selectedClient.locationPrecision === 'locality'} title={selectedClient.locationPrecision === 'locality' ? 'La ubicación debe verificarse antes de usarla en una ruta' : undefined} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> {selectedClient.locationPrecision === 'locality' ? 'Ubicación por verificar' : 'Ver en rutas'}</button>
               <button className="button primary large" onClick={() => setNoteOpen(true)}><MessageSquareText size={16} /> Agregar nota</button>
             </footer>

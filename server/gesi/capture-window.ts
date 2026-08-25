@@ -5,6 +5,14 @@ interface SptFetchWindowOptions {
   bootstrapHistoryFrom?: string;
 }
 
+interface LogisticsFetchWindowOptions {
+  hasExistingCapture: boolean;
+  historyFrom: string;
+  rollingFrom: string;
+  existingCoverageFrom?: string;
+  explicitFrom?: string;
+}
+
 export const DEFAULT_SPT_BOOTSTRAP_HISTORY_FROM = '2025-01-01';
 
 export function resolveSptFetchFrom({
@@ -18,4 +26,57 @@ export function resolveSptFetchFrom({
   const bootstrap = bootstrapHistoryFrom?.trim();
   if (!hasExistingCapture) return bootstrap || DEFAULT_SPT_BOOTSTRAP_HISTORY_FROM;
   return historyFrom;
+}
+
+/**
+ * La primera captura (o una captura antigua todavía limitada a 45 días) debe
+ * completar el mismo año móvil que las facturas. Una vez alcanzada esa
+ * cobertura, sólo se vuelven a consultar las fojas recientes: las cerradas
+ * anteriores se conservan desde la captura aprobada y no castigan a GESI.
+ */
+export function resolveLogisticsFetchFrom({
+  hasExistingCapture,
+  historyFrom,
+  rollingFrom,
+  existingCoverageFrom,
+  explicitFrom,
+}: LogisticsFetchWindowOptions) {
+  const explicit = explicitFrom?.trim();
+  if (explicit) return explicit;
+  const existing = existingCoverageFrom?.trim();
+  if (!hasExistingCapture || !existing || existing > historyFrom) return historyFrom;
+  return rollingFrom;
+}
+
+export function captureCacheMatchesActiveBundle(
+  captureTimestamp?: string | null,
+  activeBundleTimestamp?: string | null,
+) {
+  return Boolean(captureTimestamp && activeBundleTimestamp && captureTimestamp === activeBundleTimestamp);
+}
+
+export function logisticsQueryFrom(fetchFrom: string, overlapDays = 45) {
+  const value = new Date(fetchFrom);
+  if (!Number.isFinite(value.getTime()) || overlapDays <= 0) return fetchFrom;
+  value.setUTCDate(value.getUTCDate() - overlapDays);
+  return value.toISOString();
+}
+
+/**
+ * Al avanzar el año móvil, una foja histórica aprobada todavía puede contener
+ * asignaciones del día que acaba de salir de cobertura. Ese pequeño tramo
+ * anterior debe seguir disponible para validar la fuente antes de descartarlo.
+ */
+export function resolveLogisticsInvoiceValidationFrom({
+  sheetFetchFrom,
+  salesFetchFrom,
+  previousCoverageFrom,
+}: {
+  sheetFetchFrom: string;
+  salesFetchFrom: string;
+  previousCoverageFrom?: string;
+}) {
+  return [sheetFetchFrom, salesFetchFrom, previousCoverageFrom?.trim()]
+    .filter((value): value is string => Boolean(value))
+    .sort()[0] ?? sheetFetchFrom;
 }

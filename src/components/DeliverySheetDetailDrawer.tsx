@@ -80,7 +80,7 @@ export function DeliverySheetDetailDrawer({
           <div><MessageSquareText size={15} /><span><strong>Comentario de expedición</strong>{sheet.dispatchComment || 'No informado'}</span></div>
         </section>
 
-        <section className="delivery-sheet-invoices">
+        <section className="delivery-sheet-assigned-invoices">
           <div className="section-title-row">
             <div><span className="section-kicker"><FileText size={14} /> Comprobantes asignados</span><h3>Contenido de la foja</h3></div>
             <span className="count-badge">{number(invoices.length)}</span>

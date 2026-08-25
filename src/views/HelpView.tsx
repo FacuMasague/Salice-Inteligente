@@ -23,7 +23,7 @@ export function HelpView({ tutorialCompleted, onStartTutorial, onStartJourney }:
     <section className="data-card settings-tutorial-card" data-tour="settings-tutorial">
       <div className="settings-tutorial-copy">
         <div className="settings-icon"><BookOpen size={28} /></div>
-        <div><span className="section-kicker">Ayuda</span><h2>Elegí qué parte del programa querés aprender</h2><p>Cada recorrido explica una tarea concreta, cambia de pantalla automáticamente y no modifica ningún dato.</p></div>
+        <div><span className="section-kicker">Ayuda</span><h2>Elegí qué parte del programa querés aprender</h2><p>Los tutoriales explican áreas completas, cambian de pantalla automáticamente y no modifican ningún dato.</p></div>
       </div>
       <div className="tutorial-selector-grid">
         {tutorialCards.map(({ id, icon: Icon }) => {
@@ -39,7 +39,7 @@ export function HelpView({ tutorialCompleted, onStartTutorial, onStartJourney }:
       </div>
     </section>
     <section className="data-card help-journeys-card">
-      <div className="data-card-header"><div><span className="section-kicker"><PlayCircle size={14} /> Recorridos prácticos</span><h2>Aprendé una tarea concreta</h2><p>Son guías más cortas que los tutoriales generales y te llevan por las pantallas necesarias para completar un trabajo habitual.</p></div></div>
+      <div className="data-card-header"><div><span className="section-kicker"><PlayCircle size={14} /> Recorridos prácticos</span><h2>Aprendé una tarea concreta, paso a paso</h2><p>Cada guía separa la tarea en momentos claros, explica qué conviene verificar y te lleva por las pantallas necesarias sin apurarte.</p></div></div>
       <div className="help-journey-grid">{journeyCards.map(({ id, icon: Icon }) => { const journey = TASK_JOURNEYS[id]; return <article key={id}><span><Icon size={20} /></span><div><strong>{journey.title}</strong><p>{journey.description}</p><small>{journey.steps.length} {journey.steps.length === 1 ? 'paso' : 'pasos'}</small></div><button className="button secondary" onClick={() => onStartJourney(id)}><PlayCircle size={15} /> Comenzar</button></article>; })}</div>
     </section>
   </div>;

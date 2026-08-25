@@ -39,6 +39,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   onDataChanged?: () => void | Promise<void>;
 }) {
   const [mode, setMode] = useState<ProductMode>('inventory');
+  const productModeNavRef = useRef<HTMLElement>(null);
   const analysisMenuRef = useRef<HTMLDetailsElement>(null);
   const [selectedId, setSelectedId] = useState(() => [...products].sort((a, b) => b.monthlyUnits - a.monthlyUnits)[0]?.id || '');
   const [query, setQuery] = useState('');
@@ -79,6 +80,15 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   useEffect(() => {
     if (comparisonRequest > 0) setMode('compare');
   }, [comparisonRequest]);
+
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 900px)').matches) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      productModeNavRef.current?.querySelector<HTMLElement>(':scope > .active')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mode]);
 
   useEffect(() => {
     const availableIds = new Set(products.map((product) => product.id));
@@ -190,7 +200,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches) onOpenProduct(product);
   };
 
-  const modeNavigation = <nav className="product-mode-nav" aria-label="Secciones de Productos">
+  const modeNavigation = <nav ref={productModeNavRef} className="product-mode-nav" aria-label="Secciones de Productos">
     <button className={mode === 'inventory' ? 'active' : ''} aria-current={mode === 'inventory' ? 'page' : undefined} onClick={() => selectMode('inventory')}>Inventario</button>
     <button className={mode === 'catalog' ? 'active' : ''} aria-current={mode === 'catalog' ? 'page' : undefined} onClick={() => selectMode('catalog')}>Catálogo</button>
     <button className={mode === 'opportunities' ? 'active' : ''} aria-current={mode === 'opportunities' ? 'page' : undefined} onClick={() => selectMode('opportunities')}>Oportunidades</button>
