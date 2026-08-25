@@ -53,6 +53,12 @@ Las series trimestrales dejaron de depender solamente del año seleccionado y ah
 - El desplazamiento horizontal afecta sólo al gráfico; el encabezado permanece en su lugar.
 - Las exportaciones usan las mismas fechas, comparaciones y advertencias que la pantalla.
 
+## Robustez de las actualizaciones
+
+La actualización real del 25 de agosto llegó correctamente hasta la auditoría integral y fue rechazada antes de activar el manifiesto porque una oportunidad de sustitución proponía a un cliente otro producto que ya integraba sus compras observables. La ruta general de oportunidades ya excluía esos productos, pero la ruta específica de sustitutos sólo descartaba el artículo sin disponibilidad.
+
+La v2.1.2 aplica la exclusión a todos los productos comprados también al construir sustitutos y vuelve a comprobar el contrato antes de publicar el resultado. La auditoría no se relaja: sigue bloqueando cualquier contradicción y ahora incluye los IDs de los productos repetidos en el diagnóstico.
+
 ## Reglas que no cambian
 
 - Los cálculos determinísticos siguen siendo la fuente de verdad.

@@ -95,10 +95,11 @@ function opportunityReason(kinds: RecommendationKind[], adoption: number, peerCo
 }
 
 function buildSubstitutes(client: Client, products: Product[], productsById: Map<string, Product>, peers: Client[]): Recommendation[] {
+  const owned = new Set(client.purchases.map((purchase) => purchase.productId));
   const unavailablePurchased = [...new Set(client.purchases.map((purchase) => purchase.productId))]
     .map((id) => productsById.get(id))
     .filter((product): product is Product => Boolean(product) && !availableForRecommendation(product!) && product!.units90d > 0);
-  const available = products.filter(availableForRecommendation);
+  const available = products.filter((product) => !owned.has(product.id) && availableForRecommendation(product));
   const results: Recommendation[] = [];
   for (const replacedProduct of unavailablePurchased) {
     const alternatives = available
@@ -185,6 +186,9 @@ export function buildCommercialOpportunities(client: Client, clients: Client[], 
     });
   }
   return [...merged.values()]
+    // Defensa final del contrato: ninguna ruta presente o futura puede
+    // publicar como oportunidad un producto que ya integra el mix observable.
+    .filter((item) => !owned.has(item.product.id))
     .sort((left, right) => Number(right.kinds.includes('stockout_substitute')) - Number(left.kinds.includes('stockout_substitute')) || right.score - left.score || left.product.name.localeCompare(right.product.name, 'es'))
     .slice(0, limit);
 }
