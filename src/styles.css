@@ -4679,3 +4679,15 @@ html.tutorial-open body { overflow:hidden !important; overscroll-behavior:none; 
 @media(max-width:700px){.home-access-group>div.home-access-list{grid-template-columns:repeat(2,minmax(0,1fr))}.home-access-list>.home-access-card.directory,.home-access-list[data-items="2"]>.home-access-card.directory,.home-access-list[data-items="4"]>.home-access-card.directory,.home-access-list[data-items="5"]>.home-access-card.directory:nth-last-child(-n+2){grid-column:auto}.home-access-list[data-items="1"]>.home-access-card.directory,.home-access-list[data-items="3"]>.home-access-card.directory:last-child,.home-access-list[data-items="5"]>.home-access-card.directory:last-child{grid-column:1/-1}}
 @media(max-width:900px){.tutorial-selector-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.home-access-group>div.home-access-list{grid-template-columns:1fr}.home-access-list>.home-access-card.directory,.home-access-list[data-items="1"]>.home-access-card.directory,.home-access-list[data-items="3"]>.home-access-card.directory:last-child,.home-access-list[data-items="5"]>.home-access-card.directory:last-child{display:flex;min-height:132px;grid-column:auto;align-items:stretch;flex-direction:column;gap:0}.home-access-list[data-items="1"]>.home-access-card.directory .home-access-copy{margin-top:11px}.home-access-list[data-items="1"]>.home-access-card.directory .home-access-open{margin-top:auto}}
+
+/* v2.1.4 · equilibrio de espacios de trabajo */
+.home-access-group{display:flex;align-items:stretch;flex-direction:column;gap:10px}.home-access-group>header{width:100%;padding:2px 3px 0}.home-access-group>header span{max-width:760px}
+.settings-client-scope-grid{grid-template-columns:repeat(4,minmax(0,1fr));padding:0 16px 14px}.settings-client-scope-grid button{display:flex;min-width:0;align-items:flex-start;flex-direction:column;overflow:hidden;overflow-wrap:anywhere}.settings-client-scope-grid strong,.settings-client-scope-grid span{width:100%;min-width:0}.settings-inline-technical{margin:0 16px 14px;padding-top:11px}
+
+@media(min-width:1181px){.brand-directory-card{display:flex;min-height:0;align-self:stretch;flex-direction:column;contain:size}.brand-directory-list{min-height:0;max-height:none;flex:1;overflow-y:auto}}
+
+@media(min-width:1001px){.delivery-sheet-main{grid-template-rows:minmax(380px,1.6fr) minmax(160px,.55fr)}}
+
+@media(max-width:1200px){.settings-client-scope-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1000px){.delivery-sheet-map-card{min-height:460px}.delivery-sheet-map{min-height:400px}}
+@media(max-width:900px){.settings-client-scope-grid{grid-template-columns:1fr;padding:0 12px 12px}.settings-inline-technical{margin:0 12px 12px}}
