@@ -287,11 +287,11 @@ const stocks = await tracked('Existencias completas (incluye cero)', previousCap
   ? Promise.resolve(previousCapture.stocks)
   : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000));
 const balances = await tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos'));
-// Las cabeceras de venta exigen más trabajo en GESI que los maestros. Lotes de
-// 1.000 filas pueden agotar el timeout aun cuando la API está sana; 500 reduce
-// el costo inicial y GesiClient puede bajar de forma segura a 250 si hiciera falta.
-const allInvoiceHeaders = await tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 500));
-const allCreditNoteHeaders = await tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 500));
+// Las cabeceras de venta exigen más trabajo en GESI que los maestros. En la
+// captura productiva del 26/08/2026 tanto 1.000 como 500 filas agotaron el
+// timeout; 250 evita repetir ese costo conocido y conserva la misma auditoría.
+const allInvoiceHeaders = await tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 250));
+const allCreditNoteHeaders = await tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 250));
 const collectionHeaders = await tracked('Cobros 365d', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Cobros/GetList', 'comprobantes', listBody(historyFrom), 1000));
 const pendingDocuments = await tracked('Comprobantes pendientes', fetchPendingDocuments());
 const channels = await tracked('Canales', client.getAll<GesiRow>('/api/Maestros/CanalesDeVenta/GetList', 'canalesDeVenta'));
@@ -376,7 +376,7 @@ if (salesHistoryFrom.slice(0, 10) > logisticsInvoiceValidationFrom.slice(0, 10))
       '/api/Ventas/Comprobantes/Facturas/GetList',
       'comprobantes',
       listBody(logisticsInvoiceValidationFrom, salesHistoryFrom),
-      500,
+      250,
     ),
   );
   logisticsInvoiceHeaders = [...new Map(

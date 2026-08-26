@@ -8,9 +8,9 @@ La v2.1.6 corrige una falla observada en Render durante la captura automática d
 
 ## Corrección
 
-- Las consultas de cabeceras de facturas y notas de crédito comienzan con páginas de 500 registros.
+- Las consultas de cabeceras de facturas y notas de crédito comienzan con páginas de 250 registros, luego de comprobar en producción que también 500 agotaba el timeout.
 - Si una colección POST agota sus reintentos por timeout, conexión interrumpida o error transitorio del servidor, la captura completa se reinicia con la mitad del tamaño de página.
-- El descenso puede continuar de 1.000 a 500 y luego a 250 registros.
+- Para otras colecciones POST, el descenso adaptativo puede continuar de 1.000 a 500 y luego a 250 registros.
 - La colección se reinicia desde la primera página para evitar huecos o duplicados al cambiar la paginación.
 - Las verificaciones de completitud siguen activas: reducir el lote no permite aprobar una captura parcial.
 - Los errores no transitorios y los rechazos funcionales continúan bloqueando el candidato.
