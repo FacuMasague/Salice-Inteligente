@@ -39,7 +39,7 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 - Los roles disponibles son Developer, Administrador y Oficina.
 - Developer conserva las funciones administrativas y agrega una vista privada de accesos, tiempo activo por sección, días de uso, cambios con contexto seguro y alertas técnicas.
 - El tiempo de uso deja de acumularse después de cinco minutos sin interacción.
-- Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.
+- Las sesiones se conservan de forma segura en cada dispositivo hasta que el usuario cierre sesión; también se invalidan si la cuenta es deshabilitada o su acceso es revocado.
 - Deshabilitar una cuenta invalida inmediatamente sus sesiones.
 - Vistas guardadas, favoritos y reportes recientes pertenecen al usuario.
 - Las notas, correcciones y gestiones registran la persona autenticada; el navegador no puede elegir otro autor.

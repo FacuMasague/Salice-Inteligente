@@ -4,6 +4,9 @@ import { authStore } from './auth-store.js';
 
 const SESSION_COOKIE = 'salice_session';
 const CSRF_COOKIE = 'salice_csrf';
+// Las cookies HTTP necesitan un Max-Age finito. Se usa el máximo entero seguro
+// ampliamente aceptado y se renueva cada vez que el dispositivo valida la sesión.
+const PERSISTENT_COOKIE_MAX_AGE_SECONDS = 2_147_483_647;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const LOCAL_DEVELOPMENT_ORIGINS = new Set([
   'http://127.0.0.1:5173',
@@ -186,8 +189,8 @@ export function installPublicAuthRoutes(app: express.Express) {
       return res.status(401).json({ authenticated: false, user: null });
     }
     const csrfToken = store.rotateCsrf(session.id);
-    const maxAge = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000));
-    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, csrfToken, { maxAge }));
+    res.append('Set-Cookie', cookieValue(req, SESSION_COOKIE, token, { httpOnly: true, maxAge: PERSISTENT_COOKIE_MAX_AGE_SECONDS }));
+    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, csrfToken, { maxAge: PERSISTENT_COOKIE_MAX_AGE_SECONDS }));
     return res.json({ authenticated: true, user: session.user });
   });
 
@@ -228,9 +231,8 @@ export function installPublicAuthRoutes(app: express.Express) {
     }
     loginAttempts.delete(key);
     const session = store.createSession(result.user.id, { userAgent: req.get('user-agent'), ipAddress: req.ip });
-    const maxAge = Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000);
-    res.append('Set-Cookie', cookieValue(req, SESSION_COOKIE, session.token, { httpOnly: true, maxAge }));
-    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, session.csrfToken, { maxAge }));
+    res.append('Set-Cookie', cookieValue(req, SESSION_COOKIE, session.token, { httpOnly: true, maxAge: PERSISTENT_COOKIE_MAX_AGE_SECONDS }));
+    res.append('Set-Cookie', cookieValue(req, CSRF_COOKIE, session.csrfToken, { maxAge: PERSISTENT_COOKIE_MAX_AGE_SECONDS }));
     return res.json({ authenticated: true, user: result.user });
   });
 }

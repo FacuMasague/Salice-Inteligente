@@ -11,7 +11,9 @@ import type {
 } from '../shared/auth.js';
 import { getOperationalDatabasePath } from './operational-store.js';
 
-const SESSION_DAYS = 30;
+// La columna se conserva para que las bases operativas existentes sigan siendo
+// compatibles. La vigencia real de la sesión ya no depende de una fecha.
+const PERSISTENT_SESSION_MARKER = '9999-12-31T23:59:59.999Z';
 const PASSWORD_MIN_LENGTH = 8;
 export const ANTI_AFK_MINUTES = 5;
 const ACTIVITY_VIEWS = new Set([
@@ -261,17 +263,15 @@ export class AuthStore {
   }
 
   createSession(userId: string, context: { userAgent?: string; ipAddress?: string } = {}) {
-    this.pruneSessions();
     const token = randomBytes(32).toString('base64url');
     const csrfToken = randomBytes(24).toString('base64url');
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + SESSION_DAYS * 86_400_000);
     this.database.prepare(`
       INSERT INTO user_sessions (
         id, user_id, token_hash, csrf_hash, created_at, expires_at, last_seen_at, user_agent, ip_address
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      randomUUID(), userId, tokenHash(token), tokenHash(csrfToken), now.toISOString(), expiresAt.toISOString(),
+      randomUUID(), userId, tokenHash(token), tokenHash(csrfToken), now.toISOString(), PERSISTENT_SESSION_MARKER,
       now.toISOString(), String(context.userAgent ?? '').slice(0, 300), String(context.ipAddress ?? '').slice(0, 100),
     );
     const sessionRow = this.database.prepare('SELECT id FROM user_sessions WHERE token_hash = ?').get(tokenHash(token)) as Row;
@@ -282,22 +282,20 @@ export class AuthStore {
       randomUUID(), userId, String(sessionRow.id), now.toISOString(),
       String(context.ipAddress ?? '').slice(0, 100), String(context.userAgent ?? '').slice(0, 300),
     );
-    const sessions = this.database.prepare('SELECT id FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC').all(userId) as Row[];
-    sessions.slice(5).forEach((row) => this.database.prepare('DELETE FROM user_sessions WHERE id = ?').run(String(row.id)));
-    return { token, csrfToken, expiresAt: expiresAt.toISOString() };
+    return { token, csrfToken };
   }
 
   getSession(token: string) {
     if (!token) return null;
     const row = this.database.prepare(`
-      SELECT sessions.id AS session_id, sessions.csrf_hash, sessions.expires_at, users.*
+      SELECT sessions.id AS session_id, sessions.csrf_hash, users.*
       FROM user_sessions sessions
       JOIN users ON users.id = sessions.user_id
-      WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND users.status = 'active'
-    `).get(tokenHash(token), new Date().toISOString()) as Row | undefined;
+      WHERE sessions.token_hash = ? AND users.status = 'active'
+    `).get(tokenHash(token)) as Row | undefined;
     if (!row) return null;
     this.database.prepare('UPDATE user_sessions SET last_seen_at = ? WHERE id = ?').run(new Date().toISOString(), String(row.session_id));
-    return { id: String(row.session_id), csrfHash: String(row.csrf_hash), expiresAt: String(row.expires_at), user: userFromRow(row) };
+    return { id: String(row.session_id), csrfHash: String(row.csrf_hash), user: userFromRow(row) };
   }
 
   csrfMatches(sessionId: string, csrfToken: string) {
@@ -542,9 +540,6 @@ export class AuthStore {
     `);
   }
 
-  private pruneSessions() {
-    this.database.prepare('DELETE FROM user_sessions WHERE expires_at <= ?').run(new Date().toISOString());
-  }
 }
 
 let defaultStore: AuthStore | null = null;
