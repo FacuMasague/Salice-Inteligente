@@ -178,7 +178,7 @@ export function installPublicAuthRoutes(app: express.Express) {
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, version: process.env.npm_package_version ?? '2.1.6' });
+    res.json({ ok: true, version: process.env.npm_package_version ?? '2.1.7' });
   });
 
   app.get('/api/auth/session', (req, res) => {

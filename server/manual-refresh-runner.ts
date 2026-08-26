@@ -2,11 +2,22 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { sendDeveloperAlert } from './developer-alerts.js';
 import { listRefreshRuns } from './operational-store.js';
+import { REFRESH_TIMEOUT_EXIT_CODE } from '../shared/refresh-retry.js';
 
 let activeProcess: ChildProcess | null = null;
 let startedAt = '';
 let trigger = '';
 let lastExit: { at: string; code: number | null; signal: NodeJS.Signals | null } | null = null;
+
+export interface RefreshProcessOutcome {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+}
+
+interface StartManualRefreshOptions {
+  onExit?: (outcome: RefreshProcessOutcome) => void;
+}
 
 export function manualRefreshProcessStatus() {
   return {
@@ -18,7 +29,11 @@ export function manualRefreshProcessStatus() {
   };
 }
 
-export function startManualRefresh(workspace = process.cwd(), requestedTrigger = 'manual') {
+export function startManualRefresh(
+  workspace = process.cwd(),
+  requestedTrigger = 'manual',
+  options: StartManualRefreshOptions = {},
+) {
   if (activeProcess) return { started: false as const, ...manualRefreshProcessStatus() };
   const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
   const script = resolve(workspace, 'scripts/refresh-gesi-manual.ts');
@@ -31,6 +46,12 @@ export function startManualRefresh(workspace = process.cwd(), requestedTrigger =
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   activeProcess = child;
+  let exitReported = false;
+  const reportExit = (outcome: RefreshProcessOutcome) => {
+    if (exitReported) return;
+    exitReported = true;
+    options.onExit?.(outcome);
+  };
   child.once('error', (error) => {
     console.error(`No se pudo iniciar la actualización manual: ${error.message}`);
     lastExit = { at: new Date().toISOString(), code: null, signal: null };
@@ -39,6 +60,7 @@ export function startManualRefresh(workspace = process.cwd(), requestedTrigger =
       kind: 'refresh-process', severity: 'critical', title: 'No se pudo iniciar la actualización de datos',
       detail: error.message, source: `controlador de actualización · ${requestedTrigger}`,
     }).catch(() => undefined);
+    reportExit({ code: null, signal: null, timedOut: false });
   });
   child.once('exit', (code, signal) => {
     lastExit = { at: new Date().toISOString(), code, signal };
@@ -63,6 +85,7 @@ export function startManualRefresh(workspace = process.cwd(), requestedTrigger =
         }).catch(() => undefined);
       }
     }
+    reportExit({ code, signal, timedOut: !signal && code === REFRESH_TIMEOUT_EXIT_CODE });
   });
   return { started: true as const, ...manualRefreshProcessStatus() };
 }

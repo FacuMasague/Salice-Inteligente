@@ -22,6 +22,7 @@ import { sendDeveloperAlert } from '../server/developer-alerts.js';
 import { prepareAiSchema } from '../server/ai-store.js';
 import type { DashboardData } from '../shared/models.js';
 import { MANUAL_REFRESH_STAGES } from '../shared/refresh-plan.js';
+import { isRefreshTimeoutMessage, REFRESH_TIMEOUT_EXIT_CODE } from '../shared/refresh-retry.js';
 
 const workspace = process.cwd();
 const tsxCli = resolve(workspace, 'node_modules/tsx/dist/cli.mjs');
@@ -46,9 +47,10 @@ if (resumeRequested) {
 }
 
 const configuredTrigger = String(process.env.SALICE_REFRESH_TRIGGER ?? '');
+const automaticTrigger = /^(?:scheduled|bootstrap)(?:-retry-[23])?$/.test(configuredTrigger);
 const runTrigger = resumeRequested
   ? 'manual-resume'
-  : configuredTrigger === 'scheduled' || configuredTrigger === 'bootstrap'
+  : automaticTrigger
     ? configuredTrigger
     : 'manual';
 const run = beginRefreshRun(runTrigger);
@@ -87,6 +89,7 @@ async function execute(stage: (typeof MANUAL_REFRESH_STAGES)[number]) {
       ? activationHeapMb
       : defaultHeapMb;
   await new Promise<void>((resolveStage, rejectStage) => {
+    let stderrTail = '';
     const child = spawn(process.execPath, [
       `--max-old-space-size=${heapMb}`,
       tsxCli,
@@ -95,20 +98,27 @@ async function execute(stage: (typeof MANUAL_REFRESH_STAGES)[number]) {
     ], {
       cwd: workspace,
       env: candidateEnvironment,
-      stdio: 'inherit',
+      stdio: ['ignore', 'inherit', 'pipe'],
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      stderrTail = `${stderrTail}${chunk.toString('utf8')}`.slice(-20_000);
     });
     child.once('error', rejectStage);
     child.once('exit', (code, signal) => {
       if (code === 0) resolveStage();
-      else rejectStage(new Error(`${basename(stage.script)} terminó con ${signal ? `señal ${signal}` : `código ${code}`}`));
+      else {
+        const timeout = stage.id === 'capture' && isRefreshTimeoutMessage(stderrTail);
+        rejectStage(new Error(`${basename(stage.script)} terminó con ${signal ? `señal ${signal}` : `código ${code}`}${timeout ? ' por timeout de GESI' : ''}`));
+      }
     });
   });
 }
 
 try {
-  const triggerLabel = runTrigger === 'bootstrap'
+  const triggerLabel = runTrigger.startsWith('bootstrap')
     ? 'Actualización inicial'
-    : runTrigger === 'scheduled'
+    : runTrigger.startsWith('scheduled')
       ? 'Actualización automática'
       : runTrigger === 'manual-resume'
         ? 'Reanudación manual'
@@ -194,5 +204,7 @@ try {
   if (!bundleActivated) {
     await rm(bundlePaths.directory, { recursive: true, force: true }).catch(() => undefined);
   }
-  process.exitCode = 1;
+  process.exitCode = currentStage === 'capture' && isRefreshTimeoutMessage(error instanceof Error ? error.message : error)
+    ? REFRESH_TIMEOUT_EXIT_CODE
+    : 1;
 }

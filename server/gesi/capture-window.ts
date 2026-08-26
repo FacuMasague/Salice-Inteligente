@@ -13,42 +13,7 @@ interface LogisticsFetchWindowOptions {
   explicitFrom?: string;
 }
 
-export interface CalendarMonthWindow {
-  key: string;
-  from: string;
-  until: string;
-}
-
 export const DEFAULT_SPT_BOOTSTRAP_HISTORY_FROM = '2025-01-01';
-
-/**
- * Divide una consulta histórica en meses calendario sin superponer límites.
- * GESI puede agotar su tiempo de respuesta antes de devolver siquiera la
- * primera página cuando debe filtrar un año completo de comprobantes; limitar
- * también el rango temporal reduce ese trabajo sin cambiar el universo final.
- */
-export function calendarMonthWindows(start: string, end: string): CalendarMonthWindow[] {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) {
-    throw new Error('La ventana de captura debe indicar fechas válidas.');
-  }
-  if (startDate > endDate) return [];
-
-  const windows: CalendarMonthWindow[] = [];
-  let cursor = new Date(startDate);
-  while (cursor <= endDate) {
-    const nextMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
-    const windowEnd = new Date(Math.min(endDate.getTime(), nextMonth.getTime() - 1));
-    windows.push({
-      key: cursor.toISOString().slice(0, 7),
-      from: cursor.toISOString(),
-      until: windowEnd.toISOString(),
-    });
-    cursor = nextMonth;
-  }
-  return windows;
-}
 
 export function resolveSptFetchFrom({
   hasExistingCapture,

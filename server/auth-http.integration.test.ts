@@ -99,7 +99,7 @@ describe('protección HTTP de los datos privados', () => {
     const health = await fetch(`${baseUrl}/api/health`);
     const healthPayload = await health.json() as Record<string, unknown>;
     expect(health.status).toBe(200);
-    expect(healthPayload).toEqual({ ok: true, version: '2.1.6' });
+    expect(healthPayload).toEqual({ ok: true, version: '2.1.7' });
     expect(healthPayload).not.toHaveProperty('generatedAt');
     expect(healthPayload).not.toHaveProperty('source');
     expect(health.headers.get('content-security-policy')).toContain('https://*.tile.openstreetmap.org');
