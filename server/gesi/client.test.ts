@@ -8,6 +8,7 @@ const credentials = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -181,5 +182,45 @@ describe('GesiClient.request', () => {
 
     expect(sheets).toEqual(complete);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('reinicia una colección POST con páginas menores tras agotar los reintentos por timeout', async () => {
+    vi.useFakeTimers();
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'token-ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockRejectedValueOnce(timeout)
+      .mockRejectedValueOnce(timeout)
+      .mockRejectedValueOnce(timeout)
+      .mockRejectedValueOnce(timeout)
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        comprobantes: [{ comprobanteID: 1 }],
+        paginacion: { totalPaginas: 1, totalElementos: 1 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const client = new GesiClient(credentials);
+    await client.login();
+    const capture = client.postAll<{ comprobanteID: number }>(
+      '/api/Ventas/Comprobantes/Facturas/GetList',
+      'comprobantes',
+      { datosOperacion: {} },
+      1000,
+    );
+    await vi.runAllTimersAsync();
+
+    await expect(capture).resolves.toEqual([{ comprobanteID: 1 }]);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('pageNumber=1&pageSize=1000');
+    expect(String(fetchMock.mock.calls[5][0])).toContain('pageNumber=1&pageSize=1000');
+    expect(String(fetchMock.mock.calls[6][0])).toContain('pageNumber=1&pageSize=500');
   });
 });

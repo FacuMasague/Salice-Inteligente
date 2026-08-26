@@ -37,6 +37,22 @@ function retryableTransportError(error: unknown) {
   ].some((signal) => description.includes(signal));
 }
 
+function canRetryWithSmallerPages(error: unknown) {
+  const description = error instanceof Error
+    ? `${error.name} ${error.message}`.toLocaleLowerCase('en')
+    : String(error ?? '').toLocaleLowerCase('en');
+  return [
+    'timeout',
+    'timed out',
+    'operation was aborted',
+    'fetch failed',
+    'terminated',
+    'econnreset',
+    'etimedout',
+  ].some((signal) => description.includes(signal))
+    || /respondió http 5\d\d/.test(description);
+}
+
 export class GesiClient {
   private token = '';
 
@@ -140,10 +156,22 @@ export class GesiClient {
   }
 
   async postAll<T>(path: string, collectionKey: string, body: unknown, pageSize = 500): Promise<T[]> {
-    return this.collectWithCompletenessRetry<T>(path, collectionKey, pageSize, {
+    const init: RequestInit = {
       method: 'POST',
       body: JSON.stringify(body),
-    });
+    };
+    let activePageSize = Math.max(1, Math.floor(pageSize));
+    const minimumPageSize = Math.min(activePageSize, 250);
+    while (true) {
+      try {
+        return await this.collectWithCompletenessRetry<T>(path, collectionKey, activePageSize, init);
+      } catch (error) {
+        const nextPageSize = Math.max(minimumPageSize, Math.floor(activePageSize / 2));
+        if (!canRetryWithSmallerPages(error) || nextPageSize >= activePageSize) throw error;
+        console.warn(`${path}: la página de ${activePageSize} registros no pudo completarse; se reinicia la captura con páginas de ${nextPageSize}.`);
+        activePageSize = nextPageSize;
+      }
+    }
   }
 
   /**
