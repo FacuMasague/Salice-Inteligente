@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildReportLink, reportFiltersFromLocation, reportViewFromLocation } from './report-links';
+import { describe, expect, it, vi } from 'vitest';
+import { buildReportLink, replaceViewInLocation, reportFiltersFromLocation, reportViewFromLocation } from './report-links';
 
 const location = { href: 'http://localhost:5173/?old=value', search: '?view=commercial-sales&f.brand=Mars&f.seller=Ana' } as Location;
 
@@ -17,5 +17,12 @@ describe('report internal links', () => {
 
   it('reads the requested report', () => {
     expect(reportViewFromLocation(location)).toBe('commercial-sales');
+  });
+
+  it('cambia la vista sin perder el estado de navegación de la sesión', () => {
+    const state = { saliceViewUserId: 'usuario-1' };
+    const history = { state, replaceState: vi.fn() } as unknown as History;
+    replaceViewInLocation('products', location, history);
+    expect(history.replaceState).toHaveBeenCalledWith(state, '', new URL('http://localhost:5173/?view=products'));
   });
 });

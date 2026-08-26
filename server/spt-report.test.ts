@@ -36,6 +36,9 @@ describeWithDatabase('reporte SPT construido desde GESI', () => {
     expect(report!.productGroups.reduce((sum, row) => sum + row.previousMonth.kilos, 0)).toBeCloseTo(report!.previousMonth.kilos, 6);
     expect(report!.productGroups.reduce((sum, row) => sum + row.previousYear.kilos, 0)).toBeCloseTo(report!.previousYear.kilos, 6);
     expect(report!.productGroups.reduce((sum, row) => sum + row.share, 0)).toBeCloseTo(100, 6);
+    expect(report!.productGroups.map((row) => row.kilos)).toEqual(
+      [...report!.productGroups].map((row) => row.kilos).sort((left, right) => right - left),
+    );
     expect(report!.mixPeriods.current).toEqual({ start: '2026-07-01', end: '2026-07-31' });
     expect(report!.mixPeriods.previousMonth).toMatchObject({ start: '2026-06-01', end: '2026-06-30', available: true });
     expect(report!.mixPeriods.previousYear).toMatchObject({ start: '2025-07-01', end: '2025-07-31', available: true });

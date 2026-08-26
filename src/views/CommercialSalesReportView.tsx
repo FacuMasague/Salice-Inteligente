@@ -122,7 +122,7 @@ function CommercialProductGroupMix({ report }: { report: CommercialSalesReportPa
   const previousPeriodTotal = report.productGroupMix.reduce((sum, row) => sum + row.previousPeriod.netAmount, 0);
   const previousYearTotal = report.productGroupMix.reduce((sum, row) => sum + row.previousYear.netAmount, 0);
   const previousPeriodLabel = report.periodMode === 'year' ? 'Año anterior' : 'Mes anterior';
-  return <div className="report-mix-comparison commercial-product-group-mix">
+  return <div className="report-mix-comparison spt-product-mix commercial-product-group-mix">
     <div className="report-mix-denominators" aria-label="Períodos y denominadores de la mezcla de facturación">
       <div><span>Período elegido</span><strong>{money(report.current.netAmount, true)}</strong><small>{periodRange(report.mixPeriods.current.start, report.mixPeriods.current.end)}</small></div>
       <div><span>{previousPeriodLabel}</span><strong>{previousPeriodAvailable ? money(previousPeriodTotal, true) : 'Sin cobertura'}</strong><small>{periodRange(report.mixPeriods.previousPeriod.start, report.mixPeriods.previousPeriod.end)}</small></div>
@@ -134,8 +134,7 @@ function CommercialProductGroupMix({ report }: { report: CommercialSalesReportPa
         const isRest = row.label === 'Resto de la facturación';
         const color = isRest ? '#8a958f' : '#4f8b72';
         return <article key={row.label} className={`report-mix-comparison-card${isRest ? ' is-rest' : ''}`}>
-        <header><div><span className="report-mix-marker" style={{ background: color }} /><strong>{row.label}</strong></div><b>{percent(row.share)}</b></header>
-        <div className="report-mix-share" aria-label={`${row.label}: ${percent(row.share)} de la facturación`}><i style={{ width: `${Math.max(0, Math.min(100, row.share))}%`, background: color }} /></div>
+        <header><div><span className="report-mix-marker" style={{ background: color }} /><strong>{row.label}</strong></div><span className="spt-mix-share-label"><small>Participación</small><b>{percent(row.share)}</b></span></header>
         <div className="report-mix-current">
           <div><span>Facturación</span><strong>{money(row.netAmount, true)}</strong></div>
           <div><span>Kilos</span><strong>{kilos(row.kilos)} kg</strong></div>

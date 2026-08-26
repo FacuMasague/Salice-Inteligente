@@ -35,7 +35,10 @@ describeWithDatabase('Reporte Ventas - Comercial construido desde GESI', () => {
     expect(report!.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
     expect(report!.mix.reduce((sum, row) => sum + row.share, 0)).toBeCloseTo(100, 6);
     expect(report!.productGroupMix).toHaveLength(12);
-    expect(report!.productGroupMix.map((row) => row.label)).toEqual([...SPT_MAIN_PRODUCT_GROUPS, COMMERCIAL_PRODUCT_GROUP_REST_LABEL]);
+    expect(new Set(report!.productGroupMix.map((row) => row.label))).toEqual(new Set([...SPT_MAIN_PRODUCT_GROUPS, COMMERCIAL_PRODUCT_GROUP_REST_LABEL]));
+    expect(report!.productGroupMix.map((row) => row.netAmount)).toEqual(
+      [...report!.productGroupMix].map((row) => row.netAmount).sort((left, right) => right - left),
+    );
     expect(report!.productGroupMix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report!.current.netAmount, 4);
     expect(report!.productGroupMix.reduce((sum, row) => sum + row.share, 0)).toBeCloseTo(100, 6);
     expect(report!.productGroupMix.reduce((sum, row) => sum + row.previousPeriod.netAmount, 0)).toBeCloseTo(report!.comparison.netAmount, 4);

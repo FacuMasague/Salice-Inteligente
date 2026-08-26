@@ -1,6 +1,6 @@
-# Salice Inteligente · v2.1.2
+# Salice Inteligente · v2.1.3
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.2 separa la existencia física del almacén, los pedidos comprometidos y la disponibilidad para vender; completa las comparaciones trimestrales de Mars, NutriPet y Baires sobre su ventana visible; y termina de pulir Inicio, Productos, Cobranzas y Volumen SPT. En teléfonos se conserva siempre la vista simple de v2.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.3 hace más predecible la navegación, conserva la pestaña activa al recargar, ordena y unifica las lecturas de Mezcla, mejora el trabajo con muchas fojas y corrige la lectura de clientes en Vendedores. También reorganiza Inicio y completa Ayuda con un tutorial por cada sección de trabajo. En teléfonos se conserva siempre la vista simple de v2.0.
 
 La versión no modifica permisos ni persistencia. En inventario corrige una distinción funcional: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También amplía la cobertura histórica de fojas de reparto, pero conserva el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
@@ -177,7 +177,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.1.2
+## Alcance que continúa fuera de v2.1.3
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -215,3 +215,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v2.1.0.md`
 - `docs/release-v2.1.1.md`
 - `docs/release-v2.1.2.md`
+- `docs/release-v2.1.3.md`

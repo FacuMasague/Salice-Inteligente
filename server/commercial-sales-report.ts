@@ -259,7 +259,10 @@ function productGroupMix(
       netAmountVariationPreviousPeriod: metricVariation(currentRow.netAmount, previousPeriodRow.netAmount),
       netAmountVariationPreviousYear: metricVariation(currentRow.netAmount, previousYearRow.netAmount),
     };
-  });
+  }).sort((left, right) => right.netAmount - left.netAmount
+    || right.previousPeriod.netAmount - left.previousPeriod.netAmount
+    || right.previousYear.netAmount - left.previousYear.netAmount
+    || left.label.localeCompare(right.label, 'es'));
 }
 
 function brandBreakdown(database: DatabaseSync, filters: CommercialSalesFilters, start: string, end: string, elapsedDays: number): { rows: CommercialSalesBrandRow[]; total: CommercialSalesBrandTotal } {

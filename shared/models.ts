@@ -17,7 +17,7 @@ export type AgendaSource = 'algorithm' | 'manual' | 'promise';
 export type AgendaStatus = 'pending' | 'completed' | 'cancelled';
 export type CreditTermStatus = 'unavailable' | 'single' | 'consistent' | 'predominant' | 'mixed';
 
-export const APP_VERSION = '2.1.2';
+export const APP_VERSION = '2.1.3';
 
 export const SALICE_DEPOT: {
   name: string;

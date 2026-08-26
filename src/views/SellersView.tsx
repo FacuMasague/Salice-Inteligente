@@ -51,6 +51,14 @@ const lensLabels: Array<{ value: PortfolioLens; label: string }> = [
   { value: 'high_priority', label: 'Prioridad alta' },
 ];
 
+const portfolioLensCounts = (rows: SellerPortfolioProfile['clientRows']) => rows.reduce<Record<PortfolioLens, number>>((counts, row) => {
+  counts.all += 1;
+  if (matchesPortfolioLens(row, 'high_risk')) counts.high_risk += 1;
+  if (matchesPortfolioLens(row, 'high_opportunity')) counts.high_opportunity += 1;
+  if (matchesPortfolioLens(row, 'high_priority')) counts.high_priority += 1;
+  return counts;
+}, { all: 0, high_risk: 0, high_opportunity: 0, high_priority: 0 });
+
 type PortfolioSortKey = 'seller' | 'clients' | 'sales' | 'localities' | 'risk' | 'opportunity' | 'priority';
 
 const monthLabels = (snapshotDate: string) => {
@@ -113,6 +121,13 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
     return profile.prioritySignalClients;
   });
   const selected = profiles.find((profile) => profile.name === selectedSeller) ?? profiles[0] ?? null;
+  const normalizedClientQuery = clientQuery.trim().toLocaleLowerCase('es');
+  const lensCounts = useMemo(() => portfolioLensCounts(selected?.clientRows ?? []), [selected]);
+  const visibleClients = useMemo(() => (selected?.clientRows ?? []).filter((row) => (
+    matchesPortfolioLens(row, lens)
+    && (!normalizedClientQuery || `${row.client.name} ${row.client.tradeName} ${row.client.reference} ${row.client.locality}`
+      .toLocaleLowerCase('es').includes(normalizedClientQuery))
+  )), [lens, normalizedClientQuery, selected]);
   const selectedAiSummary = selected ? aiSummaries.find((item) => item.entityId === selected.name) ?? null : null;
   const totalClients = profiles.reduce((sum, profile) => sum + profile.activeClients, 0);
   const totalSales = profiles.reduce((sum, profile) => sum + profile.sales90d, 0);
@@ -135,13 +150,6 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
     setClientQuery('');
     setLens('all');
   };
-  const normalizedClientQuery = clientQuery.trim().toLocaleLowerCase('es');
-  const visibleClients = selected.clientRows.filter((row) => (
-    matchesPortfolioLens(row, lens)
-    && (!normalizedClientQuery || `${row.client.name} ${row.client.tradeName} ${row.client.reference} ${row.client.locality}`
-      .toLocaleLowerCase('es').includes(normalizedClientQuery))
-  ));
-  const lensCount = (value: PortfolioLens) => selected.clientRows.filter((row) => matchesPortfolioLens(row, value)).length;
   const direction = (key: PortfolioSortKey) => portfolioSort.key === key ? portfolioSort.direction : null;
   const changeSort = (key: PortfolioSortKey) => setPortfolioSort((current) => cycleSortDescendingFirst(current, key));
 
@@ -217,7 +225,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
               activeCount={lens === 'all' ? 0 : 1}
               triggerLabel="Filtrar por señal"
             >
-              {lensLabels.map((item) => <button key={item.value} className={lens === item.value ? 'active' : ''} onClick={() => setLens(item.value)}>{item.label}<span>{lensCount(item.value)}</span></button>)}
+              {lensLabels.map((item) => <button type="button" key={item.value} className={`seller-lens-option ${lens === item.value ? 'active' : ''}`} aria-pressed={lens === item.value} onClick={() => setLens(item.value)}>{item.label}<span>{lensCounts[item.value]}</span></button>)}
             </MobileFilterSheet></div>
           </div>
           <div className="seller-priority-list seller-portfolio-client-list">

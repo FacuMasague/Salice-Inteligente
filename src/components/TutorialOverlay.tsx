@@ -13,7 +13,7 @@ export interface TutorialStep {
   tip: string;
 }
 
-export type TutorialSection = 'operations' | 'administration' | 'reports';
+export type TutorialSection = 'daily-work' | 'clients-sales' | 'planning' | 'reports';
 
 export interface TutorialDefinition {
   id: TutorialSection;
@@ -24,39 +24,46 @@ export interface TutorialDefinition {
 }
 
 export const TUTORIALS: Record<TutorialSection, TutorialDefinition> = {
-  operations: {
-    id: 'operations',
-    label: 'Centro operativo',
-    title: 'Clientes, territorio y catálogo',
-    description: 'Un recorrido práctico por mapa, clientes, vendedores, productos, marcas y rutas, con criterios para interpretar cada dato.',
+  'clients-sales': {
+    id: 'clients-sales',
+    label: 'Clientes y ventas',
+    title: 'Cartera, ventas y catálogo',
+    description: 'Un recorrido por clientes, vendedores, ventas, productos y marcas para pasar del panorama comercial a la evidencia concreta.',
     steps: [
-      { view: 'home', target: 'home-kpis', eyebrow: 'Inicio', title: 'Empezá por el pulso comercial', description: 'Los indicadores superiores resumen la cartera activa y mantienen separadas las ventas, la cobranza y las oportunidades para que cada señal conserve su significado.', details: ['Leé primero el período y la fecha de corte: explican hasta qué día llegan las ventas y los saldos.', 'Cada indicador es también un acceso: usalo para abrir Clientes, Ventas o Cobranzas sin buscar la sección en el menú.'], tip: 'Los clientes inactivos siguen disponibles como historial, pero no alteran los indicadores operativos.' },
-      { view: 'map', target: 'map-filters', eyebrow: 'Mapa', title: 'Elegí qué clientes querés ver', description: 'Los filtros permiten reducir el territorio a una pregunta concreta sin cambiar los datos originales.', details: ['Combiná estado del cliente, vendedor, localidad, ubicación corregida y señales de cobranza para preparar una revisión.', 'Los puntos cercanos se agrupan automáticamente: el número del grupo indica cuántos clientes hay y se separa al acercar el mapa.'], tip: 'Restablecé los filtros antes de comparar dos zonas para no arrastrar una selección anterior.' },
-      { view: 'map', target: 'client-panel', eyebrow: 'Ficha del cliente', title: 'Abrí toda la información desde el mapa', description: 'La ficha concentra la identidad comercial, compras, cuenta corriente, oportunidades y seguimiento humano del cliente seleccionado.', details: ['Recorré las pestañas para separar información comercial, financiera y notas; una señal no reemplaza a la otra.', 'Revisá la advertencia de ubicación antes de usar el punto: las coordenadas corregidas son aproximadas y conservan el dato original para auditoría.'], tip: 'Una ubicación aproximada puede verse en el mapa, pero nunca se utiliza para calcular rutas.' },
       { view: 'clients', target: 'clients-directory', eyebrow: 'Clientes', title: 'Compará la cartera en una sola tabla', description: 'El directorio ayuda a pasar de una revisión general a clientes concretos usando un mismo conjunto de filtros y columnas comparables.', details: ['Buscá por nombre o código y combiná vendedor, localidad, estado y ubicación para acotar la lista.', 'Ordená las columnas de ventas, deuda, prioridad o última compra; al abrir una fila conservás el contexto del cliente.'], tip: 'Una prioridad alta es una señal para revisar, no una decisión automática sobre el cliente.' },
       { view: 'sellers', target: 'sellers-overview', eyebrow: 'Vendedores', title: 'Entendé cada cartera comercial', description: 'La vista compara responsables sobre clientes activos, ventas, localidades y señales comerciales calculadas con el mismo corte.', details: ['Empezá por el resumen para detectar diferencias de escala y luego seleccioná un vendedor para ver su cartera.', 'Contrastá ventas con cantidad de clientes y actividad reciente: un total alto no implica necesariamente buena cobertura.'], tip: 'Las localidades describen datos observados; no son territorios asignados automáticamente.' },
+      { view: 'sales-explorer', target: 'sales-explorer-overview', eyebrow: 'Ventas', title: 'Definí primero qué querés analizar', description: 'El explorador permite investigar la venta neta desde el indicador general hasta los renglones de un comprobante sin cambiar de fuente.', details: ['Elegí período y combiná vendedor, cliente, producto, marca, rubro, canal o zona; todas las cifras se recalculan juntas.', 'Revisá los filtros activos antes de comparar resultados y usá restablecer para volver a la selección completa.'], tip: 'Fecha de corte, filtros y comparación deben coincidir antes de explicar una diferencia entre pantallas.' },
+      { view: 'sales-explorer', target: 'sales-explorer-overview', eyebrow: 'Ventas', title: 'Bajá del total al comprobante', description: 'Las tablas y gráficos funcionan como niveles de una misma investigación comercial y conservan el contexto de la selección.', details: ['Seleccioná una agrupación para identificar clientes o productos responsables y abrí el comprobante para verificar sus renglones exactos.', 'Guardá una vista cuando la combinación sea recurrente; las vistas quedan asociadas a tu usuario y no modifican los datos.'], tip: 'La exportación respeta los filtros aplicados, no solamente las filas visibles en pantalla.' },
       { view: 'products', target: 'product-catalog', eyebrow: 'Productos', title: 'Consultá catálogo, stock y precios', description: 'El catálogo reúne disponibilidad, ventas, kilos inferidos, rotación, demanda y precios para revisar cada producto con contexto.', details: ['Usá búsqueda, marca, grupo, demanda y rotación para separar faltantes, exceso de stock y productos con movimiento saludable.', 'Abrí la ficha para distinguir precio por unidad, precio por kilo propio y referencia por kilo de la competencia.'], tip: 'Los kilos inferidos dependen de la relación entre presentación y unidades; revisá la advertencia cuando falte peso confiable.' },
       { view: 'products', target: 'product-catalog', eyebrow: 'Productos', title: 'Interpretá demanda y oportunidades', description: 'Las recomendaciones combinan comportamiento de compra, afinidad entre productos y disponibilidad actual sin reemplazar el criterio comercial.', details: ['Demanda y rotación responden preguntas distintas: la primera estima interés observado y la segunda relaciona salida con stock.', 'Antes de contactar a un cliente, abrí la evidencia y confirmá compras recientes, vendedor responsable y disponibilidad.'], tip: 'La confianza mide la calidad de la evidencia; no es una probabilidad garantizada de compra.' },
       { view: 'brands', target: 'brands-directory', eyebrow: 'Marcas', title: 'Revisá el peso de cada marca', description: 'El directorio muestra cuánto aporta cada marca en dinero y en kilos, además de compradores, productos, stock y última venta.', details: ['Compará el porcentaje monetario con el porcentaje en kilos para distinguir volumen físico de valor comercial.', 'Abrí una marca y filtrá sus productos por grupo, actividad o búsqueda para encontrar qué referencias explican el resultado.'], tip: 'Los nombres de marca que aparecen en otras pantallas también funcionan como acceso directo a esta ficha.' },
-      { view: 'routes', target: 'route-picker', eyebrow: 'Rutas', title: 'Prepará facturas y fojas', description: 'La pantalla organiza comprobantes pendientes y fojas para decidir qué clientes pueden incorporarse a una planificación.', details: ['Filtrá por fecha, foja, vendedor o cliente y verificá los comprobantes incluidos antes de calcular.', 'Varias facturas del mismo cliente se agrupan en una parada; las ubicaciones aproximadas o sin coordenadas quedan excluidas.'], tip: 'Una foja cerrada confirma el cierre de carga, no demuestra que la mercadería haya sido entregada.' },
-      { view: 'routes', target: 'route-picker', eyebrow: 'Rutas', title: 'Interpretá el recorrido estimado', description: 'El orden sugerido parte y regresa a Salice y utiliza únicamente ubicaciones suficientemente confiables.', details: ['Distancia y duración son estimaciones para organizar la oficina; no representan GPS ni el trayecto realmente realizado.', 'Antes de usar el plan, confirmá restricciones de horario, capacidad, tránsito y cualquier condición conocida por reparto.'], tip: 'La optimización ayuda a ordenar paradas, pero la decisión final sigue siendo operativa.' },
     ],
   },
-  administration: {
-    id: 'administration',
-    label: 'Administración',
-    title: 'Ventas, cobranzas y seguimiento',
-    description: 'Una guía detallada para investigar ventas, ordenar cobranzas y documentar el seguimiento de cada cliente.',
+  'daily-work': {
+    id: 'daily-work',
+    label: 'Trabajo diario',
+    title: 'Inicio, bandeja y cobranzas',
+    description: 'Una guía para orientarse desde Inicio, ordenar la revisión diaria y documentar cobranzas sin mezclar datos y seguimiento.',
     steps: [
-      { view: 'sales-explorer', target: 'sales-explorer-overview', eyebrow: 'Explorador de ventas', title: 'Definí primero qué querés analizar', description: 'El explorador permite investigar la venta neta desde el indicador general hasta los renglones de un comprobante sin cambiar de fuente.', details: ['Elegí período y combiná vendedor, cliente, producto, marca, rubro, canal o zona; todas las cifras se recalculan juntas.', 'Revisá los filtros activos antes de comparar resultados y usá restablecer para volver a la selección completa.'], tip: 'Fecha de corte, filtros y comparación deben coincidir antes de explicar una diferencia entre pantallas.' },
-      { view: 'sales-explorer', target: 'sales-explorer-overview', eyebrow: 'Explorador de ventas', title: 'Bajá del total al comprobante', description: 'Las tablas y gráficos funcionan como niveles de una misma investigación comercial.', details: ['Seleccioná una agrupación para identificar clientes o productos responsables y abrí el comprobante para verificar sus renglones exactos.', 'Guardá una vista cuando la combinación sea recurrente; las vistas quedan asociadas a tu usuario y no modifican los datos.'], tip: 'La exportación respeta los filtros aplicados, no solamente las filas visibles en pantalla.' },
+      { view: 'home', target: 'home-kpis', eyebrow: 'Inicio', title: 'Empezá por el estado general', description: 'Los indicadores superiores resumen la cartera activa y mantienen separadas las ventas, la cobranza y las oportunidades para que cada señal conserve su significado.', details: ['Leé primero el período y la fecha de corte: explican hasta qué día llegan las ventas y los saldos.', 'Cada indicador es también un acceso: usalo para abrir Clientes, Ventas o Cobranzas sin buscar la sección en el menú.'], tip: 'Inicio organiza información ya calculada; no crea tareas ni modifica ningún estado.' },
       { view: 'finance', target: 'finance-summary', eyebrow: 'Cobranzas · Comprobantes', title: 'Priorizá la cobranza con un corte claro', description: 'Comprobantes resume los documentos pendientes incluidos en la política comercial y permite ordenarlos por urgencia.', details: ['Comprobá la fecha de corte y el vendedor antes de comparar el saldo con otra pantalla.', 'Separá vencido, próximo a vencer y a vencer; cada grupo requiere una acción y urgencia distintas.'], tip: 'Un total diferente suele indicar otra selección, fecha de corte o filtro, no necesariamente un error de suma.' },
       { view: 'finance', target: 'finance-summary', eyebrow: 'Comprobantes', title: 'Revisá el documento antes de gestionar', description: 'Cada fila permite abrir el detalle comercial y el PDF disponible para confirmar origen, fechas e importes.', details: ['Usá antigüedad de lo vencido para ordenar deuda atrasada y días hasta vencimiento para anticipar próximos compromisos.', 'Confirmá cliente, comprobante y vendedor asignado en el propio documento antes de iniciar una gestión.'], tip: 'Las notas y gestiones humanas no recalculan el saldo pendiente.' },
       { view: 'receivables', target: 'receivables-overview', eyebrow: 'Cobranzas · Clientes', title: 'Documentá el seguimiento', description: 'La pestaña Clientes agrega contexto humano a la cartera contable sin reemplazar ni editar el saldo fuente.', details: ['Registrá responsable, estado, promesa, próximo seguimiento y comentario breve para que la próxima persona entienda qué ocurrió.', 'Usá filtros de estado y seguimiento para preparar la jornada y detectar promesas vencidas o casos sin responsable.'], tip: 'El lápiz de cada fila abre la edición y el sistema conserva autor, fecha e historial de cambios.' },
       { view: 'receivables', target: 'receivables-overview', eyebrow: 'Clientes', title: 'Separá promesa de pago y saldo', description: 'Una promesa representa un compromiso informado por el cliente; no equivale a un pago confirmado.', details: ['Indicá una fecha realista y el importe prometido sólo cuando exista evidencia de la conversación.', 'Cuando se actualicen los datos, contrastá la promesa con el saldo antes de cerrar la gestión.'], tip: 'Nunca marques como cobrado únicamente porque existe una promesa o comentario.' },
       { view: 'agenda', target: 'agenda-workstation', eyebrow: 'Bandeja comercial', title: 'Prepará la revisión diaria', description: 'La bandeja reúne señales comerciales, cobranzas, compromisos y notas para convertir datos dispersos en una lista de revisión.', details: ['Filtrá el tipo de cliente o señal que querés trabajar y avanzá caso por caso para evitar mezclar tareas.', 'Usá el resumen diario para identificar clientes ya revisados, pendientes y próximos seguimientos del equipo.'], tip: 'La prioridad ordena la revisión; no envía mensajes ni toma decisiones automáticamente.' },
       { view: 'agenda', target: 'agenda-workstation', eyebrow: 'Bandeja comercial', title: 'Dejá una nota útil y atribuida', description: 'Las notas complementan la evidencia automática con hechos que sólo conoce la oficina o el vendedor.', details: ['Escribí qué ocurrió, con quién se habló y cuál es el próximo paso; evitá copiar datos sensibles innecesarios.', 'El sistema guarda quién creó la nota y cuándo, para que el equipo pueda reconstruir el seguimiento.'], tip: 'Una nota documenta un hecho; no comunica al cliente ni completa automáticamente una gestión.' },
-      { view: 'settings', target: 'portfolio-rules', eyebrow: 'Criterios de trabajo', title: 'Consultá las reglas cuando haya diferencias', description: 'Configuración publica las reglas de cartera, cobertura, cálculos financieros y calidad usadas por las pantallas.', details: ['Verificá vendedores admitidos, monto mínimo, clientes excluidos y tratamiento de documentos antes de cuestionar un total.', 'Consultá las advertencias de calidad y actualización para saber si estás viendo el último paquete aprobado.'], tip: 'Las reglas de negocio no deben cambiarse para hacer coincidir un resultado puntual sin una decisión explícita.' },
+    ],
+  },
+  planning: {
+    id: 'planning',
+    label: 'Planificación',
+    title: 'Mapa operativo y rutas',
+    description: 'Un recorrido para revisar ubicaciones, seleccionar fojas y entender los límites de los recorridos estimados antes de usarlos.',
+    steps: [
+      { view: 'map', target: 'map-filters', eyebrow: 'Mapa operativo', title: 'Elegí qué clientes querés ver', description: 'Los filtros permiten reducir el territorio a una pregunta concreta sin cambiar los datos originales ni ocultar advertencias de ubicación.', details: ['Combiná estado del cliente, vendedor, localidad, ubicación corregida y señales de cobranza para preparar una revisión.', 'Los puntos cercanos se agrupan automáticamente: el número del grupo indica cuántos clientes hay y se separa al acercar el mapa.'], tip: 'Restablecé los filtros antes de comparar dos zonas para no arrastrar una selección anterior.' },
+      { view: 'map', target: 'client-panel', eyebrow: 'Mapa operativo', title: 'Confirmá la calidad de la ubicación', description: 'La ficha permite distinguir una coordenada exacta, una aproximación por localidad y un cliente todavía pendiente de revisión.', details: ['Revisá la advertencia antes de interpretar el punto y conservá la diferencia entre dirección declarada y posición aproximada.', 'Usá compras, cuenta corriente y notas como contexto separado; ninguna de esas señales vuelve utilizable una coordenada dudosa.'], tip: 'Una ubicación aproximada puede verse en el mapa, pero nunca se utiliza para calcular rutas.' },
+      { view: 'routes', target: 'route-picker', eyebrow: 'Rutas', title: 'Prepará facturas y fojas', description: 'La pantalla organiza comprobantes pendientes y fojas para decidir qué clientes pueden incorporarse a una planificación operativa.', details: ['Filtrá por fecha, foja, vendedor o cliente y verificá los comprobantes incluidos antes de calcular.', 'Varias facturas del mismo cliente se agrupan en una parada; las ubicaciones aproximadas o sin coordenadas quedan excluidas.'], tip: 'Una foja cerrada confirma el cierre de carga, no demuestra que la mercadería haya sido entregada.' },
+      { view: 'routes', target: 'route-picker', eyebrow: 'Rutas', title: 'Interpretá el recorrido estimado', description: 'El orden sugerido parte y regresa a Salice y utiliza únicamente ubicaciones suficientemente confiables para el cálculo.', details: ['Distancia y duración son estimaciones para organizar la oficina; no representan GPS ni el trayecto realmente realizado.', 'Antes de usar el plan, confirmá restricciones de horario, capacidad, tránsito y cualquier condición conocida por reparto.'], tip: 'La optimización ayuda a ordenar paradas, pero la decisión final sigue siendo operativa.' },
     ],
   },
   reports: {
@@ -84,7 +91,7 @@ export type TaskJourneyId = 'review-client' | 'manage-collection' | 'find-docume
 
 export const TASK_JOURNEYS: Record<TaskJourneyId, TutorialDefinition> = {
   'review-client': {
-    id: 'operations',
+    id: 'clients-sales',
     label: 'Recorrido práctico',
     title: 'Revisar un cliente',
     description: 'Encontrá una cuenta, confirmá su identidad y recorré su información sin mezclar señales distintas.',
@@ -96,7 +103,7 @@ export const TASK_JOURNEYS: Record<TaskJourneyId, TutorialDefinition> = {
     ],
   },
   'manage-collection': {
-    id: 'administration',
+    id: 'daily-work',
     label: 'Recorrido práctico',
     title: 'Registrar una gestión de cobranza',
     description: 'Cómo pasar del comprobante pendiente al seguimiento administrativo sin mezclar ambos conceptos.',
@@ -109,7 +116,7 @@ export const TASK_JOURNEYS: Record<TaskJourneyId, TutorialDefinition> = {
     ],
   },
   'find-document': {
-    id: 'administration',
+    id: 'clients-sales',
     label: 'Recorrido práctico',
     title: 'Buscar un comprobante de venta',
     description: 'Cómo pasar de una pregunta comercial al detalle exacto del documento manteniendo período y filtros.',

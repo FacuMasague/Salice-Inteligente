@@ -41,6 +41,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
 }) {
   const [mode, setMode] = useState<ProductMode>('inventory');
   const productModeNavRef = useRef<HTMLElement>(null);
+  const productDetailRef = useRef<HTMLElement>(null);
   const analysisMenuRef = useRef<HTMLDetailsElement>(null);
   const [selectedId, setSelectedId] = useState(() => [...products].sort((a, b) => b.monthlyUnits - a.monthlyUnits)[0]?.id || '');
   const [query, setQuery] = useState('');
@@ -105,6 +106,11 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (mode !== 'compare' && mode !== 'demand' && mode !== 'prices' && mode !== 'opportunities') setMode('catalog');
     }
   }, [focusProductId, products]);
+
+  useEffect(() => {
+    if (mode !== 'catalog') return;
+    productDetailRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [mode, selectedId]);
 
   useEffect(() => {
     if (!focusFamily) return;
@@ -288,7 +294,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
         </div>
         <div className="compact-pagination"><button disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentPage} / {pageCount}</strong><button disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div>
       </section>
-      <section className="product-detail"><ProductPanel product={selected} products={products} clients={clients} snapshotDate={snapshotDate} inventoryReview={inventoryReviewsLoaded ? (inventoryReviews[selected.id] ?? null) : undefined} onOpenProduct={(product) => setSelectedId(product.id)} onCompareProduct={(product) => { if (!comparisonProductIds.includes(product.id) && comparisonProductIds.length < 4) onComparisonChange([...comparisonProductIds, product.id]); setMode('compare'); }} comparisonSelectedIds={comparisonProductIds} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenClient={onOpenClient} onDataChanged={onDataChanged} /></section>
+      <section ref={productDetailRef} className="product-detail"><ProductPanel product={selected} products={products} clients={clients} snapshotDate={snapshotDate} inventoryReview={inventoryReviewsLoaded ? (inventoryReviews[selected.id] ?? null) : undefined} onOpenProduct={(product) => setSelectedId(product.id)} onCompareProduct={(product) => { if (!comparisonProductIds.includes(product.id) && comparisonProductIds.length < 4) onComparisonChange([...comparisonProductIds, product.id]); setMode('compare'); }} comparisonSelectedIds={comparisonProductIds} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenClient={onOpenClient} onDataChanged={onDataChanged} /></section>
       </div>
     </div>
   );

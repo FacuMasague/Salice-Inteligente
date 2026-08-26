@@ -19,8 +19,9 @@ import { clientPrimaryName, clientSecondaryName } from './lib/client-name';
 import { number } from './lib/format';
 import { parseRecentHomeViews, rememberRecentHomeView, type HomeNavigationView } from './lib/home-summary';
 import { isReportViewId, parseRecentReports, rememberRecentReport, type ReportViewId } from './lib/report-center';
-import { replaceViewInLocation, reportViewFromLocation } from './lib/report-links';
+import { replaceViewInLocation } from './lib/report-links';
 import { PREFERENCES_CHANGED_EVENT, readPreferences, savePreferences, type AppPreferences } from './lib/preferences';
+import { resolveInitialAppView, storeLastAppView, VIEW_HISTORY_USER_KEY, type AppViewId } from './lib/view-navigation';
 import type { ClientVisibility } from './views/MapDashboard';
 import { ACTIVE_VIEW_CHANGED_EVENT, useAuth } from './auth';
 import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../shared/product-stock';
@@ -51,6 +52,7 @@ const UsersView = lazy(() => import('./views/UsersView').then((module) => ({ def
 const UserActivityView = lazy(() => import('./views/UserActivityView').then((module) => ({ default: module.UserActivityView })));
 
 type View = TutorialView | 'home' | 'report-center' | 'users' | 'user-activity' | 'help';
+type ViewNavigationOptions = { target?: string; preserveContext?: boolean };
 type SidebarSection = 'work' | 'commercial' | 'planning' | 'reports' | 'system';
 
 const viewSection: Record<View, SidebarSection> = {
@@ -121,10 +123,13 @@ export default function App() {
   const { user, logout } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState('');
-  const [view, setView] = useState<View>(() => {
-    const linked = reportViewFromLocation();
-    return linked && isReportViewId(linked) ? linked : 'home';
-  });
+  const [view, setView] = useState<View>(() => resolveInitialAppView({
+    userId: user.id,
+    role: user.role,
+    location: window.location,
+    storage: localStorage,
+    historyState: window.history.state,
+  }));
   const [salesExplorerRequest, setSalesExplorerRequest] = useState<{ id: number; filters: Partial<SalesExplorerFilters> } | null>(null);
   const [receivablesRequest, setReceivablesRequest] = useState<{ id: number; filters: Partial<ReceivableDashboardFilters> } | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -147,9 +152,10 @@ export default function App() {
   });
   const [tutorial, setTutorial] = useState<{ experienceId: GuidedExperienceId; stepIndex: number } | null>(null);
   const [tutorialCompleted, setTutorialCompleted] = useState<Record<TutorialSection, boolean>>(() => ({
-    operations: localStorage.getItem('salice-tutorial-v121-operations') === 'completed',
-    administration: localStorage.getItem('salice-tutorial-v121-administration') === 'completed',
-    reports: localStorage.getItem('salice-tutorial-v121-reports') === 'completed',
+    'daily-work': localStorage.getItem('salice-tutorial-v213-daily-work') === 'completed',
+    'clients-sales': localStorage.getItem('salice-tutorial-v213-clients-sales') === 'completed',
+    planning: localStorage.getItem('salice-tutorial-v213-planning') === 'completed',
+    reports: localStorage.getItem('salice-tutorial-v213-reports') === 'completed',
   }));
   const [globalQuery, setGlobalQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -182,6 +188,50 @@ export default function App() {
   const mobileMenuButton = useRef<HTMLButtonElement>(null);
   const sidebarElement = useRef<HTMLElement>(null);
   const sidebarCloseButton = useRef<HTMLButtonElement>(null);
+  const viewContainer = useRef<HTMLDivElement>(null);
+  const navigationScrollRequest = useRef(0);
+
+  const scrollViewToTop = () => {
+    const root = viewContainer.current;
+    root?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    root?.querySelectorAll<HTMLElement>('.page-view, .collections-workspace').forEach((element) => {
+      element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  };
+
+  const scheduleNavigationScroll = (target?: string) => {
+    const requestId = ++navigationScrollRequest.current;
+    window.requestAnimationFrame(() => {
+      if (navigationScrollRequest.current !== requestId) return;
+      if (!target) {
+        scrollViewToTop();
+        return;
+      }
+
+      const revealTarget = () => {
+        if (navigationScrollRequest.current !== requestId) return true;
+        const destination = viewContainer.current?.querySelector<HTMLElement>(target);
+        if (!destination) return false;
+        destination.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        destination.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' });
+        if (window.matchMedia('(max-width: 900px)').matches) {
+          const topbarHeight = document.querySelector<HTMLElement>('.topbar')?.offsetHeight ?? 0;
+          window.scrollBy({ top: -(topbarHeight + 8), left: 0, behavior: 'auto' });
+        }
+        return true;
+      };
+
+      if (revealTarget()) return;
+      const root = viewContainer.current;
+      if (!root) return;
+      const observer = new MutationObserver(() => {
+        if (revealTarget()) observer.disconnect();
+      });
+      observer.observe(root, { childList: true, subtree: true });
+      window.setTimeout(() => observer.disconnect(), 2500);
+    });
+  };
 
   useEffect(() => {
     fetch('/api/dashboard')
@@ -390,9 +440,15 @@ export default function App() {
   useEffect(() => {
     const section = viewSection[view];
     setSidebarSections((current) => current[section] ? current : { ...current, [section]: true });
+    storeLastAppView(user.id, view as AppViewId, localStorage);
+    if (new URLSearchParams(window.location.search).get('view') !== view) replaceViewInLocation(view);
+    const currentHistoryState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+    if (currentHistoryState[VIEW_HISTORY_USER_KEY] !== user.id) {
+      window.history.replaceState({ ...currentHistoryState, [VIEW_HISTORY_USER_KEY]: user.id }, '', window.location.href);
+    }
     document.documentElement.dataset.saliceActiveView = view;
     window.dispatchEvent(new CustomEvent(ACTIVE_VIEW_CHANGED_EVENT, { detail: { viewId: view } }));
-  }, [view]);
+  }, [user.id, view]);
 
   useEffect(() => {
     setRecentHomeViews(parseRecentHomeViews(localStorage.getItem(`salice-home-recents-v211-${user.id}`)));
@@ -462,16 +518,23 @@ export default function App() {
     setProductFocusId(null);
     setProductProfileOpen(false);
     setClientProfileOpen(false);
-    setView('products');
+    selectView('products', { target: '.product-mode-nav', preserveContext: true });
     setProductComparisonRequest((current) => current + 1);
   };
   const openBrand = (brand: string) => { if (!brand || brand.startsWith('Sin ')) return; setBrandFocus(brand); setBrandProfileOpen(true); setSearchOpen(false); setNotificationsOpen(false); };
-  const openProductCatalog = (product: Product) => { setProductFocusId(product.id); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
-  const openProductFamily = (family: string) => { if (!family || family.startsWith('Sin ')) return; setProductFamilyFocus(family); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); setView('products'); };
-  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); setView('sellers'); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
+  const openProductCatalog = (product: Product) => {
+    setProductFocusId(product.id);
+    setProductProfileOpen(false);
+    setClientProfileOpen(false);
+    setSelectedId(null);
+    selectView('products', { target: narrowDisplay ? '.product-mode-nav' : '.product-detail', preserveContext: true });
+    if (narrowDisplay) setProductProfileOpen(true);
+  };
+  const openProductFamily = (family: string) => { if (!family || family.startsWith('Sin ')) return; setProductFamilyFocus(family); setProductProfileOpen(false); setClientProfileOpen(false); setSelectedId(null); selectView('products', { target: '[data-tour="product-catalog"]', preserveContext: true }); };
+  const openSeller = (seller: string) => { if (!seller || seller === 'Sin vendedor') return; setSellerFocus(seller); selectView('sellers', { target: '.seller-detail-stack', preserveContext: true }); setSelectedId(null); setClientProfileOpen(false); setProductProfileOpen(false); setInvoiceFocusId(null); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openInvoice = (invoiceId: string) => { setInvoiceFocusId(invoiceId); setSheetFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
   const openSheet = (sheetId: number) => { if (!data?.logistics.sheets.some((sheet) => sheet.id === sheetId)) return; setSheetFocusId(sheetId); setInvoiceFocusId(null); setSearchOpen(false); setNotificationsOpen(false); };
-  const selectView = (next: View) => {
+  const selectView = (next: View, options: ViewNavigationOptions = {}) => {
     if (isReportViewId(next)) {
       const recentKey = `salice-report-recents-v120-${user.id}`;
       const recent = rememberRecentReport(parseRecentReports(localStorage.getItem(recentKey)), next);
@@ -491,7 +554,15 @@ export default function App() {
     setBrandProfileOpen(false);
     setInvoiceFocusId(null);
     setSheetFocusId(null);
+    if (!options.preserveContext) {
+      setSellerFocus('');
+      setProductFocusId(null);
+      setProductFamilyFocus('');
+      setBrandFocus('');
+      setRouteClientId(null);
+    }
     if (next !== 'map') setSelectedId(null);
+    scheduleNavigationScroll(options.target);
   };
   const openSalesExplorer = (filters: Partial<SalesExplorerFilters>) => {
     setSalesExplorerRequest({ id: Date.now(), filters });
@@ -513,7 +584,7 @@ export default function App() {
     const client = visibleClients.find((candidate) => candidate.id === clientId);
     if (!client?.active || !client.coordinates || client.locationPrecision === 'locality') return;
     setRouteClientId(clientId);
-    setView('routes');
+    selectView('routes', { target: '[data-tour="route-picker"]', preserveContext: true });
     setSelectedId(null);
     setClientProfileOpen(false);
   };
@@ -522,8 +593,8 @@ export default function App() {
   const startJourney = (experienceId: TaskJourneyId) => setTutorial({ experienceId, stepIndex: 0 });
   const finishTutorial = () => {
     if (!tutorial) return;
-    if (tutorial.experienceId === 'operations' || tutorial.experienceId === 'administration' || tutorial.experienceId === 'reports') {
-      localStorage.setItem(`salice-tutorial-v121-${tutorial.experienceId}`, 'completed');
+    if (tutorial.experienceId === 'daily-work' || tutorial.experienceId === 'clients-sales' || tutorial.experienceId === 'planning' || tutorial.experienceId === 'reports') {
+      localStorage.setItem(`salice-tutorial-v213-${tutorial.experienceId}`, 'completed');
       setTutorialCompleted((current) => ({ ...current, [tutorial.experienceId]: true }));
     }
     setTutorial(null);
@@ -625,15 +696,15 @@ export default function App() {
             </div>
             <div className="sync-action-wrap"><div className={`sync-chip status-only ${data.meta.source} freshness-${dataHealth?.freshness.level ?? 'unknown'}`} title="Estado de los datos disponibles"><Database size={14} /><div><strong>{reloadingData || dataHealth?.refresh.current ? 'Actualizando datos' : dataHealth?.freshness.label ?? (data.meta.source === 'demo' ? 'Datos de ejemplo' : 'Datos disponibles')}</strong><span>Actualizados · {snapshotLabel}</span></div>{(reloadingData || dataHealth?.refresh.current) && <RefreshCw className="spin" size={14} />}</div>{refreshFeedback && <div className={`sync-feedback ${refreshFeedback.tone}`}>{refreshFeedback.message}</div>}</div>
             {preferences.contextualHelp && <div className="context-help-wrap"><button className="context-help-button" aria-label={`Ayuda sobre ${currentTitle.title}`} aria-expanded={helpOpen} onClick={() => { setHelpOpen((value) => !value); setSearchOpen(false); setNotificationsOpen(false); }}><HelpCircle size={18} /></button>{helpOpen && <aside className="context-help-panel"><header><span>Ayuda de esta pantalla</span><button aria-label="Cerrar ayuda" onClick={() => setHelpOpen(false)}><X size={15} /></button></header><h3>{currentTitle.title}</h3><p>{contextualHelp[view].purpose}</p><ul>{contextualHelp[view].tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button className="button secondary" onClick={() => { selectView('help'); setHelpOpen(false); }}>Abrir Ayuda</button></aside>}</div>}
-            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!visibleNotifications.length && <i>{number(visibleNotifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{visibleNotifications.map((item) => { const client = visibleClients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { setView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!visibleNotifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { setView('receivables'); setNotificationsOpen(false); }}>Abrir Clientes de Cobranzas</button></div>}</div>
+            <div className="notification-wrap"><button className="notification-button" aria-label="Notificaciones" onClick={() => { setNotificationsOpen((value) => !value); setSearchOpen(false); }}><Bell size={18} />{!!visibleNotifications.length && <i>{number(visibleNotifications.length)}</i>}</button>{notificationsOpen && <div className="notification-panel"><div><span className="section-kicker"><AlertTriangle size={14} /> Gestión prioritaria</span><h3>Alertas operativas</h3><p>Promesas exigibles y riesgos altos de la foto actual.</p></div>{visibleNotifications.map((item) => { const client = visibleClients.find((candidate) => candidate.id === item.clientId); return <button key={item.id} onClick={() => { if (item.type.startsWith('promise')) { selectView('receivables'); setNotificationsOpen(false); } else if (client) openClient(client); }}><span className={`score-badge ${item.severity}`}>{item.type.startsWith('promise') ? '$' : client?.collectionRisk}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight size={15} /></button>; })}{!visibleNotifications.length && <p className="notification-empty">No hay alertas accionables en este momento.</p>}<button className="notification-all" onClick={() => { selectView('receivables'); setNotificationsOpen(false); }}>Abrir Clientes de Cobranzas</button></div>}</div>
             <div className="user-menu-wrap"><button className="user-menu-button" aria-label="Menú de usuario" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((value) => !value); setNotificationsOpen(false); setSearchOpen(false); }}><UserCircle size={20} /><span>{user.displayName.split(' ')[0]}</span><ChevronDown size={13} /></button>{userMenuOpen && <aside className="user-menu-panel"><div><strong>{user.displayName}</strong><span>@{user.username} · {user.role === 'developer' ? 'Developer' : user.role === 'admin' ? 'Administrador' : 'Oficina'}</span></div>{user.role !== 'office' && <button onClick={() => { selectView('users'); setUserMenuOpen(false); }}><ShieldCheck size={15} /> Administrar usuarios</button>}{user.role === 'developer' && <button onClick={() => { selectView('user-activity'); setUserMenuOpen(false); }}><Activity size={15} /> Ver actividad</button>}<button className="logout" onClick={() => void logout()}><LogOut size={15} /> Cerrar sesión</button></aside>}</div>
           </div>
         </header>
 
-        <div className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
+        <div ref={viewContainer} className="view-container"><Suspense fallback={<div className="view-loading"><RefreshCw className="spin" size={21} /><strong>Abriendo módulo…</strong></div>}>
           {view === 'home' && <HomeView data={visibleData!} notifications={visibleNotifications} availableViews={availableHomeViews} recentViews={recentHomeViews} onOpenClient={openClient} onNavigate={selectView} />}
           {view === 'map' && <MapDashboard clients={visibleClients} products={data.products} logistics={data.logistics} selected={selected} quickViewOpen={mapQuickClientId === selected?.id} onSelect={(client) => { setSelectedId(client?.id ?? null); setMapQuickClientId(client?.id ?? null); setClientProfileOpen(false); }} onExpandClient={() => { setMapQuickClientId(null); setClientProfileOpen(true); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt} onPlanRoute={planRoute} onNoteSaved={noteSaved} clientVisibility={mapClientVisibility} onClientVisibilityChange={setMapClientVisibility} />}
-          {view === 'agenda' && <AgendaView clients={visibleClients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => setView('receivables')} onOperationalChange={refreshNotifications} />}
+          {view === 'agenda' && <AgendaView clients={visibleClients} products={data.products} onOpen={openClient} onOpenSeller={openSeller} onOpenProduct={openProduct} onPlanRoute={planRoute} onOpenReceivables={() => selectView('receivables')} onOperationalChange={refreshNotifications} />}
           {view === 'clients' && <ClientsView clients={visibleClients} products={data.products} query={clientQuery} onQuery={setClientQuery} onOpen={openClient} onOpenSeller={openSeller} />}
           {view === 'sellers' && <SellersView clients={visibleClients} products={data.products} snapshotDate={data.meta.generatedAt} selectedSeller={sellerFocus} onSelectSeller={setSellerFocus} onOpenClient={openClient} />}
           {(view === 'finance' || view === 'receivables') && <div className="collections-workspace"><nav className="collections-mode-nav" aria-label="Secciones de Cobranzas"><button className={view === 'finance' ? 'active' : ''} aria-current={view === 'finance' ? 'page' : undefined} onClick={() => selectView('finance')}><CircleDollarSign size={16} /><span>Comprobantes</span><small>Importes y documentos pendientes</small></button><button className={view === 'receivables' ? 'active' : ''} aria-current={view === 'receivables' ? 'page' : undefined} onClick={() => selectView('receivables')}><ClipboardCheck size={16} /><span>Clientes</span><small>Responsables, promesas y próximos pasos</small></button></nav>{view === 'finance' ? <FinanceView clients={visibleClients} onOpen={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} snapshotDate={data.meta.generatedAt.slice(0, 10)} /> : <ReceivablesView dataClients={visibleClients} navigationRequest={receivablesRequest} onOpenClient={openClient} onOpenSeller={openSeller} onOpenInvoice={openInvoice} />}</div>}
@@ -662,19 +733,20 @@ export default function App() {
         </Suspense></div>
       </main>
       <AnimatedLayer open={clientProfileOpen && Boolean(selected)} className="client-drawer-layer">
-        {selected && <><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></>}
+        {selected && <><button className="client-drawer-backdrop" aria-label="Cerrar ficha" onClick={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} /><ClientPanel key={selected.id} mode="full" client={selected} products={data.products} logistics={data.logistics} snapshotDate={data.meta.generatedAt} onClose={() => { setClientProfileOpen(false); if (view !== 'map') setSelectedId(null); }} onOpenSeller={openSeller} onOpenProduct={openProduct} onOpenBrand={openBrand} onOpenInvoice={openInvoice} onPlanRoute={planRoute} onNoteSaved={noteSaved} /></>}
       </AnimatedLayer>
       <AnimatedLayer open={productProfileOpen && Boolean(selectedProduct)} className="product-drawer-layer">
-        {selectedProduct && <><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel mode="popup" product={selectedProduct} products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></>}
+        {selectedProduct && <><button className="product-drawer-backdrop" aria-label="Cerrar ficha de producto" onClick={() => setProductProfileOpen(false)} /><ProductPanel key={selectedProduct.id} mode="popup" product={selectedProduct} products={data.products} clients={visibleClients} snapshotDate={data.meta.generatedAt} onClose={() => setProductProfileOpen(false)} onOpenProduct={openProduct} onCompareProduct={addProductToComparison} comparisonSelectedIds={productComparisonIds} onOpenCatalog={openProductCatalog} onOpenBrand={openBrand} onOpenFamily={openProductFamily} onOpenClient={openClient} onDataChanged={() => reloadLocalData(true)} /></>}
       </AnimatedLayer>
       <AnimatedLayer open={brandProfileOpen && Boolean(brandFocus)} className="brand-drawer-layer">
-        {brandFocus && <><button className="brand-drawer-backdrop" aria-label="Cerrar ficha de marca" onClick={() => setBrandProfileOpen(false)} /><BrandPanel brand={brandFocus} products={data.products} onClose={() => setBrandProfileOpen(false)} onOpenProduct={openProduct} /></>}
+        {brandFocus && <><button className="brand-drawer-backdrop" aria-label="Cerrar ficha de marca" onClick={() => setBrandProfileOpen(false)} /><BrandPanel key={brandFocus} brand={brandFocus} products={data.products} onClose={() => setBrandProfileOpen(false)} onOpenProduct={openProduct} /></>}
       </AnimatedLayer>
       <AnimatedLayer open={Boolean(invoiceFocusId)} className="invoice-drawer-layer">
-        {invoiceFocusId && <InvoiceDetailDrawer invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
+        {invoiceFocusId && <InvoiceDetailDrawer key={invoiceFocusId} invoiceId={invoiceFocusId} logistics={data.logistics} onClose={() => setInvoiceFocusId(null)} onOpenClient={openClientById} onOpenSeller={openSeller} onOpenSheet={openSheet} />}
       </AnimatedLayer>
       <AnimatedLayer open={Boolean(focusedDeliverySheet)} className="delivery-sheet-drawer-layer">
         {focusedDeliverySheet && <DeliverySheetDetailDrawer
+          key={focusedDeliverySheet.id}
           sheet={focusedDeliverySheet}
           logistics={data.logistics}
           clients={visibleClients}

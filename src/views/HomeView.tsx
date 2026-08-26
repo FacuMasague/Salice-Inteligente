@@ -149,7 +149,7 @@ export function HomeView({ data, notifications, availableViews, recentViews, onO
           if (!groupViews.length) return null;
           return <section key={group.title} className="home-access-group">
             <header><strong>{group.title}</strong><span>{group.description}</span></header>
-            <div>{groupViews.map((view) => <AccessButton key={view} view={view} onNavigate={onNavigate} directory />)}</div>
+            <div className="home-access-list" data-items={groupViews.length}>{groupViews.map((view) => <AccessButton key={view} view={view} onNavigate={onNavigate} directory />)}</div>
           </section>;
         })}
       </div>
