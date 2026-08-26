@@ -1,50 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calendarMonthWindows,
   captureCacheMatchesActiveBundle,
   logisticsQueryFrom,
   resolveLogisticsInvoiceValidationFrom,
   resolveLogisticsFetchFrom,
   resolveSptFetchFrom,
 } from './capture-window.js';
-
-describe('calendarMonthWindows', () => {
-  it('divide un período en meses consecutivos sin huecos ni solapamientos', () => {
-    expect(calendarMonthWindows(
-      '2026-06-18T10:30:00.000Z',
-      '2026-08-26T15:48:00.000Z',
-    )).toEqual([
-      {
-        key: '2026-06',
-        from: '2026-06-18T10:30:00.000Z',
-        until: '2026-06-30T23:59:59.999Z',
-      },
-      {
-        key: '2026-07',
-        from: '2026-07-01T00:00:00.000Z',
-        until: '2026-07-31T23:59:59.999Z',
-      },
-      {
-        key: '2026-08',
-        from: '2026-08-01T00:00:00.000Z',
-        until: '2026-08-26T15:48:00.000Z',
-      },
-    ]);
-  });
-
-  it('conserva una ventana corta dentro del mismo mes', () => {
-    expect(calendarMonthWindows('2026-08-25', '2026-08-26')).toEqual([{
-      key: '2026-08',
-      from: '2026-08-25T00:00:00.000Z',
-      until: '2026-08-26T00:00:00.000Z',
-    }]);
-  });
-
-  it('rechaza fechas inválidas y no inventa un rango invertido', () => {
-    expect(() => calendarMonthWindows('sin-fecha', '2026-08-26')).toThrow('fechas válidas');
-    expect(calendarMonthWindows('2026-08-27', '2026-08-26')).toEqual([]);
-  });
-});
 
 describe('resolveSptFetchFrom', () => {
   const historyFrom = '2025-07-28T00:00:00.000Z';

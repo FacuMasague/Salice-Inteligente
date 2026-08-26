@@ -59,6 +59,8 @@ function refreshDate(value: string) {
 }
 
 function refreshTriggerLabel(value: string) {
+  const retry = /^(scheduled|bootstrap)-retry-([23])$/.exec(value);
+  if (retry) return `${retry[1] === 'bootstrap' ? 'Inicial' : 'Automática'} · intento ${retry[2]}/3`;
   if (value === 'scheduled') return 'Automática';
   if (value === 'bootstrap') return 'Inicial';
   if (value === 'manual-resume') return 'Reanudación';

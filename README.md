@@ -1,6 +1,6 @@
-# Salice Inteligente · v2.1.6
+# Salice Inteligente · v2.1.7
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.6 conserva toda la experiencia de oficina y móvil de v2.1.5 y hace resiliente la captura de comprobantes frente a respuestas lentas: comienza con páginas más livianas y, si GESI agota el tiempo de espera, reinicia la colección con lotes menores sin publicar una foto parcial. En teléfonos se conserva siempre la vista simple de v2.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.7 conserva la captura histórica anual con páginas adaptativas y agrega hasta tres intentos automáticos del proceso completo cuando GESI agota el tiempo de espera, separados por una hora. En teléfonos se conserva siempre la vista simple de v2.0.
 
 La versión no modifica roles, universos comerciales ni datos operativos. Cambia únicamente la vigencia de las sesiones para conservar cada dispositivo conectado hasta el cierre manual o una revocación de acceso. En inventario se mantiene la distinción funcional incorporada en v2.1.2: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También se conserva la cobertura histórica ampliada de fojas de reparto, junto con el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
@@ -177,7 +177,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.1.6
+## Alcance que continúa fuera de v2.1.7
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -219,3 +219,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v2.1.4.md`
 - `docs/release-v2.1.5.md`
 - `docs/release-v2.1.6.md`
+- `docs/release-v2.1.7.md`

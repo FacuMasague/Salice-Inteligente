@@ -1,4 +1,10 @@
 import { startManualRefresh } from './manual-refresh-runner.js';
+import {
+  AUTOMATIC_REFRESH_MAX_ATTEMPTS,
+  AUTOMATIC_REFRESH_RETRY_DELAY_MS,
+  automaticRefreshTrigger,
+  type AutomaticRefreshTrigger,
+} from '../shared/refresh-retry.js';
 
 export const DEFAULT_REFRESH_TIME_ZONE = 'America/Argentina/Buenos_Aires';
 export const DEFAULT_REFRESH_TIMES = ['03:00', '15:00'] as const;
@@ -10,8 +16,40 @@ interface ZonedParts {
 }
 
 let timer: NodeJS.Timeout | null = null;
+let retryTimer: NodeJS.Timeout | null = null;
 let nextRunAt: string | null = null;
 let lastTriggeredAt: string | null = null;
+
+function clearRetryTimer() {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
+function startAutomaticRefreshAttempt(
+  workspace: string,
+  baseTrigger: AutomaticRefreshTrigger,
+  attempt = 1,
+) {
+  const requestedTrigger = automaticRefreshTrigger(baseTrigger, attempt);
+  lastTriggeredAt = new Date().toISOString();
+  const result = startManualRefresh(workspace, requestedTrigger, {
+    onExit: (outcome) => {
+      if (!outcome.timedOut || attempt >= AUTOMATIC_REFRESH_MAX_ATTEMPTS) return;
+      clearRetryTimer();
+      const retryAt = new Date(Date.now() + AUTOMATIC_REFRESH_RETRY_DELAY_MS);
+      console.warn(`GESI agotó el tiempo de espera. El intento ${attempt + 1}/${AUTOMATIC_REFRESH_MAX_ATTEMPTS} se ejecutará a las ${retryAt.toISOString()}.`);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        const retry = startAutomaticRefreshAttempt(workspace, baseTrigger, attempt + 1);
+        if (!retry.started) {
+          console.warn(`El intento automático ${attempt + 1}/${AUTOMATIC_REFRESH_MAX_ATTEMPTS} no comenzó porque ya existe otra ejecución activa.`);
+        }
+      }, AUTOMATIC_REFRESH_RETRY_DELAY_MS);
+      retryTimer.unref();
+    },
+  });
+  return result;
+}
 
 export function parseRefreshTimes(value: string | undefined) {
   const source = value?.split(',') ?? [...DEFAULT_REFRESH_TIMES];
@@ -139,8 +177,7 @@ function scheduleNext(workspace: string) {
   nextRunAt = next.toISOString();
   const delay = Math.max(1_000, next.getTime() - Date.now());
   timer = setTimeout(() => {
-    lastTriggeredAt = new Date().toISOString();
-    const result = startManualRefresh(workspace, 'scheduled');
+    const result = startAutomaticRefreshAttempt(workspace, 'scheduled');
     if (!result.started) {
       console.warn('La actualización programada no comenzó porque ya existe otra ejecución activa.');
     }
@@ -163,8 +200,7 @@ export function startAutomaticRefreshScheduler(
   );
   if (status.enabled && (options.bootstrap || catchUp)) {
     const catchUpTimer = setTimeout(() => {
-      lastTriggeredAt = new Date().toISOString();
-      const result = startManualRefresh(workspace, options.bootstrap ? 'bootstrap' : 'scheduled');
+      const result = startAutomaticRefreshAttempt(workspace, options.bootstrap ? 'bootstrap' : 'scheduled');
       if (!result.started) {
         console.warn('La actualización pendiente no comenzó porque ya existe otra ejecución activa.');
       }
@@ -176,6 +212,7 @@ export function startAutomaticRefreshScheduler(
 
 export function stopAutomaticRefreshScheduler() {
   if (timer) clearTimeout(timer);
+  clearRetryTimer();
   timer = null;
   nextRunAt = null;
 }

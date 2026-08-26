@@ -8,7 +8,6 @@ import { pick } from 'stream-json/filters/pick.js';
 import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import {
-  calendarMonthWindows,
   captureCacheMatchesActiveBundle,
   logisticsQueryFrom,
   resolveLogisticsInvoiceValidationFrom,
@@ -265,28 +264,6 @@ const tracked = async (label: string, promise: Promise<GesiRow[]>) => {
   console.log(`${label}: ${rows.length}`);
   return rows;
 };
-
-const fetchDocumentHeadersByMonth = async (
-  label: string,
-  path: string,
-  from: string,
-  until = historyUntil,
-) => {
-  const windows = calendarMonthWindows(from, until);
-  const rowsByIdentity = new Map<string, GesiRow>();
-  for (let index = 0; index < windows.length; index += 1) {
-    const window = windows[index];
-    const rows = await client.postAll<GesiRow>(
-      path,
-      'comprobantes',
-      listBody(window.from, window.until),
-      250,
-    );
-    rows.forEach((row) => rowsByIdentity.set(documentIdentity(row), row));
-    console.log(`${label}: ${window.key} (${index + 1}/${windows.length}) · ${rows.length} registros · ${rowsByIdentity.size} acumulados`);
-  }
-  return [...rowsByIdentity.values()];
-};
 const pendingPath = `/api/Ventas/Comprobantes/GetComprobantesPendientes?fechaHasta=${encodeURIComponent(historyUntil)}&sucursalID=${sucursalID}`;
 const fetchPendingDocuments = async () => {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -310,18 +287,11 @@ const stocks = await tracked('Existencias completas (incluye cero)', previousCap
   ? Promise.resolve(previousCapture.stocks)
   : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000));
 const balances = await tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos'));
-// Las cabeceras de venta exigen más trabajo en GESI que los maestros. En la
-// captura productiva del 26/08/2026 las páginas de 1.000, 500 y 250 filas
-// agotaron el timeout al consultar un año entero. Se divide además el período
-// por mes calendario y luego se vuelve a unir por identidad documental.
-const allInvoiceHeaders = await tracked(
-  'Facturas del período SPT',
-  fetchDocumentHeadersByMonth('Facturas del período SPT', '/api/Ventas/Comprobantes/Facturas/GetList', salesHistoryFrom),
-);
-const allCreditNoteHeaders = await tracked(
-  'Notas de crédito del período SPT',
-  fetchDocumentHeadersByMonth('Notas de crédito del período SPT', '/api/Ventas/Comprobantes/NotasDeCredito/GetList', salesHistoryFrom),
-);
+// Las cabeceras de venta conservan la consulta anual original. Se comienza con
+// páginas de 500 y GesiClient reinicia la colección con 250 si GESI agota el
+// tiempo de espera, sin cambiar el universo ni aprobar una captura parcial.
+const allInvoiceHeaders = await tracked('Facturas del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Facturas/GetList', 'comprobantes', listBody(salesHistoryFrom), 500));
+const allCreditNoteHeaders = await tracked('Notas de crédito del período SPT', client.postAll<GesiRow>('/api/Ventas/Comprobantes/NotasDeCredito/GetList', 'comprobantes', listBody(salesHistoryFrom), 500));
 const collectionHeaders = await tracked('Cobros 365d', client.postAll<GesiRow>('/api/Ventas/Comprobantes/Cobros/GetList', 'comprobantes', listBody(historyFrom), 1000));
 const pendingDocuments = await tracked('Comprobantes pendientes', fetchPendingDocuments());
 const channels = await tracked('Canales', client.getAll<GesiRow>('/api/Maestros/CanalesDeVenta/GetList', 'canalesDeVenta'));
@@ -402,11 +372,11 @@ if (salesHistoryFrom.slice(0, 10) > logisticsInvoiceValidationFrom.slice(0, 10))
   await client.login();
   const overlapInvoiceHeaders = await tracked(
     'Facturas para validar el solapamiento logístico',
-    fetchDocumentHeadersByMonth(
-      'Facturas para validar el solapamiento logístico',
+    client.postAll<GesiRow>(
       '/api/Ventas/Comprobantes/Facturas/GetList',
-      logisticsInvoiceValidationFrom,
-      salesHistoryFrom,
+      'comprobantes',
+      listBody(logisticsInvoiceValidationFrom, salesHistoryFrom),
+      500,
     ),
   );
   logisticsInvoiceHeaders = [...new Map(
