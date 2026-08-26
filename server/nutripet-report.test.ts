@@ -39,6 +39,17 @@ describeWithDatabase('Reporte NutriPet construido desde GESI', () => {
     expect(report!.ytd.kilos).toBeGreaterThanOrEqual(report!.current.kilos);
     expect(report!.monthly).toHaveLength(13);
     expect(report!.monthly.at(-1)).toMatchObject({ month: meta.latestMonth, isPartial: report!.isPartial, clients: report!.current.clients });
+    expect(report!.quarters).toHaveLength(Math.ceil(Number(meta.reportingDate.slice(5, 7)) / 3));
+    expect(report!.quarters[0].start).toBe(`${meta.reportingDate.slice(0, 4)}-01-01`);
+    expect(report!.quarters.at(-1)?.end).toBe(meta.reportingDate);
+    expect(report!.quarters.map((row) => row.label)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^T[1-4] \d{4}$/),
+    ]));
+    const currentYearMonths = report!.monthly.filter((row) => row.month.startsWith(meta.reportingDate.slice(0, 4)));
+    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.kilos, 0), 6);
+    expect(report!.quarters.reduce((sum, row) => sum + row.units, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.units, 0), 6);
+    expect(report!.quarters.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.netAmount, 0), 6);
+    expect(report!.quarters.filter((row) => !row.comparisonAvailable).every((row) => row.previousYearKilos == null)).toBe(true);
   }, 15_000);
 
   it('aplica conjuntamente marca, línea y canal sobre todos los desgloses', () => {
@@ -46,7 +57,8 @@ describeWithDatabase('Reporte NutriPet construido desde GESI', () => {
     expect(report).not.toBeNull();
     expect(report!.filters).toMatchObject({ brand: 'MaxPet', line: 'Cat', channelGroup: 'Especializado' });
     expect(report!.current.clients).toBeGreaterThanOrEqual(0);
-    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(report!.ytd.kilos, 6);
+    expect(report!.quarters).toHaveLength(2);
+    expect(report!.quarters.every((row) => row.year === 2026 && row.kilos >= 0 && row.label.includes(String(row.year)))).toBe(true);
   }, 15_000);
 
   it('reconcilia las tablas de marca y producto con el total del período', () => {

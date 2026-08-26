@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarRange, ChevronDown, ChevronRight, Database, Filter, Gauge, PackageOpen, RefreshCw, Scale, SlidersHorizontal, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
-import type { SptBreakdownRow, SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
+import type { SptFilterKey, SptFilters, SptReportMeta, SptReportPayload } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
 import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
@@ -40,6 +40,8 @@ const monthLabel = (value: string, long = false) => {
 const ratio = (current: number, previous: number) => previous ? current / previous * 100 : null;
 const variation = (current: number, previous: number) => previous ? (current - previous) / previous * 100 : null;
 const signedPercent = (value: number | null) => value == null ? 'Sin base' : `${value >= 0 ? '+' : ''}${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value)}%`;
+const sharePoints = (current: number, previous: number) => `${current - previous >= 0 ? '+' : ''}${number(current - previous, 1)} pp`;
+const periodRange = (start: string, end: string) => `${new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit' }).format(new Date(`${start}T12:00:00`))}–${new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${end}T12:00:00`))}`;
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return <MultiSelectFilter label={label} value={value} options={options} onChange={onChange} />;
@@ -134,9 +136,39 @@ function MonthlyChart({ report }: { report: SptReportPayload }) {
   </div>;
 }
 
-function Breakdown({ rows, title }: { rows: SptBreakdownRow[]; title: string }) {
-  const max = Math.max(1, ...rows.map((row) => row.kilos));
-  return <div className="spt-breakdown"><div className="spt-breakdown-head"><span>{title}</span><span>Kilos / facturación</span></div>{rows.slice(0, 12).map((row) => <article key={row.label}><div><strong>{row.label}</strong><span><i style={{ width: `${row.kilos / max * 100}%` }} /></span></div><b>{kilos(row.kilos)} kg<small>{money(row.netAmount, true)}</small></b><small>{number(row.clients)} clientes</small></article>)}</div>;
+function ProductGroupMix({ report }: { report: SptReportPayload }) {
+  const previousMonthAvailable = report.mixPeriods.previousMonth.available;
+  const previousYearAvailable = report.mixPeriods.previousYear.available;
+  return <div className="report-mix-comparison spt-product-mix">
+    <div className="report-mix-denominators" aria-label="Períodos y denominadores de la mezcla">
+      <div><span>Período elegido</span><strong>{kilos(report.current.kilos)} kg</strong><small>{periodRange(report.mixPeriods.current.start, report.mixPeriods.current.end)}</small></div>
+      <div><span>Mes anterior</span><strong>{previousMonthAvailable ? `${kilos(report.previousMonth.kilos)} kg` : 'Sin cobertura'}</strong><small>{periodRange(report.mixPeriods.previousMonth.start, report.mixPeriods.previousMonth.end)}</small></div>
+      <div><span>Año anterior</span><strong>{previousYearAvailable ? `${kilos(report.previousYear.kilos)} kg` : 'Sin cobertura'}</strong><small>{periodRange(report.mixPeriods.previousYear.start, report.mixPeriods.previousYear.end)}</small></div>
+    </div>
+    <p className="report-mix-method">La participación usa los kilos totales del universo SPT en cada período. Las variaciones comparan el mismo corte calendario.</p>
+    <div className="report-mix-card-grid">
+      {report.productGroups.map((row) => <article key={row.label} className="report-mix-comparison-card">
+        <header><div><span className="report-mix-marker" /><strong>{row.label}</strong></div><span className="spt-mix-share-label"><small>Participación</small><b>{number(row.share, 1)}%</b></span></header>
+        <div className="report-mix-current">
+          <div><span>Kilos al corte</span><strong>{kilos(row.kilos)} kg</strong></div>
+          <div><span>Facturación</span><strong>{money(row.netAmount, true)}</strong></div>
+          <div><span>Clientes</span><strong>{number(row.clients)}</strong></div>
+        </div>
+        <div className="report-mix-comparisons">
+          <div className={!previousMonthAvailable ? 'unavailable' : row.kilosVariationPreviousMonth != null && row.kilosVariationPreviousMonth >= 0 ? 'positive' : 'negative'}>
+            <span>vs mes anterior</span>
+            <strong>{previousMonthAvailable ? signedPercent(row.kilosVariationPreviousMonth) : 'Sin cobertura'}</strong>
+            <small>{previousMonthAvailable ? `${kilos(row.previousMonth.kilos)} kg antes · ${sharePoints(row.share, row.previousMonthShare)}` : periodRange(report.mixPeriods.previousMonth.start, report.mixPeriods.previousMonth.end)}</small>
+          </div>
+          <div className={!previousYearAvailable ? 'unavailable' : row.kilosVariationPreviousYear != null && row.kilosVariationPreviousYear >= 0 ? 'positive' : 'negative'}>
+            <span>vs año anterior</span>
+            <strong>{previousYearAvailable ? signedPercent(row.kilosVariationPreviousYear) : 'Sin cobertura'}</strong>
+            <small>{previousYearAvailable ? `${kilos(row.previousYear.kilos)} kg antes · ${sharePoints(row.share, row.previousYearShare)}` : periodRange(report.mixPeriods.previousYear.start, report.mixPeriods.previousYear.end)}</small>
+          </div>
+        </div>
+      </article>)}
+    </div>
+  </div>;
 }
 
 function DailyTable({ report }: { report: SptReportPayload }) {
@@ -217,7 +249,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
   const advancedFilterCount = useMemo(() => (['brand', 'category', 'product', 'client', 'line', 'subcategory', 'clientType', 'grouping', 'locality'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof SptFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando el modelo SPT" detail="Leyendo facturas, notas de crédito y maestros de la API de GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando el modelo SPT" detail="Leyendo facturas, notas de crédito y datos comerciales…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir el reporte SPT" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando comparaciones" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -246,7 +278,7 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
 
   return <div className="page-view spt-page">
     <section className="data-card spt-filter-card" data-tour="spt-overview">
-      <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Universo SPT conciliado</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan directamente sobre facturas, notas de crédito y maestros de GESI.</p></div>
+      <div className="spt-filter-intro"><span className="section-kicker"><Filter size={14} /> Información SPT conciliada</span><h2>Volumen SPT · {selectedMonthLong}</h2><p>Las reglas del reporte histórico se recalculan sobre facturas, notas de crédito y datos comerciales.</p></div>
       <MobileFilterSheet
         title="Filtros de Volumen SPT"
         description="Elegí el mes y acotá el universo comercial sin perder de vista el resumen del reporte."
@@ -270,8 +302,8 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
     {incompleteHistoricalCoverage
-      ? <section className="spt-coverage-warning"><AlertTriangle size={17} /><div><strong>Histórico todavía incompleto</strong><span>GESI está cubierto desde {meta.coverageFrom}. No interpretes como cero las comparaciones con períodos anteriores a esa fecha.</span></div></section>
-      : <section className="spt-coverage-warning is-complete"><Database size={17} /><div><strong>Histórico 2025 incorporado</strong><span>Cobertura desde {meta.coverageFrom} con los filtros actuales. GESI no entregó el detalle de {number(meta.unavailableDocumentCount)} de {number(meta.sourceDocumentCount + meta.unavailableDocumentCount)} comprobantes ({number(unavailableDocumentRate)}%).</span></div></section>}
+      ? <section className="spt-coverage-warning"><AlertTriangle size={17} /><div><strong>Histórico todavía incompleto</strong><span>La información disponible comienza el {meta.coverageFrom}. No interpretes como cero las comparaciones con períodos anteriores a esa fecha.</span></div></section>
+      : <section className="spt-coverage-warning is-complete"><Database size={17} /><div><strong>Histórico 2025 incorporado</strong><span>Cobertura desde {meta.coverageFrom} con los filtros actuales. No está disponible el detalle de {number(meta.unavailableDocumentCount)} de {number(meta.sourceDocumentCount + meta.unavailableDocumentCount)} comprobantes ({number(unavailableDocumentRate)}%).</span></div></section>}
 
     <div className="spt-tabs"><button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}><Gauge size={15} /> Resumen mensual</button><button className={tab === 'sellers' ? 'active' : ''} onClick={() => setTab('sellers')}><Users size={15} /> Vendedores</button><button className={tab === 'quarters' ? 'active' : ''} onClick={() => setTab('quarters')}><CalendarRange size={15} /> Trimestre</button></div>
 
@@ -285,7 +317,8 @@ export function SptReportView({ onOpenSeller }: { onOpenSeller: (seller: string)
     </div>
 
     {tab === 'summary' && <>
-      <div className="spt-summary-grid"><section className="data-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Avance mensual</span><h2>Kilos acumulados por día</h2><p>Comparación homogénea hasta el día {report.cutoffDay}.</p></div><span className="count-badge">{money(report.current.netAmount, true)} netos</span></div><DailyComparison report={report} /></section><section className="data-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Mezcla</span><h2>Grupos de producto</h2></div></div><Breakdown rows={report.productGroups} title="Grupo" /></section></div>
+      <section className="data-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Avance mensual</span><h2>Kilos acumulados por día</h2><p>Comparación homogénea hasta el día {report.cutoffDay}.</p></div><span className="count-badge">{money(report.current.netAmount, true)} netos</span></div><DailyComparison report={report} /></section>
+      <section className="data-card spt-product-mix-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Mezcla</span><h2>Participación y evolución por grupo</h2><p>Volumen, facturación y clientes de cada grupo, con comparaciones al mismo día.</p></div><span className="count-badge">{number(report.productGroups.length)} grupos</span></div><ProductGroupMix report={report} /></section>
       <section className="data-card spt-monthly-card"><div className="data-card-header"><div><span className="section-kicker"><BarChart3 size={14} /> Historia</span><h2>Evolución de kilos por mes</h2><p>Trece meses de volumen SPT; el mes actual se muestra parcial cuando corresponde.</p></div><div className="commercial-legend"><span><i className="current" />Kilos SPT</span></div></div><MonthlyChart report={report} /></section>
       <section className="data-card spt-daily-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Detalle diario</span><h2>Volumen por día</h2><p>Kilos diarios sin acumulación, como soporte de la comparación.</p></div></div><DailyTable report={report} /></section>
     </>}

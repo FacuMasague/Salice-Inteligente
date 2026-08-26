@@ -49,7 +49,7 @@ export function DeliverySheetDetailDrawer({
     <aside className="delivery-sheet-detail-drawer" aria-label={`Detalle de foja ${sheet.id}`}>
       <header className="delivery-sheet-detail-header">
         <div>
-          <span className="section-kicker"><Truck size={14} /> Foja de reparto GESI</span>
+          <span className="section-kicker"><Truck size={14} /> Foja de reparto</span>
           <h2>Foja {sheet.id}</h2>
           <p>{sheet.status === 'closed' ? 'Cerrada administrativamente' : 'Abierta'} · sólo lectura</p>
         </div>
@@ -59,7 +59,7 @@ export function DeliverySheetDetailDrawer({
       <div className="delivery-sheet-detail-body">
         <div className="delivery-sheet-caveat">
           <AlertTriangle size={17} />
-          <span>Una foja cerrada confirma el cierre de la carga en GESI; no demuestra expedición ni entrega al cliente.</span>
+          <span>Una foja cerrada confirma el cierre administrativo de la carga; no demuestra expedición ni entrega al cliente.</span>
         </div>
 
         <section className="delivery-sheet-summary-grid">
@@ -70,17 +70,17 @@ export function DeliverySheetDetailDrawer({
 
         <section className="delivery-sheet-source-details">
           <div><CalendarDays size={14} /><span><strong>Período</strong><small>{compactDate(sheet.startsAt)}–{compactDate(sheet.endsAt)}</small></span></div>
-          <div><Clock3 size={14} /><span><strong>Fecha expedida</strong><small>{sheet.dispatchedAt ? dateTime(sheet.dispatchedAt) : 'No informada por GESI'}</small></span></div>
+          <div><Clock3 size={14} /><span><strong>Fecha expedida</strong><small>{sheet.dispatchedAt ? dateTime(sheet.dispatchedAt) : 'No informada'}</small></span></div>
           <div><MapPin size={14} /><span><strong>Zona</strong><small>{sheet.zone || 'No informada'}</small></span></div>
           <div><MapPin size={14} /><span><strong>Subzona</strong><small>{sheet.subzone || 'No informada'}</small></span></div>
         </section>
 
         <section className="delivery-sheet-comments">
           <div><MessageSquareText size={15} /><span><strong>Comentario de la foja</strong>{sheet.comment || 'Sin comentario informado'}</span></div>
-          <div><MessageSquareText size={15} /><span><strong>Comentario de expedición</strong>{sheet.dispatchComment || 'No informado por GESI'}</span></div>
+          <div><MessageSquareText size={15} /><span><strong>Comentario de expedición</strong>{sheet.dispatchComment || 'No informado'}</span></div>
         </section>
 
-        <section className="delivery-sheet-invoices">
+        <section className="delivery-sheet-assigned-invoices">
           <div className="section-title-row">
             <div><span className="section-kicker"><FileText size={14} /> Comprobantes asignados</span><h3>Contenido de la foja</h3></div>
             <span className="count-badge">{number(invoices.length)}</span>

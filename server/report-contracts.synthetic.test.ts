@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SPT_MAIN_PRODUCT_GROUPS } from './report-product-groups';
 import { createSyntheticReportFixture } from './test-support/report-fixtures';
 
 let fixture: ReturnType<typeof createSyntheticReportFixture>;
@@ -66,6 +67,12 @@ describe('contratos de reportes sobre un fixture sintético estable', () => {
     expect(report?.current.netAmount).toBe(8_200);
     expect(report?.difference).toBeCloseTo((report?.current.netAmount ?? 0) - (report?.comparison.netAmount ?? 0), 6);
     expect(report?.mix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report?.current.netAmount ?? 0, 6);
+    expect(report?.productGroupMix).toHaveLength(12);
+    expect(new Set(report?.productGroupMix.map((row) => row.label))).toEqual(new Set([...SPT_MAIN_PRODUCT_GROUPS, 'Resto de la facturación']));
+    expect(report?.productGroupMix.map((row) => row.netAmount)).toEqual(
+      [...(report?.productGroupMix ?? [])].map((row) => row.netAmount).sort((left, right) => right - left),
+    );
+    expect(report?.productGroupMix.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(report?.current.netAmount ?? 0, 6);
   });
 
   it('respeta el calendario Mars y reconcilia marca, período y quarter', () => {

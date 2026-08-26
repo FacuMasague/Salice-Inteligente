@@ -99,7 +99,7 @@ describe('protección HTTP de los datos privados', () => {
     const health = await fetch(`${baseUrl}/api/health`);
     const healthPayload = await health.json() as Record<string, unknown>;
     expect(health.status).toBe(200);
-    expect(healthPayload).toEqual({ ok: true, version: '2.0.1' });
+    expect(healthPayload).toEqual({ ok: true, version: '2.1.5' });
     expect(healthPayload).not.toHaveProperty('generatedAt');
     expect(healthPayload).not.toHaveProperty('source');
     expect(health.headers.get('content-security-policy')).toContain('https://*.tile.openstreetmap.org');
@@ -233,5 +233,32 @@ describe('protección HTTP de los datos privados', () => {
     });
     expect(disabled.status).toBe(200);
     expect((await fetch(`${baseUrl}/api/dashboard`, { headers: { Cookie: officeCookie } })).status).toBe(401);
+  });
+
+  it('mantiene la sesión del dispositivo y renueva sus cookies persistentes', async () => {
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'adminintegracion', password: 'ClaveIntegracion2026' }),
+    });
+    expect(login.status).toBe(200);
+    const loginCookies = setCookieValues(login).filter(Boolean);
+    expect(loginCookies).toHaveLength(2);
+    expect(loginCookies.every((value) => value.includes('Max-Age=2147483647'))).toBe(true);
+
+    const validation = await fetch(`${baseUrl}/api/auth/session`, { headers: { Cookie: cookies(login) } });
+    expect(validation.status).toBe(200);
+    const renewedCookies = setCookieValues(validation).filter(Boolean);
+    expect(renewedCookies).toHaveLength(2);
+    expect(renewedCookies.some((value) => value.startsWith('salice_session=') && value.includes('HttpOnly'))).toBe(true);
+    expect(renewedCookies.every((value) => value.includes('Max-Age=2147483647'))).toBe(true);
+
+    const renewedCookie = cookies(validation);
+    const logout = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      headers: { Cookie: renewedCookie, 'X-Salice-CSRF': csrfFromCookie(renewedCookie) },
+    });
+    expect(logout.status).toBe(204);
+    expect((await fetch(`${baseUrl}/api/dashboard`, { headers: { Cookie: renewedCookie } })).status).toBe(401);
   });
 });

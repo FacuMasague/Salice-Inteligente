@@ -10,6 +10,7 @@ import { SavedViewsBar } from './SavedViewsBar';
 import { MultiSelectFilter } from './MultiSelectFilter';
 import { SingleSelectFilter } from './SingleSelectFilter';
 import { matchesMultiFilter } from '../../shared/multi-filter';
+import { productAvailableStock } from '../../shared/product-stock';
 
 const kindLabels: Record<RecommendationKind, string> = {
   mix_gap: 'Falta en el mix reciente',
@@ -158,7 +159,7 @@ export function CommercialOpportunitiesWorkspace({ clients, products, initialCli
           <label><span>TIPO</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="all">Todas las oportunidades</option>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label><span>CONFIANZA</span><select value={confidence} onChange={(event) => setConfidence(event.target.value as typeof confidence)}><option value="all">Todos los niveles</option>{Object.entries(confidenceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </MobileFilterSheet>
-        <p><PackageCheck size={15} /> Sólo productos comercializables con stock positivo. Los incompatibles quedan excluidos.</p>
+        <p><PackageCheck size={15} /> Sólo productos comercializables y disponibles para vender. Los incompatibles quedan excluidos.</p>
       </div>
       {loading && <div className="data-card opportunity-status">Calculando mix, pares comparables, quiebres y cobertura…</div>}
       {error && <div className="data-card opportunity-status error">{error}</div>}
@@ -168,7 +169,7 @@ export function CommercialOpportunitiesWorkspace({ clients, products, initialCli
         <button className="opportunity-brand-link" onClick={() => onOpenBrand(item.product.brand)}><Store size={13} /> {item.product.brand}</button>
         <p className="opportunity-reason">{item.reason}</p><p className="opportunity-affinity">{item.affinityExplanation}</p>
         {item.replacedProduct && <button className="opportunity-replaced" onClick={() => onOpenProduct(item.replacedProduct!)}><PackageX size={14} /><span>Quiebre observado: <strong>{item.replacedProduct.name}</strong></span></button>}
-        <div className="opportunity-metrics"><span><small>Afinidad</small><strong>{item.similarity}%</strong></span><span><small>Pares</small><strong>{item.peerAdoption}%</strong></span><span><small>Stock</small><strong>{number(item.product.stock)}</strong></span><span><small>Puntaje</small><strong>{item.score}</strong></span></div>
+        <div className="opportunity-metrics"><span><small>Afinidad</small><strong>{item.similarity}%</strong></span><span><small>Pares</small><strong>{item.peerAdoption}%</strong></span><span><small>Disponible</small><strong>{number(productAvailableStock(item.product))}</strong></span><span><small>Puntaje</small><strong>{item.score}</strong></span></div>
         {!!item.comparableClients.length && <div className="opportunity-peers"><small>Ejemplos comparables que lo compraron</small>{item.comparableClients.map((peer) => { const full = clients.find((client) => client.id === peer.id); return <button key={peer.id} disabled={!full} onClick={() => full && onOpenClient(full)}>{peer.name}<ChevronRight size={12} /></button>; })}</div>}
         <details><summary>Ver evidencia</summary><ul>{item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul></details>
         <button className="button ghost compact opportunity-link-button" onClick={() => { setLinkingProductId(item.product.id); setLinkError(''); }}><Link2 size={14} /> Vincular a lista o nota</button>

@@ -40,5 +40,5 @@ export function replaceViewInLocation(view: string, location = window.location, 
   const url = new URL(location.href);
   url.search = '';
   url.searchParams.set(VIEW_PARAM, view);
-  history.replaceState(null, '', url);
+  history.replaceState(history.state, '', url);
 }

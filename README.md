@@ -1,6 +1,8 @@
-# Salice Inteligente · v2.0.1
+# Salice Inteligente · v2.1.5
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.0.1 corrige la edición de objetivos comerciales con celdas no especificadas y conserva la experiencia móvil integral incorporada en v2.0.0. Mantiene sin cambios los universos, cálculos, permisos, persistencia y controles determinísticos de v1.5.1.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.5 deja visible todo el detalle de comprobantes del mapa de fojas sin permitir que su directorio crezca indefinidamente, distingue una recarga de una apertura nueva, limita los trimestres de Mars, NutriPet y Baires al año elegido y elimina avisos de período repetidos. También conserva la sesión iniciada por dispositivo hasta que el usuario la cierre o su acceso sea revocado. En teléfonos se conserva siempre la vista simple de v2.0.
+
+La versión no modifica roles, universos comerciales ni datos operativos. Cambia únicamente la vigencia de las sesiones para conservar cada dispositivo conectado hasta el cierre manual o una revocación de acceso. En inventario se mantiene la distinción funcional incorporada en v2.1.2: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También se conserva la cobertura histórica ampliada de fojas de reparto, junto con el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -37,7 +39,7 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 - Los roles disponibles son Developer, Administrador y Oficina.
 - Developer conserva las funciones administrativas y agrega una vista privada de accesos, tiempo activo por sección, días de uso, cambios con contexto seguro y alertas técnicas.
 - El tiempo de uso deja de acumularse después de cinco minutos sin interacción.
-- Las sesiones se conservan de forma segura en la computadora hasta 30 días o hasta cerrar sesión.
+- Las sesiones se conservan de forma segura en cada dispositivo hasta que el usuario cierre sesión; también se invalidan si la cuenta es deshabilitada o su acceso es revocado.
 - Deshabilitar una cuenta invalida inmediatamente sus sesiones.
 - Vistas guardadas, favoritos y reportes recientes pertenecen al usuario.
 - Las notas, correcciones y gestiones registran la persona autenticada; el navegador no puede elegir otro autor.
@@ -45,21 +47,34 @@ Para probar localmente la automatización puede configurarse `SALICE_AUTO_REFRES
 
 ## Recorrido principal
 
-### Centro operativo
+### Inicio
 
-- Mapa operativo: clientes y prioridades sobre el territorio.
-- Rutas: facturas y recorridos estimados con ubicaciones verificadas.
-- Clientes: directorio completo, estados, ubicación y fichas.
-- Vendedores: desempeño y composición de cada cartera.
-- Productos: inventario, catálogo, oportunidades y análisis avanzados.
-- Marcas: venta, stock y productos agrupados por marca.
+- Reúne clientes activos, facturación y kilos de 90 días, saldo de cuenta corriente y riesgo de cobranza; cada indicador abre su sección correspondiente.
+- Recupera las últimas cuatro pantallas distintas de cada usuario y ofrece acceso a todas las secciones principales.
+- Atención y Comercial permanecen contraídas hasta que la persona necesita revisarlas.
+- No crea tareas, no cambia estados y no modifica importes.
 
-### Administración
+### Trabajo diario
+
+- Inicio: prioridades y accesos para comenzar la jornada.
+- Bandeja comercial: señales y notas reunidas para revisión.
+- Cobranzas: una sola entrada con las pestañas Comprobantes y Clientes.
+
+### Clientes y ventas
 
 - Explorador de ventas: del indicador al comprobante.
-- Cartera: saldos y vencimientos.
-- Cuentas por cobrar: seguimiento humano, responsables y promesas.
-- Bandeja comercial: señales y notas reunidas para revisión.
+- Clientes: directorio completo, estados, ubicación y fichas.
+- Vendedores: desempeño y composición de cada cartera.
+- Productos: inventario, catálogo, oportunidades y análisis adicionales.
+- Marcas: venta, stock y productos agrupados por marca.
+
+### Planificación
+
+- Mapa operativo: clientes y ubicaciones sobre el territorio.
+- Rutas: facturas y recorridos estimados con ubicaciones verificadas.
+
+### Administración comercial
+
 - Reporte General: objetivos y resultados sobre el mismo período, sin un módulo administrativo duplicado.
 
 ### Reportes
@@ -75,7 +90,7 @@ El Centro de reportes organiza ocho lecturas:
 - NutriPet · desempeño comercial.
 - Baires · desempeño comercial.
 
-Cada reporte conserva filtros, período, fecha de corte, comparación, advertencias y exportaciones. “Cómo se calcula” mantiene el detalle metodológico plegado hasta que sea necesario.
+Cada reporte conserva filtros, período, fecha de corte, comparación, advertencias y exportaciones. Volumen SPT compara la mezcla por grupo contra mes y año anterior al mismo día; Ventas y composición agrega esos mismos grupos sobre su propia facturación y conserva un resto explícito para conciliar el total. Mars usa sus últimos 13 períodos comerciales y NutriPet/Baires sus últimos 13 meses para mostrar todos los quarters o trimestres intersectados, incluidos extremos parciales y ausencia explícita de cobertura interanual. “Cómo se calcula” mantiene el detalle metodológico plegado hasta que sea necesario.
 
 ## Ubicaciones y rutas
 
@@ -89,7 +104,9 @@ Mapa y Clientes permiten filtrar ubicaciones corregidas. La ficha explica el mot
 
 ## Productos
 
-El recorrido cotidiano muestra precio, disponibilidad, rotación, compradores y oportunidades con lenguaje comercial. Los datos faltantes o inválidos se identifican sin inventar valores.
+El recorrido cotidiano muestra precio, existencia física del almacén 2, cantidad comprometida en pedidos, disponibilidad, rotación, compradores y oportunidades con lenguaje comercial. Los datos faltantes o inválidos se identifican sin inventar valores. La cobertura, las alertas y las sugerencias comerciales usan disponibilidad para no ofrecer unidades ya comprometidas.
+
+Demanda y rotación y Precios y evolución priorizan período, cobertura, indicadores principales y comparaciones equivalentes. Sus controles y bloques se adaptan a teléfonos sin cambiar cálculos ni llamar a IA al abrirse.
 
 La clasificación explicable, sus atributos, evidencia, confianza, correcciones humanas e historial requieren activar el modo avanzado.
 
@@ -124,11 +141,12 @@ Configuración se divide en:
 1. Preferencias.
 2. Inteligencia artificial.
 3. Datos y actualizaciones.
-4. Ayuda.
-5. Diagnóstico avanzado.
-6. Acerca del programa.
+4. Diagnóstico avanzado.
+5. Acerca del programa.
 
-Las preferencias de densidad y ayuda contextual se guardan en el navegador. Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Los tutoriales independientes de Centro operativo, Administración y Reportes explican qué mirar, cómo trabajar y qué salvedades respetar en cada módulo. Los horarios de actualización que muestra la pantalla provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
+Las preferencias de densidad, vista y ayuda contextual se guardan en el navegador. La vista completa es la predeterminada en computadoras; en teléfonos y pantallas pequeñas siempre se usa la vista simple. El alcance de clientes también se elige en Configuración y deja de ocupar una franja superior de trabajo.
+
+Las vistas, favoritos y accesos recientes se separan por usuario y sus preferencias de reportes se persisten en el servidor. Ayuda conserva los tutoriales de Centro operativo, Administración y Reportes y ofrece recorridos graduales para revisar un cliente, gestionar una cobranza, buscar un comprobante o revisar el mes. Los horarios de actualización que muestra Configuración provienen del servidor e incluyen zona horaria, última ejecución y próxima ejecución real.
 
 Developer puede comparar la adopción durante 7, 30, 90 o 365 días y consultar el histórico. La medición por sección respeta el control anti-AFK y no registra contraseñas, textos de notas ni contenido libre de formularios. Las fallas de actualización, IA y errores no controlados quedan auditados y, si SMTP está configurado, se notifican por correo sin bloquear el flujo principal.
 
@@ -138,7 +156,11 @@ La aplicación conserva la última actualización aprobada si un intento posteri
 
 Los movimientos de ventas, cobranzas, cartera, logística y reportes sólo se aceptan cuando pertenecen simultáneamente a empresa 3 y sucursal 3. Via Salice MDP S.A. se excluye por identidad comercial de los snapshots y bases derivadas. Los maestros compartidos que no informan empresa o sucursal se conservan mientras no exista evidencia suficiente para atribuirlos a otro alcance.
 
+El inventario consulta exclusivamente el almacén 2, **Mar del Plata [WPM]**. Conserva por separado existencia física (`unidad1`), pedidos pendientes y disponibilidad (`unidad1Disponible`); no suma los demás almacenes ni convierte U2 sin una relación maestra confiable. Una fila técnica global sólo puede normalizarse cuando declara explícitamente sucursal 3 y almacén 2, y su existencia física, disponibilidad y pedidos pendientes U1/U2 son exactamente cero.
+
 La normalización del paquete candidato tiene un límite de heap propio de 1.024 MB; las demás etapas generales conservan 512 MB y la captura 768 MB. Las etapas continúan ejecutándose de forma secuencial.
+
+Las fojas de reparto conservan el mismo año móvil que las facturas y agregan un solapamiento de 45 días para cubrir períodos que cruzan el corte. La primera actualización completa el histórico cuando detecta una captura antigua limitada; después sólo conserva detalles históricos cerrados del paquete activo y vuelve a consultar todas las fojas recientes o todavía abiertas. Un caché dudoso obliga a reconstruir el año. `pnpm run audit:delivery-sheets` permite comparar la fuente con el paquete activo sin modificar datos.
 
 En producción, snapshots, paquetes de datos, operaciones, feedback y artefactos de IA viven en el disco persistente de Render. El servidor ejecuta la actualización internamente porque ese almacenamiento no puede compartirse con un Cron Job independiente. Si el servicio vuelve después de haberse perdido un horario, intenta recuperar esa ejecución; nunca permite dos actualizaciones simultáneas.
 
@@ -155,7 +177,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.0.1
+## Alcance que continúa fuera de v2.1.5
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -190,3 +212,9 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v1.5.1.md`
 - `docs/release-v2.0.0.md`
 - `docs/release-v2.0.1.md`
+- `docs/release-v2.1.0.md`
+- `docs/release-v2.1.1.md`
+- `docs/release-v2.1.2.md`
+- `docs/release-v2.1.3.md`
+- `docs/release-v2.1.4.md`
+- `docs/release-v2.1.5.md`

@@ -291,6 +291,62 @@ function brandRows(database: DatabaseSync, filters: MarsFilters, current: MarsPe
   }).filter((row) => Math.abs(row.kilos) > 0.0001).sort((a, b) => b.kilos - a.kilos);
 }
 
+function rollingMarsPeriods(selected: MarsPeriodDefinition, count = 13) {
+  return [selected.year - 2, selected.year - 1, selected.year]
+    .flatMap((year) => marsPeriodsForYear(year))
+    .filter((period) => period.year < selected.year || period.period <= selected.period)
+    .slice(-count);
+}
+
+function marsQuarterSeries(
+  database: DatabaseSync,
+  filters: MarsFilters,
+  selected: MarsPeriodDefinition,
+  sourceMaxDate: string,
+  coverageFrom: string,
+): MarsQuarterPoint[] {
+  const groups = new Map<string, MarsPeriodDefinition[]>();
+  for (const period of rollingMarsPeriods(selected).filter((candidate) => candidate.year === selected.year && candidate.end >= coverageFrom)) {
+    const key = `${period.year}-${period.quarter}`;
+    groups.set(key, [...(groups.get(key) ?? []), period]);
+  }
+
+  return [...groups.values()].map((periods) => {
+    const first = periods[0];
+    const last = periods.at(-1)!;
+    const start = first.start < coverageFrom ? coverageFrom : first.start;
+    const end = sourceMaxDate >= last.start && sourceMaxDate < last.end ? sourceMaxDate : last.end;
+    const naturalPeriods = marsPeriodsForYear(first.year).filter((period) => period.quarter === first.quarter);
+    const previousYearPeriods = marsPeriodsForYear(first.year - 1);
+    const previousFirst = previousYearPeriods.find((period) => period.period === first.period)!;
+    const previousLast = previousYearPeriods.find((period) => period.period === last.period)!;
+    const elapsedFirstPeriodDays = Math.max(1, daysInclusive(first.start, start));
+    const previousYearStart = addDays(previousFirst.start, Math.min(previousFirst.days, elapsedFirstPeriodDays) - 1);
+    const elapsedLastPeriodDays = Math.max(1, daysInclusive(last.start, end));
+    const previousYearEnd = addDays(previousLast.start, Math.min(previousLast.days, elapsedLastPeriodDays) - 1);
+    const comparisonAvailable = coverageFrom <= previousYearStart;
+    const current = metric(database, filters, start, end);
+    const previousYear = comparisonAvailable
+      ? metric(database, filters, previousYearStart, previousYearEnd)
+      : null;
+    return {
+      quarter: first.quarter,
+      label: `${first.quarter} ${first.year}`,
+      year: first.year,
+      start,
+      end,
+      isPartial: periods.length < naturalPeriods.length || start > first.start || end < last.end,
+      comparisonAvailable,
+      kilos: current.kilos,
+      netAmount: current.netAmount,
+      clients: current.clients,
+      previousYearKilos: previousYear?.kilos ?? null,
+      previousYearNetAmount: previousYear?.netAmount ?? null,
+      variation: previousYear ? metricVariation(current.kilos, previousYear.kilos) : null,
+    };
+  });
+}
+
 export function getMarsReportPath() {
   return reportPath();
 }
@@ -384,15 +440,7 @@ export function buildMarsReport(input: Partial<Record<string, unknown>>): MarsRe
   const yearStart = marsPeriodsForYear(selected.year)[0].start;
   const previousYearStart = marsPeriodsForYear(selected.year - 1)[0].start;
   const points = definitions.map((period) => periodPoint(database, filters, period, meta.reportingDate));
-  const quarters: MarsQuarterPoint[] = ['Q1', 'Q2', 'Q3', 'Q4'].map((quarter) => {
-    const quarterRows = points.filter((point) => point.quarter === quarter);
-    return {
-      quarter,
-      kilos: quarterRows.reduce((sum, point) => sum + point.kilos, 0),
-      netAmount: quarterRows.reduce((sum, point) => sum + point.netAmount, 0),
-      previousYearKilos: quarterRows.reduce((sum, point) => sum + point.previousYearKilos, 0),
-    };
-  }).filter((row) => row.kilos !== 0 || row.previousYearKilos !== 0);
+  const quarters = marsQuarterSeries(database, filters, selected, meta.reportingDate, meta.coverageFrom);
 
   return {
     generatedAt: new Date().toISOString(),

@@ -1,7 +1,7 @@
 {
   "name": "salice-inteligente",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.1.5",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=24.14.0 <25"
@@ -16,6 +16,7 @@
     "profile:gesi": "tsx scripts/profile-gesi.ts",
     "capture:gesi": "tsx scripts/capture-gesi.ts",
     "audit:gesi-capture": "tsx scripts/audit-gesi-capture.ts",
+    "audit:delivery-sheets": "tsx scripts/audit-gesi-delivery-sheets.ts",
     "audit:client-status": "tsx scripts/audit-client-status.ts --live",
     "sync:gesi": "tsx scripts/sync-gesi.ts",
     "refresh:gesi": "tsx scripts/refresh-gesi-manual.ts",

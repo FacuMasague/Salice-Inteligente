@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Building2, CalendarRange, Database, PawPrint, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { MarsBrandRow, MarsFilterKey, MarsFilters, MarsPeriodPoint, MarsReportMeta, MarsReportPayload } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
-import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
+import { BusinessReportFilters, BusinessReportKpis, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount, reportExportUrl } from '../components/ReportExperience';
@@ -130,8 +130,17 @@ function ClientChart({ report }: { report: MarsReportPayload }) {
 }
 
 function QuarterChart({ report }: { report: MarsReportPayload }) {
-  const max = Math.max(1, ...report.quarters.flatMap((row) => [row.kilos, row.previousYearKilos]));
-  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className="current" style={{ height: `${row.kilos / max * 100}%` }}><i>{kilos(row.kilos, true)}</i></span><span className="previous" style={{ height: `${row.previousYearKilos / max * 100}%` }}><i>{kilos(row.previousYearKilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{money(row.netAmount)} · {percent(variation(row.kilos, row.previousYearKilos), true)}</p></article>)}</div>;
+  const max = Math.max(1, ...report.quarters.flatMap((row) => [Math.abs(row.kilos), Math.abs(row.previousYearKilos ?? 0)]));
+  return <div className="mars-quarter-grid">{report.quarters.map((row) => <article key={row.label || row.quarter}>
+    <div>
+      <span role="img" aria-label={`${row.label || row.quarter}, período: ${kilos(row.kilos)} kilos`} className={`current${row.isPartial ? ' partial' : ''}${row.kilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.kilos, true)}</i></span>
+      {row.previousYearKilos != null && <span role="img" aria-label={`${row.label || row.quarter}, mismo tramo de ${row.year - 1}: ${kilos(row.previousYearKilos)} kilos`} className={`previous${row.previousYearKilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.previousYearKilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.previousYearKilos, true)}</i></span>}
+    </div>
+    <h3>{row.label || row.quarter}</h3>
+    <small className="quarter-range">{row.start && row.end ? `${dateLabel(row.start)}–${dateLabel(row.end)}` : ''}{row.isPartial ? ' · tramo parcial' : ''}</small>
+    <p>{money(row.netAmount)} · {number(row.clients)} clientes</p>
+    <p className="quarter-comparison">{row.comparisonAvailable ? `${percent(row.variation, true)} vs mismo tramo ${row.year - 1}` : 'Sin cobertura interanual comparable'}</p>
+  </article>)}</div>;
 }
 
 function BrandTable({ rows, onOpenBrand }: { rows: MarsBrandRow[]; onOpenBrand: (brand: string) => void }) {
@@ -192,7 +201,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     return { ...current, [key]: value };
   });
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Mars" detail="Reconstruyendo el calendario comercial y los movimientos desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Mars" detail="Reconstruyendo el calendario comercial y los movimientos…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte Mars" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando períodos Mars" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -216,7 +225,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
       dataTour="mars-overview"
       kicker={<><PawPrint size={14} /> Reporte Mars</>}
       title={<>Pet Nutrition · {report.filters.year} {report.filters.period}</>}
-      description="Períodos comerciales Mars de cuatro semanas, calculados directamente sobre facturas y notas de crédito de GESI."
+      description="Períodos comerciales Mars de cuatro semanas, calculados sobre facturas y notas de crédito."
       introExtra={<div className="mars-mode-tabs" role="group" aria-label="Unidad de clientes"><button type="button" className={filters.clientMode === 'branch' ? 'active' : ''} aria-pressed={filters.clientMode === 'branch'} onClick={() => update('clientMode', 'branch')}><Store size={14} /> Por sucursal</button><button type="button" className={filters.clientMode === 'account' ? 'active' : ''} aria-pressed={filters.clientMode === 'account'} onClick={() => update('clientMode', 'account')}><Building2 size={14} /> Por cuenta</button></div>}
       primary={<><SingleSelectFilter label="Año Mars" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Período Mars" value={filters.period} options={(meta.periods[filters.year] ?? []).map((period) => period.label)} onChange={(value) => update('period', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /></>}
       advanced={<>{filterKeys.filter((key) => key !== 'branch').map((key) => <SelectFilter key={key} label={FILTER_LABELS[key]} value={filters[key]} options={meta.options[key]} onChange={(value) => update(key, value)} />)}<button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}
@@ -233,8 +242,6 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
     <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
 
-    <BusinessReportPeriodNote partial={report.isPartial} title={`${report.selected.label} · ${dateLabel(report.selected.start)} al ${dateLabel(report.isPartial ? report.sourceMaxDate : report.selected.end)}`} detail={report.isPartial ? `Período en curso: ${report.elapsedDays} de ${report.selected.days} días. Las comparaciones acumuladas y por marca usan el mismo número de días del año anterior.` : `Período completo de ${report.selected.days} días.`} />
-
     <BusinessReportKpis items={[
       { label: 'Kilos / facturación', value: <>{kilos(report.current.kilos)} kg</>, detail: `${money(report.current.netAmount)} · ${report.isPartial ? 'corte parcial' : 'período completo'}`, icon: <Scale size={20} />, tone: 'green' },
       { label: priorPeriod, value: <>{kilos(report.previousPeriod.kilos)} kg</>, detail: `${money(report.previousPeriod.netAmount)} · ${percent(currentVsPrevious, true)}`, icon: currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />, tone: currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'blue' },
@@ -246,7 +253,7 @@ export function MarsReportView({ onOpenBrand }: { onOpenBrand: (brand: string) =
 
     <section className="data-card mars-volume-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen por período y avance acumulado</h2><p>Barras en kilos; la línea compara el acumulado contra el mismo corte del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Período parcial</span></div></div><VolumeChart report={report} /></section>
 
-    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarter Mars</span><h2>Volumen acumulado por quarter</h2><p>Actual contra año anterior comparable.</p></div><div className="mars-legend"><span><i className="volume" />{report.selected.year}</span><span><i className="prior" />{report.selected.year - 1}</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
+    <div className="mars-secondary-grid"><section className="data-card mars-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por período</h2><p>{filters.clientMode === 'branch' ? 'Una cuenta puede sumar más de una sucursal de entrega.' : 'Cada cliente se cuenta una sola vez.'}</p></div></div><ClientChart report={report} /></section><section className="data-card mars-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Quarters Mars</span><h2>Quarters {report.selected.year}</h2><p>Desde Q1 hasta el quarter alcanzado; cada uno se compara con el mismo tramo del año anterior.</p></div><div className="mars-legend"><span><i className="volume" />Período</span><span><i className="prior" />Mismo tramo año anterior</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
 
     <section className="data-card mars-brand-card"><div className="data-card-header"><div><span className="section-kicker"><PawPrint size={14} /> Marcas</span><h2>Mix del período seleccionado</h2><p>Comparación contra la misma cantidad de días del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BrandTable rows={report.brands} onOpenBrand={onOpenBrand} /></section>
 

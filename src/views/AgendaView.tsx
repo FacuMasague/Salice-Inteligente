@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
+  Database,
   FileText,
   MapPin,
   MessageSquareText,
@@ -332,7 +333,7 @@ export function AgendaView({
 
             <AiCommercialExplanationCard artifact={selectedEntry.aiExplanation} />
 
-            {!selectedOpportunityEligible ? <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><AlertTriangle size={14} /> Sin oportunidades comerciales</span><h3>{selectedClient.salesBlocked ? 'Cliente con bloqueo de ventas' : 'Sin compras en los últimos 90 días'}</h3></div></div><p className="section-description">{selectedClient.salesBlocked ? 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero no se muestra como oportunidad ni recibe productos sugeridos mientras GESI informe el bloqueo.' : 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero se necesita una compra reciente para evaluar su mix sin inventar afinidad.'}</p></section> : <InboxOpportunities client={selectedClient} onOpenProduct={onOpenProduct} />}
+            {!selectedOpportunityEligible ? <section className="agenda-offers"><div className="section-title-row"><div><span className="section-kicker"><AlertTriangle size={14} /> Sin oportunidades comerciales</span><h3>{selectedClient.salesBlocked ? 'Cliente con bloqueo de ventas' : 'Sin compras en los últimos 90 días'}</h3></div></div><p className="section-description">{selectedClient.salesBlocked ? 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero no se muestra como oportunidad ni recibe productos sugeridos mientras figure con bloqueo de ventas.' : 'Puede permanecer en la bandeja por cobranza, recordatorios o notas, pero se necesita una compra reciente para evaluar su mix sin inventar afinidad.'}</p></section> : <InboxOpportunities client={selectedClient} onOpenProduct={onOpenProduct} />}
 
             <section className="agenda-history-section">
               <div className="section-title-row"><div><span className="section-kicker"><MessageSquareText size={14} /> Notas de oficina</span><h3>Hechos registrados fuera del sistema</h3></div><span className="count-badge">{selectedEntry.notes.length}</span></div>
@@ -341,13 +342,15 @@ export function AgendaView({
             </section>
 
             <footer className="agenda-detail-actions">
-              {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir cuentas por cobrar</button>}
+              {selectedEntry.sources.some((value) => value === 'promise' || value === 'reminder') && <button className="button secondary" onClick={onOpenReceivables}><CircleDollarSign size={16} /> Abrir Clientes de Cobranzas</button>}
               <button className="button secondary" disabled={!selectedClient.coordinates || selectedClient.locationPrecision === 'locality'} title={selectedClient.locationPrecision === 'locality' ? 'La ubicación debe verificarse antes de usarla en una ruta' : undefined} onClick={() => onPlanRoute(selectedClient.id)}><Route size={16} /> {selectedClient.locationPrecision === 'locality' ? 'Ubicación por verificar' : 'Ver en rutas'}</button>
               <button className="button primary large" onClick={() => setNoteOpen(true)}><MessageSquareText size={16} /> Agregar nota</button>
             </footer>
           </>}
         </section>
       </div>
+
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de la Bandeja</summary><div><strong>Cómo se forma la lista</strong><span>La bandeja reúne señales comerciales, compromisos y notas para ordenar una revisión. Los puntajes no son probabilidades de compra, no crean tareas y no registran que una propuesta haya sido ofrecida.</span></div></details>
 
       {noteOpen && <CommercialNoteDialog
         clients={activeClients}

@@ -17,6 +17,7 @@ import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
+import { calendarQuarterWindowsForYear } from './rolling-quarter-series.js';
 
 const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
@@ -303,18 +304,26 @@ export function buildNutriPetReport(input: Partial<Record<string, unknown>>): Nu
     const point = shiftMonth(latestYear, latestMonth, index - 12);
     return monthlyPoint(value, filters, point.year, point.month, meta);
   });
-  const quarters: NutriPetQuarterPoint[] = Array.from({ length: 4 }, (_, index) => {
-    const startMonth = index * 3;
-    const start = iso(monthStart(year, startMonth));
-    const naturalQuarterEnd = iso(monthEnd(year, startMonth + 2));
-    const end = filters.year === meta.latestYear && meta.reportingDate < naturalQuarterEnd ? meta.reportingDate : naturalQuarterEnd;
-    if (end < start) return null;
+  const quarters: NutriPetQuarterPoint[] = calendarQuarterWindowsForYear(periodEnd, meta.coverageFrom).map((window) => {
+    const current = metric(value, filters, window.start, window.end);
+    const comparisonAvailable = meta.coverageFrom <= window.previousYearStart;
+    const previousYear = comparisonAvailable
+      ? metric(value, filters, window.previousYearStart, window.previousYearEnd)
+      : null;
     return {
-      ...metric(value, filters, start, end),
-      quarter: `T-${index + 1}`,
-      isPartial: end < naturalQuarterEnd,
+      ...current,
+      quarter: window.quarter,
+      label: window.label,
+      year: window.year,
+      start: window.start,
+      end: window.end,
+      isPartial: window.isPartial,
+      comparisonAvailable,
+      previousYearKilos: previousYear?.kilos ?? null,
+      previousYearNetAmount: previousYear?.netAmount ?? null,
+      variation: previousYear ? metricVariation(current.kilos, previousYear.kilos) : null,
     };
-  }).filter((row): row is NutriPetQuarterPoint => row !== null && (row.kilos !== 0 || row.clients !== 0));
+  });
 
   return {
     generatedAt: new Date().toISOString(),

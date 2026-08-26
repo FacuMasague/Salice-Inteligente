@@ -39,6 +39,14 @@ describeWithDatabase('Reporte Baires construido desde GESI', () => {
     expect(report!.ytd.kilos).toBeGreaterThanOrEqual(report!.current.kilos);
     expect(report!.monthly).toHaveLength(13);
     expect(report!.monthly.at(-1)).toMatchObject({ month: meta.latestMonth, isPartial: report!.isPartial, clients: report!.current.clients });
+    expect(report!.quarters).toHaveLength(Math.ceil(Number(meta.reportingDate.slice(5, 7)) / 3));
+    expect(report!.quarters[0].start).toBe(`${meta.reportingDate.slice(0, 4)}-01-01`);
+    expect(report!.quarters.at(-1)?.end).toBe(meta.reportingDate);
+    const currentYearMonths = report!.monthly.filter((row) => row.month.startsWith(meta.reportingDate.slice(0, 4)));
+    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.kilos, 0), 6);
+    expect(report!.quarters.reduce((sum, row) => sum + row.units, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.units, 0), 6);
+    expect(report!.quarters.reduce((sum, row) => sum + row.netAmount, 0)).toBeCloseTo(currentYearMonths.reduce((sum, row) => sum + row.netAmount, 0), 6);
+    expect(report!.quarters.filter((row) => !row.comparisonAvailable).every((row) => row.previousYearKilos == null)).toBe(true);
   }, 15_000);
 
   it('mantiene conciliados los períodos y trimestres de un mes cerrado', () => {
@@ -47,7 +55,8 @@ describeWithDatabase('Reporte Baires construido desde GESI', () => {
     expect(report!.isPartial).toBe(false);
     expect(report!.current.kilos).toBeGreaterThan(0);
     expect(report!.current.clients).toBeGreaterThan(0);
-    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeGreaterThanOrEqual(report!.ytd.kilos);
+    expect(report!.quarters).toHaveLength(2);
+    expect(report!.quarters.every((row) => row.year === 2026 && /^T[1-4] 2026$/.test(row.label))).toBe(true);
   }, 15_000);
 
   it('reconcilia segmentos y desgloses contra el total seleccionado', () => {

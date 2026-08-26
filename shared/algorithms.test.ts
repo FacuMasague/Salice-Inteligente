@@ -37,6 +37,14 @@ describe('motor algorítmico', () => {
     expect(plan.feasible).toBe(plan.warnings.length === 0);
   });
 
+  it('sugiere las facturas por razón social y no por nombre de fantasía', () => {
+    const client = { ...snapshot.clients[0], name: 'Razón Social Ejemplo SA', tradeName: 'Comercio de Fantasía' };
+    const invoice = snapshot.logistics.invoices.find((item) => item.clientId === client.id);
+    expect(invoice).toBeDefined();
+    const [stop] = groupDeliveryInvoices([invoice!], [client]);
+    expect(stop.clientName).toBe('Razón Social Ejemplo SA');
+  });
+
   it('excluye clientes inactivos de recomendaciones, pero conserva repartos reales si tienen factura', () => {
     const inactive = { ...snapshot.clients[0], active: false, gesiStateId: 2 };
     const clients = [inactive, ...snapshot.clients.slice(1)];

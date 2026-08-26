@@ -5,6 +5,7 @@ import {
 } from '../../shared/product-comparison';
 import { productPresentationLabel, summarizeProductForOffice } from '../../shared/product-insights';
 import { VECTOR_GROUPS, VECTOR_LABELS, type Product, type VectorKey } from '../../shared/models';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../../shared/product-stock';
 import { money, number, shortDate } from '../lib/format';
 
 interface ProductComparisonWorkspaceProps {
@@ -92,7 +93,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
 
   const blocks: ComparisonBlock[] = selected.length < 2 ? [] : [
     {
-      id: 'identity', title: 'Identidad y clasificación', description: 'Campos declarados por el maestro de GESI.', rows: [
+      id: 'identity', title: 'Identidad y clasificación', description: 'Datos registrados para cada producto.', rows: [
         { id: 'sku', label: 'Código / SKU', values: selected.map((product) => value(product.sku, product.sku)) },
         { id: 'brand', label: 'Marca', values: selected.map((product) => value(<button className="entity-link" onClick={() => onOpenBrand(product.brand)}>{useful(product.brand)}</button>, product.brand)) },
         { id: 'family', label: 'Rubro / familia', values: selected.map((product) => value(useful(product.family), product.family)) },
@@ -102,7 +103,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'presentation', title: 'Presentación y contenido', description: 'No se equiparan envases cuando GESI no permite normalizarlos.', rows: [
+      id: 'presentation', title: 'Presentación y contenido', description: 'No se equiparan envases cuando la información disponible no permite normalizarlos.', rows: [
         { id: 'presentation', label: 'Presentación', values: selected.map((product) => value(productPresentationLabel(product), productPresentationLabel(product))) },
         { id: 'content', label: 'Contenido neto reconocido', values: selected.map((product) => value(product.contentKg ? `${product.contentKg.toLocaleString('es-AR')} kg` : 'No calculable', raw(product.contentKg), product.contentKg)), comparable: selected.every((product) => Boolean(product.contentKg)), note: 'Sólo se reconoce cuando la presentación es inequívoca.' },
         { id: 'unit1', label: 'Unidad primaria', values: selected.map((product) => value(useful(product.unit), product.unit)) },
@@ -112,14 +113,15 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
     },
     {
       id: 'price', title: 'Precio y precio por kilo', description: 'Una ventaja se marca sólo con una unidad realmente equivalente.', rows: [
-        { id: 'price', label: 'Precio de referencia GESI', values: selected.map((product) => value(product.price > 0 ? money(product.price) : 'Sin precio', raw(product.price), product.price)), comparable: presentationComparable && selected.every((product) => product.price > 0), advantage: 'min', note: presentationComparable ? 'Misma presentación observable; no es el precio efectivo facturado.' : 'No se resalta: las presentaciones no son equivalentes.' },
+        { id: 'price', label: 'Precio de referencia', values: selected.map((product) => value(product.price > 0 ? money(product.price) : 'Sin precio', raw(product.price), product.price)), comparable: presentationComparable && selected.every((product) => product.price > 0), advantage: 'min', note: presentationComparable ? 'Misma presentación observable; no es el precio efectivo facturado.' : 'No se resalta: las presentaciones no son equivalentes.' },
         { id: 'price-kg', label: 'Precio por kilo', values: selected.map((product) => value(product.referencePricePerKg ? `${money(product.referencePricePerKg)}/kg` : 'No calculable', raw(product.referencePricePerKg), product.referencePricePerKg)), comparable: pricePerKgComparable, advantage: 'min', note: pricePerKgComparable ? 'Mismo uso principal y unidad $/kg.' : 'No comparable: falta peso inequívoco o el uso principal es diferente.' },
         { id: 'position', label: 'Posicionamiento relativo', values: selected.map((product) => value(positionLabel(product), product.pricePosition)), comparable: pricePerKgComparable },
       ],
     },
     {
-      id: 'inventory', title: 'Stock, rotación y cobertura', description: 'Stock y rotación están expresados en U1; la cobertura usa meses estimados.', rows: [
-        { id: 'stock', label: 'Stock disponible U1', values: selected.map((product) => value(`${number(product.stock)} ${product.unit.toLocaleLowerCase('es')}`, `${product.stock}|${product.unit}`, product.stock)), comparable: presentationComparable, note: presentationComparable ? 'Presentaciones equivalentes.' : 'No se marca ventaja: una U1 representa contenidos diferentes.' },
+      id: 'inventory', title: 'Stock, rotación y cobertura', description: 'La existencia física y la disponibilidad están expresadas en U1; la cobertura usa lo disponible para vender.', rows: [
+        { id: 'warehouse-stock', label: 'Existencia física U1', values: selected.map((product) => { if (!hasWarehousePhysicalStock(product)) return value('Sin dato físico', 'unavailable', null); const stock = productWarehouseStock(product); return value(`${number(stock)} ${product.unit.toLocaleLowerCase('es')}`, `${stock}|${product.unit}`, stock); }), comparable: presentationComparable && selected.every(hasWarehousePhysicalStock), note: selected.every(hasWarehousePhysicalStock) ? 'Cantidad registrada en el almacén antes de pedidos pendientes.' : 'Algún producto proviene de un paquete anterior que sólo conserva disponibilidad; no se presenta esa cifra como existencia física.' },
+        { id: 'stock', label: 'Disponible para vender U1', values: selected.map((product) => { const stock = productAvailableStock(product); return value(`${number(stock)} ${product.unit.toLocaleLowerCase('es')}`, `${stock}|${product.unit}`, stock); }), comparable: presentationComparable, note: presentationComparable ? 'Cantidad posterior a pedidos pendientes; se usa para cobertura y oportunidades.' : 'No se marca ventaja: una U1 representa contenidos diferentes.' },
         { id: 'rotation', label: 'Rotación mensual', values: selected.map((product) => value(`${number(product.monthlyUnits)} U1/mes`, String(product.monthlyUnits), product.monthlyUnits)), comparable: presentationComparable, advantage: 'max', note: presentationComparable ? 'U1 equivalentes.' : 'No se marca ventaja por presentación diferente.' },
         { id: 'units90', label: 'Unidades · 90 días', values: selected.map((product) => value(`${number(product.units90d)} U1`, String(product.units90d), product.units90d)), comparable: presentationComparable },
         { id: 'coverage', label: 'Cobertura estimada', values: selected.map((product) => value(product.stockCoverageMonths == null ? 'No calculable' : `${product.stockCoverageMonths.toLocaleString('es-AR')} meses`, raw(product.stockCoverageMonths), product.stockCoverageMonths)), comparable: coverageComparable, note: coverageComparable ? 'Todos poseen stock y rotación utilizables.' : 'No comparable: al menos un producto carece de rotación o señal de inventario suficiente.' },
@@ -135,7 +137,7 @@ export function ProductComparisonWorkspace({ products, selectedIds, onSelectionC
       ],
     },
     {
-      id: 'features', title: 'Características principales', description: 'Lectura determinística de señales descriptivas; un vacío no se completa.', rows: [
+      id: 'features', title: 'Características principales', description: 'Lectura de la descripción disponible; un dato faltante no se completa.', rows: [
         { id: 'summary', label: 'Lectura rápida', values: selected.map((product) => value(summarizeProductForOffice(product), summarizeProductForOffice(product))) },
         { id: 'species', label: 'Especie y etapa', values: selected.map((product) => value(dominantFeatures(product, ['perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior']), dominantFeatures(product, ['perros', 'gatos', 'otras_especies', 'cachorros', 'adultos', 'senior']))) },
         { id: 'type', label: 'Tipo y uso', values: selected.map((product) => value(dominantFeatures(product, ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano']), dominantFeatures(product, ['alimento_seco', 'alimento_humedo', 'snacks', 'farmacia', 'antiparasitario', 'higiene', 'accesorios', 'consumo_humano']))) },

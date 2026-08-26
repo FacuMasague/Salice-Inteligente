@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Boxes, ChevronRight, Info, PackageCheck, Search, Store, TrendingUp, Warehouse } from 'lucide-react';
+import { Boxes, ChevronRight, Database, Info, PackageCheck, Search, Store, TrendingUp, Warehouse } from 'lucide-react';
 import type { BrandAnalysisPayload, BrandAnalysisRow } from '../../shared/brand-analysis';
 import type { Product } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../../shared/product-stock';
 import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
@@ -16,6 +17,8 @@ interface BrandCatalogSummary {
   activeProducts: number;
   commercialProducts: number;
   stock: number;
+  availableStock: number;
+  physicalStockCertified: boolean;
   families: string[];
 }
 
@@ -29,15 +32,20 @@ function summarize(products: Product[]): BrandCatalogSummary[] {
     if (!name || name.startsWith('Sin ')) continue;
     grouped.set(name, [...(grouped.get(name) ?? []), product]);
   }
-  return [...grouped.entries()].map(([name, rows]) => ({
-    name,
-    products: rows,
-    productCount: rows.length,
-    activeProducts: rows.filter((product) => product.masterStatus === 'active').length,
-    commercialProducts: rows.filter((product) => product.commercialStatus === 'commercializable').length,
-    stock: rows.reduce((sum, product) => sum + product.stock, 0),
-    families: [...new Set(rows.map((product) => product.family))].sort((a, b) => a.localeCompare(b, 'es')),
-  }));
+  return [...grouped.entries()].map(([name, rows]) => {
+    const physicalStockCertified = rows.length > 0 && rows.every(hasWarehousePhysicalStock);
+    return {
+      name,
+      products: rows,
+      productCount: rows.length,
+      activeProducts: rows.filter((product) => product.masterStatus === 'active').length,
+      commercialProducts: rows.filter((product) => product.commercialStatus === 'commercializable').length,
+      stock: rows.reduce((sum, product) => sum + (physicalStockCertified ? productWarehouseStock(product) : productAvailableStock(product)), 0),
+      availableStock: rows.reduce((sum, product) => sum + productAvailableStock(product), 0),
+      physicalStockCertified,
+      families: [...new Set(rows.map((product) => product.family))].sort((a, b) => a.localeCompare(b, 'es')),
+    };
+  });
 }
 
 export function BrandsView({ products, focusBrand = '', onOpenProduct }: {
@@ -46,6 +54,7 @@ export function BrandsView({ products, focusBrand = '', onOpenProduct }: {
   onOpenProduct: (product: Product | string) => void;
 }) {
   const catalogBrands = useMemo(() => summarize(products), [products]);
+  const catalogPhysicalStockCertified = catalogBrands.length > 0 && catalogBrands.every((brand) => brand.physicalStockCertified);
   const [analysis, setAnalysis] = useState<BrandAnalysisPayload | null>(null);
   const [analysisError, setAnalysisError] = useState('');
   const [query, setQuery] = useState('');
@@ -90,13 +99,13 @@ export function BrandsView({ products, focusBrand = '', onOpenProduct }: {
   const filtered = catalogBrands
     .filter((brand) => `${brand.name} ${brand.families.join(' ')}`.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es')))
     .filter((brand) => !family || brand.products.some((product) => matchesMultiFilter(product.family, family)))
-    .filter((brand) => availability === 'all' || (availability === 'stock' ? brand.stock > 0 : brand.commercialProducts > 0))
+    .filter((brand) => availability === 'all' || (availability === 'stock' ? brand.availableStock > 0 : brand.commercialProducts > 0))
     .sort((a, b) => {
       const aa = analysisByBrand.get(a.name);
       const bb = analysisByBrand.get(b.name);
       if (order === 'kilos') return (bb?.kilos ?? 0) - (aa?.kilos ?? 0);
       if (order === 'units') return (bb?.units ?? 0) - (aa?.units ?? 0);
-      if (order === 'stock') return b.stock - a.stock;
+      if (order === 'stock') return catalogPhysicalStockCertified ? b.stock - a.stock : b.availableStock - a.availableStock;
       if (order === 'products') return b.productCount - a.productCount;
       if (order === 'name') return a.name.localeCompare(b.name, 'es');
       return (bb?.netAmount ?? 0) - (aa?.netAmount ?? 0);
@@ -113,14 +122,14 @@ export function BrandsView({ products, focusBrand = '', onOpenProduct }: {
     .filter((product) => matchesMultiFilter(product.family, productFamily))
     .filter((product) => matchesMultiFilter(product.line, productLine))
     .filter((product) => matchesMultiFilter(product.masterStatus, productStatus))
-    .filter((product) => productAvailability === 'all' || (productAvailability === 'stock' ? product.stock > 0 : product.commercialStatus === 'commercializable'))
+    .filter((product) => productAvailability === 'all' || (productAvailability === 'stock' ? productAvailableStock(product) > 0 : product.commercialStatus === 'commercializable'))
     .sort((a, b) => {
       const aa = productMetrics.get(a.id);
       const bb = productMetrics.get(b.id);
       if (productOrder === 'kilos') return (bb?.kilos ?? 0) - (aa?.kilos ?? 0);
       if (productOrder === 'units') return (bb?.units ?? 0) - (aa?.units ?? 0);
       if (productOrder === 'buyers') return (bb?.buyers ?? 0) - (aa?.buyers ?? 0);
-      if (productOrder === 'stock') return b.stock - a.stock;
+      if (productOrder === 'stock') return selected.physicalStockCertified ? productWarehouseStock(b) - productWarehouseStock(a) : productAvailableStock(b) - productAvailableStock(a);
       if (productOrder === 'name') return a.name.localeCompare(b.name, 'es');
       return (bb?.netAmount ?? 0) - (aa?.netAmount ?? 0);
     }) : [];
@@ -138,18 +147,19 @@ export function BrandsView({ products, focusBrand = '', onOpenProduct }: {
     + (productAvailability === 'all' ? 0 : 1)
     + (productOrder === 'sales' ? 0 : 1);
 
-  if (!selected) return <div className="page-view"><section className="data-card empty-state"><Store size={28} /><h2>No hay marcas verificables</h2><p>GESI no entregó una marca utilizable para el catálogo actual.</p></section></div>;
+  if (!selected) return <div className="page-view"><section className="data-card empty-state"><Store size={28} /><h2>No hay marcas disponibles</h2><p>Los productos del catálogo actual no tienen una marca utilizable.</p></section></div>;
   return <div className="page-view brand-page" data-tour="brands-directory">
     <section className="data-card brand-directory-card">
-      <div className="data-card-header stacked"><div><span className="section-kicker"><Store size={14} /> Directorio de marcas</span><h2>{filtered.length} de {catalogBrands.length} marcas</h2><p>Participación calculada con facturas y notas de crédito; las marcas ausentes permanecen en el denominador.</p></div><label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar marca o rubro…" /></label><MobileFilterSheet title="Filtrar marcas" description="Ajustá el directorio y recuperá tus vistas guardadas." activeCount={directoryActiveFilterCount}><div className="brand-filter-grid"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={setFamily} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializables' }, { value: 'stock', label: 'Con stock' }, { value: 'all', label: 'Todas' }]} onChange={setAvailability} /><SingleSelectFilter label="Orden" value={order} options={[{ value: 'sales', label: 'Mayor venta neta' }, { value: 'kilos', label: 'Más kilos' }, { value: 'units', label: 'Más unidades' }, { value: 'stock', label: 'Mayor stock' }, { value: 'products', label: 'Más productos' }, { value: 'name', label: 'Nombre A–Z' }]} onChange={(value) => setOrder(value as BrandOrder)} /></div><SavedViewsBar viewKey="brands" filters={filters} onApply={applySaved} /></MobileFilterSheet></div>
+      <div className="data-card-header stacked"><div><span className="section-kicker"><Store size={14} /> Directorio de marcas</span><h2>{filtered.length} de {catalogBrands.length} marcas</h2><p>Venta, kilos, productos e inventario reunidos por marca.</p></div><label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar marca o rubro…" /></label><MobileFilterSheet title="Filtrar marcas" description="Ajustá el directorio y recuperá tus vistas guardadas." activeCount={directoryActiveFilterCount}><div className="brand-filter-grid"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={setFamily} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializables' }, { value: 'stock', label: 'Disponibles para vender' }, { value: 'all', label: 'Todas' }]} onChange={setAvailability} /><SingleSelectFilter label="Orden" value={order} options={[{ value: 'sales', label: 'Mayor venta neta' }, { value: 'kilos', label: 'Más kilos' }, { value: 'units', label: 'Más unidades' }, { value: 'stock', label: catalogPhysicalStockCertified ? 'Mayor existencia física' : 'Mayor disponibilidad' }, { value: 'products', label: 'Más productos' }, { value: 'name', label: 'Nombre A–Z' }]} onChange={(value) => setOrder(value as BrandOrder)} /></div><SavedViewsBar viewKey="brands" filters={filters} onApply={applySaved} /></MobileFilterSheet></div>
       <div className="brand-directory-list">{filtered.map((brand) => { const metrics = analysisByBrand.get(brand.name); return <button key={brand.name} className={brand.name === selected.name ? 'active' : ''} onClick={() => { setSelectedName(brand.name); revealDetailWhenStacked(); }}><div className="brand-monogram">{brand.name.slice(0, 2).toUpperCase()}</div><span><strong>{brand.name}</strong><small>{brand.productCount} productos · {brand.families.slice(0, 2).join(' · ')}</small></span><span className="brand-row-metrics"><strong>{metrics ? money(metrics.netAmount, true) : 'Sin detalle'}</strong><small>{metrics ? `${number(metrics.kilos, 2)} kg · 90d` : 'Base comercial no disponible'}</small></span><ChevronRight size={16} /></button>; })}</div>
     </section>
     <section ref={detailRef} className="brand-detail-column">
       <article className="data-card brand-hero"><div><span className="section-kicker"><Store size={14} /> Ficha de marca · 90 días</span><h2>{selected.name}</h2><p>{analysis ? `${compactDate(analysis.range.from)} → ${compactDate(analysis.range.through)}` : 'Calculando período comercial…'}</p></div><div className="brand-share"><strong>{commercial ? `${number(commercial.salesSharePercent, 2)}%` : '—'}</strong><span>de la venta neta total</span><strong>{commercial ? `${number(commercial.kiloSharePercent, 2)}%` : '—'}</strong><span>de los kilos totales</span></div></article>
       {analysisError && <div className="data-card demand-coverage-note attention"><Info size={17} /><div><strong>No se pudo abrir el análisis comercial de marcas</strong><span>{analysisError}</span></div></div>}
       {analysis && (analysis.unavailableDocumentCount > 0 || analysis.productsWithoutKiloConversion > 0) && <div className="data-card demand-coverage-note attention"><Info size={17} /><div><strong>Cobertura comercial parcial</strong><span>{analysis.unavailableDocumentCount > 0 ? `${number(analysis.unavailableDocumentCount)} comprobantes sin detalle no pueden atribuirse a una marca. ` : ''}{analysis.productsWithoutKiloConversion > 0 ? `${number(analysis.productsWithoutKiloConversion)} productos vendidos no tienen una presentación convertible a kilos.` : ''}</span></div></div>}
-      <div className="brand-kpis"><article><TrendingUp size={18} /><span>Venta neta · 90 días</span><strong>{commercial ? money(commercial.netAmount) : '—'}</strong><small>facturas menos notas de crédito</small></article><article><PackageCheck size={18} /><span>Kilos netos estimados · 90 días</span><strong>{commercial ? `${number(commercial.kilos, 2)} kg` : '—'}</strong><small>{commercial ? `${number(commercial.units, 2)} unidades netas × presentación` : 'Sin detalle comercial'}</small></article><article><Boxes size={18} /><span>Productos</span><strong>{selected.productCount}</strong><small>{selected.commercialProducts} comercializables</small></article><article><Warehouse size={18} /><span>Stock disponible</span><strong>{number(selected.stock)}</strong><small>{selected.activeProducts} maestros activos</small></article></div>
-      <section className="data-card brand-products-card"><div className="data-card-header stacked"><div><span className="section-kicker"><Boxes size={14} /> Productos de la marca</span><h2>{selectedProducts.length} productos visibles</h2><p>Los filtros actúan sobre el listado de la marca seleccionada.</p></div><label className="inline-search compact"><Search size={15} /><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Buscar producto…" /></label><MobileFilterSheet title="Filtrar productos de la marca" description="Los filtros se aplican sólo a la marca seleccionada." activeCount={productActiveFilterCount}><div className="brand-filter-grid"><MultiSelectFilter label="Grupo" value={productGroup} options={productGroups} onChange={setProductGroup} /><MultiSelectFilter label="Rubro" value={productFamily} options={productFamilies} onChange={setProductFamily} /><MultiSelectFilter label="Línea" value={productLine} options={productLines} onChange={setProductLine} /><SingleSelectFilter label="Disponibilidad" value={productAvailability} options={[{ value: 'all', label: 'Todos' }, { value: 'stock', label: 'Con stock' }, { value: 'commercial', label: 'Comercializables' }]} onChange={setProductAvailability} /><MultiSelectFilter label="Estado maestro" value={productStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={setProductStatus} /><SingleSelectFilter label="Orden" value={productOrder} options={[{ value: 'sales', label: 'Mayor venta' }, { value: 'kilos', label: 'Más kilos' }, { value: 'units', label: 'Más unidades' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor stock' }, { value: 'name', label: 'Nombre A–Z' }]} onChange={(value) => setProductOrder(value as ProductOrder)} /></div></MobileFilterSheet></div><div className="brand-product-table"><header><span>Producto</span><span>Venta neta</span><span>Kilos</span><span>Unidades</span><span>Compradores</span><span>Stock</span><span /></header>{selectedProducts.map((product) => { const metrics = productMetrics.get(product.id); return <article key={product.id}><button className="entity-link product-entity-link" onClick={() => onOpenProduct(product)}><strong>{product.name}</strong><small>{product.sku} · {product.family} · {product.group} · {product.line}</small></button><span>{metrics ? money(metrics.netAmount, true) : '—'}</span><span>{metrics ? number(metrics.kilos, 2) : '—'}</span><span>{metrics ? number(metrics.units, 2) : '—'}</span><span>{metrics ? number(metrics.buyers) : '—'}</span><span className={product.stock <= 0 ? 'negative' : ''}>{number(product.stock)}</span><button className="icon-button" aria-label={`Abrir ${product.name}`} onClick={() => onOpenProduct(product)}><ChevronRight size={15} /></button></article>; })}</div><footer className="brand-detail-note">“Compradores” cuenta clientes únicos por producto. Los porcentajes de la marca incluyen “Sin marca informada” en el total y no se recalculan al filtrar productos.</footer></section>
+      <div className="brand-kpis"><article><TrendingUp size={18} /><span>Venta neta · 90 días</span><strong>{commercial ? money(commercial.netAmount) : '—'}</strong><small>facturas menos notas de crédito</small></article><article><PackageCheck size={18} /><span>Kilos netos estimados · 90 días</span><strong>{commercial ? `${number(commercial.kilos, 2)} kg` : '—'}</strong><small>{commercial ? `${number(commercial.units, 2)} unidades netas × presentación` : 'Sin detalle comercial'}</small></article><article><Boxes size={18} /><span>Productos</span><strong>{selected.productCount}</strong><small>{selected.commercialProducts} comercializables</small></article><article><Warehouse size={18} /><span>{selected.physicalStockCertified ? 'Existencia física' : 'Disponibilidad'}</span><strong>{number(selected.stock)}</strong><small>{selected.physicalStockCertified ? 'almacén 2 · antes de pedidos pendientes' : 'paquete anterior · disponible para vender'}</small></article></div>
+      <section className="data-card brand-products-card"><div className="data-card-header stacked"><div><span className="section-kicker"><Boxes size={14} /> Productos de la marca</span><h2>{selectedProducts.length} productos visibles</h2><p>Los filtros actúan sobre el listado de la marca seleccionada.</p></div><label className="inline-search compact"><Search size={15} /><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Buscar producto…" /></label><MobileFilterSheet title="Filtrar productos de la marca" description="Los filtros se aplican sólo a la marca seleccionada." activeCount={productActiveFilterCount}><div className="brand-filter-grid"><MultiSelectFilter label="Grupo" value={productGroup} options={productGroups} onChange={setProductGroup} /><MultiSelectFilter label="Rubro" value={productFamily} options={productFamilies} onChange={setProductFamily} /><MultiSelectFilter label="Línea" value={productLine} options={productLines} onChange={setProductLine} /><SingleSelectFilter label="Disponibilidad" value={productAvailability} options={[{ value: 'all', label: 'Todos' }, { value: 'stock', label: 'Disponibles para vender' }, { value: 'commercial', label: 'Comercializables' }]} onChange={setProductAvailability} /><MultiSelectFilter label="Estado maestro" value={productStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={setProductStatus} /><SingleSelectFilter label="Orden" value={productOrder} options={[{ value: 'sales', label: 'Mayor venta' }, { value: 'kilos', label: 'Más kilos' }, { value: 'units', label: 'Más unidades' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: selected.physicalStockCertified ? 'Mayor existencia física' : 'Mayor disponibilidad' }, { value: 'name', label: 'Nombre A–Z' }]} onChange={(value) => setProductOrder(value as ProductOrder)} /></div></MobileFilterSheet></div><div className="brand-product-table"><header><span>Producto</span><span>Venta neta</span><span>Kilos</span><span>Unidades</span><span>Compradores</span><span>{selected.physicalStockCertified ? 'Existencia física' : 'Disponible'}</span><span /></header>{selectedProducts.map((product) => { const metrics = productMetrics.get(product.id); const physicalStockCertified = hasWarehousePhysicalStock(product); const warehouseStock = productWarehouseStock(product); const availableStock = productAvailableStock(product); const displayedStock = physicalStockCertified ? warehouseStock : availableStock; return <article key={product.id}><button className="entity-link product-entity-link" onClick={() => onOpenProduct(product)}><strong>{product.name}</strong><small>{product.sku} · {product.family} · {product.group} · {product.line}</small></button><span>{metrics ? money(metrics.netAmount, true) : '—'}</span><span>{metrics ? number(metrics.kilos, 2) : '—'}</span><span>{metrics ? number(metrics.units, 2) : '—'}</span><span>{metrics ? number(metrics.buyers) : '—'}</span><span className={displayedStock <= 0 ? 'negative' : ''}><strong>{number(displayedStock)}</strong><small>{physicalStockCertified ? (availableStock !== warehouseStock ? `${number(availableStock)} disponible` : 'todo disponible') : 'disponible para vender'}</small></span><button className="icon-button" aria-label={`Abrir ${product.name}`} onClick={() => onOpenProduct(product)}><ChevronRight size={15} /></button></article>; })}</div></section>
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de Marcas</summary><div><strong>Cómo se calculan las participaciones</strong><span>“Compradores” cuenta clientes únicos por producto. Los porcentajes incluyen “Sin marca informada” en el total y no se recalculan al filtrar los productos de la marca. La venta neta considera facturas menos notas de crédito.</span></div></details>
     </section>
   </div>;
 }

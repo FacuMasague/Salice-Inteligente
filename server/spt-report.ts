@@ -16,7 +16,8 @@ import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.
 import { CURRENT_COMMERCIAL_SELLERS, isCommercialSellerIncluded } from '../shared/commercial-seller-scope.js';
 import { cutoffDate, includeReportingMonth, isoDate as iso, monthEnd, monthStart, reportingDate, shiftedMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
-import { readMovementMetrics } from './report-metrics.js';
+import { metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
+import { SPT_MAIN_PRODUCT_GROUPS } from './report-product-groups.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
@@ -29,7 +30,7 @@ const DEFAULT_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'S
 // Power BI compara estos textos sin distinguir mayúsculas. SQLite no lo hace en
 // un IN normal, por eso usamos las variantes reales de la tabla para reproducir
 // también las selecciones guardadas como ANDACOLLO y BEDYWOOD.
-const DEFAULT_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'Sanicat', 'Sol Minerales', 'Andacollo', 'BedyWood'];
+const DEFAULT_PRODUCT_GROUPS = [...SPT_MAIN_PRODUCT_GROUPS];
 const SELLER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Distribuidor', 'Especializado', 'Especializado Z2', 'Reventa', 'Reventa2', 'Small Retail', 'Partido de la Costa'];
 const SELLER_PAGE_PRODUCT_GROUPS = ['Baires Masivo', 'Baires SPT', 'CanCat', 'Drovet', 'Lokal', 'Nutri Pet', 'Patagonia Pet', 'Pet Nutrition', 'Sanicat', 'Andacollo', 'BedyWood', 'Sol Minerales'];
 const QUARTER_PAGE_CHANNELS = ['COSTA-RUTA2', 'Especializado', 'Especializado Z2', 'Partido de la Costa'];
@@ -172,6 +173,51 @@ function breakdown(database: DatabaseSync, filters: SptFilters, start: string, e
   `), where.parameters).map((row) => ({ ...row, kilos: Number(row.kilos), units: Number(row.units), netAmount: Number(row.netAmount), clients: Number(row.clients) }));
 }
 
+function productGroupMix(
+  database: DatabaseSync,
+  filters: SptFilters,
+  periods: {
+    current: { start: string; end: string; total: SptPeriodMetrics };
+    previousMonth: { start: string; end: string; total: SptPeriodMetrics };
+    previousYear: { start: string; end: string; total: SptPeriodMetrics };
+  },
+  page: SptReportPage,
+): SptReportPayload['productGroups'] {
+  const current = breakdown(database, filters, periods.current.start, periods.current.end, 'product_group', page);
+  const previousMonth = breakdown(database, filters, periods.previousMonth.start, periods.previousMonth.end, 'product_group', page);
+  const previousYear = breakdown(database, filters, periods.previousYear.start, periods.previousYear.end, 'product_group', page);
+  const currentByLabel = new Map(current.map((row) => [row.label, row]));
+  const previousMonthByLabel = new Map(previousMonth.map((row) => [row.label, row]));
+  const previousYearByLabel = new Map(previousYear.map((row) => [row.label, row]));
+  const empty: SptPeriodMetrics = { kilos: 0, units: 0, netAmount: 0, clients: 0 };
+  const selectedProductGroups = decodeMultiFilter(filters.productGroup);
+  const labels = [...new Set([
+    ...(page === 'main' ? selectedProductGroups.length ? selectedProductGroups : DEFAULT_PRODUCT_GROUPS : []),
+    ...current.map((row) => row.label),
+    ...previousMonth.map((row) => row.label),
+    ...previousYear.map((row) => row.label),
+  ])];
+
+  return labels.map((label) => {
+    const currentRow = currentByLabel.get(label) ?? { label, ...empty };
+    const previousMonthRow = previousMonthByLabel.get(label) ?? empty;
+    const previousYearRow = previousYearByLabel.get(label) ?? empty;
+    return {
+      ...currentRow,
+      share: metricShare(currentRow.kilos, periods.current.total.kilos),
+      previousMonth: previousMonthRow,
+      previousMonthShare: metricShare(previousMonthRow.kilos, periods.previousMonth.total.kilos),
+      previousYear: previousYearRow,
+      previousYearShare: metricShare(previousYearRow.kilos, periods.previousYear.total.kilos),
+      kilosVariationPreviousMonth: metricVariation(currentRow.kilos, previousMonthRow.kilos),
+      kilosVariationPreviousYear: metricVariation(currentRow.kilos, previousYearRow.kilos),
+    };
+  }).sort((left, right) => right.kilos - left.kilos
+    || right.previousMonth.kilos - left.previousMonth.kilos
+    || right.previousYear.kilos - left.previousYear.kilos
+    || left.label.localeCompare(right.label, 'es'));
+}
+
 function normalizeFilters(input: Partial<Record<string, unknown>>, latestMonth: string): SptFilters {
   const filters = { month: /^\d{4}-\d{2}$/.test(String(input.month ?? '')) ? String(input.month) : latestMonth } as SptFilters;
   for (const key of Object.keys(FILTER_COLUMNS) as SptFilterKey[]) filters[key] = String(input[key] ?? '').trim().slice(0, 4000);
@@ -272,7 +318,16 @@ export function buildSptReport(input: Partial<Record<string, unknown>>): SptRepo
     daily,
     monthly,
     sellers: breakdown(database, filters, currentStart, currentEnd, 'seller', page),
-    productGroups: breakdown(database, filters, currentStart, currentEnd, 'product_group', page),
+    productGroups: productGroupMix(database, filters, {
+      current: { start: currentStart, end: currentEnd, total: current },
+      previousMonth: { start: previousStart, end: previousEnd, total: previousMonth },
+      previousYear: { start: previousYearStart, end: previousYearEnd, total: previousYear },
+    }, page),
+    mixPeriods: {
+      current: { start: currentStart, end: currentEnd },
+      previousMonth: { start: previousStart, end: previousEnd, available: meta.coverageFrom <= previousStart },
+      previousYear: { start: previousYearStart, end: previousYearEnd, available: meta.coverageFrom <= previousYearStart },
+    },
     quarters,
   };
 }

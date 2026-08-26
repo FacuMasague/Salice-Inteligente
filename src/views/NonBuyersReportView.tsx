@@ -82,7 +82,7 @@ export function NonBuyersReportView({ data, onOpen, onOpenSeller, onOpenBrand, o
   const update = (key: NonBuyerFilterKey, value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const selectView = (next: ReportView) => { setView(next); setStatusMode(''); setQuery(''); };
 
-  if (!meta && loading) return <ReportState state="loading" title="Preparando cuentas no compradoras" detail="Reconstruyendo ventanas de 30, 90 y 180 días desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando cuentas no compradoras" detail="Revisando las ventanas de 30, 90 y 180 días…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir el reporte" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando cuentas no compradoras" detail="Aplicando el universo y los filtros seleccionados." />;
 

@@ -131,6 +131,14 @@ export class GesiClient {
     return this.collectWithCompletenessRetry<T>(path, collectionKey, pageSize);
   }
 
+  /**
+   * Variante para recursos inmutables o auditables donde una diferencia de
+   * una sola fila frente a la paginación anunciada debe bloquear la captura.
+   */
+  async getStrictAll<T>(path: string, collectionKey: string, pageSize = 1000): Promise<T[]> {
+    return this.collectWithCompletenessRetry<T>(path, collectionKey, pageSize, {}, true);
+  }
+
   async postAll<T>(path: string, collectionKey: string, body: unknown, pageSize = 500): Promise<T[]> {
     return this.collectWithCompletenessRetry<T>(path, collectionKey, pageSize, {
       method: 'POST',
@@ -152,11 +160,12 @@ export class GesiClient {
     collectionKey: string,
     pageSize: number,
     init: RequestInit = {},
+    strictCompleteness = false,
   ): Promise<T[]> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
-        return await this.collectPages<T>(path, collectionKey, pageSize, init);
+        return await this.collectPages<T>(path, collectionKey, pageSize, init, true, strictCompleteness);
       } catch (error) {
         lastError = error;
         const incomplete = error instanceof Error && /registros (anunciados|esperados)/.test(error.message);
@@ -173,6 +182,7 @@ export class GesiClient {
     pageSize: number,
     init: RequestInit = {},
     requireCompletePages = true,
+    strictCompleteness = false,
   ): Promise<T[]> {
     const all: T[] = [];
     let pageNumber = 1;
@@ -195,7 +205,7 @@ export class GesiClient {
           Number(pagination?.totalPaginas || 1),
           Math.ceil(advertisedTotal / pageSize),
         );
-        const allowedLiveDrift = Math.max(2, Math.ceil(advertisedTotal * 0.0001));
+        const allowedLiveDrift = strictCompleteness ? 0 : Math.max(2, Math.ceil(advertisedTotal * 0.0001));
         expectedOnPage = pageNumber < advertisedPages
           ? pageSize
           : Math.max(0, advertisedTotal - (pageNumber - 1) * pageSize);
@@ -222,7 +232,7 @@ export class GesiClient {
       );
       pageNumber += 1;
     } while (pageNumber <= totalPages);
-    const allowedLiveDrift = Math.max(2, Math.ceil(expectedTotal * 0.0001));
+    const allowedLiveDrift = strictCompleteness ? 0 : Math.max(2, Math.ceil(expectedTotal * 0.0001));
     if (requireCompletePages && expectedTotal && all.length < expectedTotal - allowedLiveDrift) {
       throw new Error(`${path} devolvió ${all.length} de ${expectedTotal} registros anunciados`);
     }

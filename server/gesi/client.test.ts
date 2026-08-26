@@ -146,4 +146,40 @@ describe('GesiClient.request', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1][0])).toContain('pageNumber=1&pageSize=1000');
   });
+
+  it('no tolera ni una fila faltante en una colección estricta', async () => {
+    const incomplete = Array.from({ length: 9 }, (_, index) => ({ fojaID: index + 1 }));
+    const complete = Array.from({ length: 10 }, (_, index) => ({ fojaID: index + 1 }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'token-ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        fojasReparto: incomplete,
+        paginacion: { totalPaginas: 1, totalElementos: 10 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        fojasReparto: complete,
+        paginacion: { totalPaginas: 1, totalElementos: 10 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new GesiClient(credentials);
+    await client.login();
+    const sheets = await client.getStrictAll<{ fojaID: number }>(
+      '/api/Ventas/Repartos/GetList?fechaDesde=2025-08-25',
+      'fojasReparto',
+      1000,
+    );
+
+    expect(sheets).toEqual(complete);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  Database,
   MapPin,
   Search,
   Target,
@@ -49,6 +50,14 @@ const lensLabels: Array<{ value: PortfolioLens; label: string }> = [
   { value: 'high_opportunity', label: 'Oportunidad alta' },
   { value: 'high_priority', label: 'Prioridad alta' },
 ];
+
+const portfolioLensCounts = (rows: SellerPortfolioProfile['clientRows']) => rows.reduce<Record<PortfolioLens, number>>((counts, row) => {
+  counts.all += 1;
+  if (matchesPortfolioLens(row, 'high_risk')) counts.high_risk += 1;
+  if (matchesPortfolioLens(row, 'high_opportunity')) counts.high_opportunity += 1;
+  if (matchesPortfolioLens(row, 'high_priority')) counts.high_priority += 1;
+  return counts;
+}, { all: 0, high_risk: 0, high_opportunity: 0, high_priority: 0 });
 
 type PortfolioSortKey = 'seller' | 'clients' | 'sales' | 'localities' | 'risk' | 'opportunity' | 'priority';
 
@@ -112,6 +121,13 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
     return profile.prioritySignalClients;
   });
   const selected = profiles.find((profile) => profile.name === selectedSeller) ?? profiles[0] ?? null;
+  const normalizedClientQuery = clientQuery.trim().toLocaleLowerCase('es');
+  const lensCounts = useMemo(() => portfolioLensCounts(selected?.clientRows ?? []), [selected]);
+  const visibleClients = useMemo(() => (selected?.clientRows ?? []).filter((row) => (
+    matchesPortfolioLens(row, lens)
+    && (!normalizedClientQuery || `${row.client.name} ${row.client.tradeName} ${row.client.reference} ${row.client.locality}`
+      .toLocaleLowerCase('es').includes(normalizedClientQuery))
+  )), [lens, normalizedClientQuery, selected]);
   const selectedAiSummary = selected ? aiSummaries.find((item) => item.entityId === selected.name) ?? null : null;
   const totalClients = profiles.reduce((sum, profile) => sum + profile.activeClients, 0);
   const totalSales = profiles.reduce((sum, profile) => sum + profile.sales90d, 0);
@@ -134,13 +150,6 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
     setClientQuery('');
     setLens('all');
   };
-  const normalizedClientQuery = clientQuery.trim().toLocaleLowerCase('es');
-  const visibleClients = selected.clientRows.filter((row) => (
-    matchesPortfolioLens(row, lens)
-    && (!normalizedClientQuery || `${row.client.name} ${row.client.tradeName} ${row.client.reference} ${row.client.locality}`
-      .toLocaleLowerCase('es').includes(normalizedClientQuery))
-  ));
-  const lensCount = (value: PortfolioLens) => selected.clientRows.filter((row) => matchesPortfolioLens(row, value)).length;
   const direction = (key: PortfolioSortKey) => portfolioSort.key === key ? portfolioSort.direction : null;
   const changeSort = (key: PortfolioSortKey) => setPortfolioSort((current) => cycleSortDescendingFirst(current, key));
 
@@ -216,7 +225,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
               activeCount={lens === 'all' ? 0 : 1}
               triggerLabel="Filtrar por señal"
             >
-              {lensLabels.map((item) => <button key={item.value} className={lens === item.value ? 'active' : ''} onClick={() => setLens(item.value)}>{item.label}<span>{lensCount(item.value)}</span></button>)}
+              {lensLabels.map((item) => <button type="button" key={item.value} className={`seller-lens-option ${lens === item.value ? 'active' : ''}`} aria-pressed={lens === item.value} onClick={() => setLens(item.value)}>{item.label}<span>{lensCounts[item.value]}</span></button>)}
             </MobileFilterSheet></div>
           </div>
           <div className="seller-priority-list seller-portfolio-client-list">
@@ -233,7 +242,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
         </section>
 
         <section className="data-card seller-locality-card">
-          <div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Distribución observada</span><h2>Localidades informadas</h2><p>Localidad del maestro GESI; no equivale a territorio ni propone reasignaciones.</p></div><span className="count-badge">{selected.localities.length}</span></div>
+          <div className="data-card-header"><div><span className="section-kicker"><MapPin size={14} /> Distribución observada</span><h2>Localidades informadas</h2><p>Es la localidad registrada del cliente; no equivale a territorio ni propone reasignaciones.</p></div><span className="count-badge">{selected.localities.length}</span></div>
           <div className="seller-locality-table">
             <div className="seller-locality-head"><span>Localidad y señales</span><span>Clientes</span><span>Facturación / kilos · 90d</span></div>
             {selected.localities.map((row) => <article key={row.name}>
@@ -244,6 +253,7 @@ export function SellersView({ clients, products, snapshotDate, selectedSeller, o
           </div>
         </section>
       </div>
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de Vendedores</summary><div><strong>Alcance de la cartera</strong><span>Las ventas, kilos, cobranza y oportunidades se calculan con los clientes visibles y el mismo corte del programa. Riesgo, oportunidad y prioridad son señales diferentes; la prioridad sólo ordena la revisión.</span></div></details>
     </div>
   </div>;
 }

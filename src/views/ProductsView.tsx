@@ -4,6 +4,7 @@ import { classifyInventoryProduct, type InventoryAlertReview } from '../../share
 import { productPresentationLabel } from '../../shared/product-insights';
 import { VECTOR_DESCRIPTIONS, VECTOR_GROUPS, VECTOR_LABELS, type Client, type Product, type VectorKey } from '../../shared/models';
 import { matchesMultiFilter } from '../../shared/multi-filter';
+import { productAvailableStock } from '../../shared/product-stock';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { InventoryDecisionTray } from '../components/InventoryDecisionTray';
 import { ProductPanel } from '../components/ProductPanel';
@@ -39,6 +40,8 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   onDataChanged?: () => void | Promise<void>;
 }) {
   const [mode, setMode] = useState<ProductMode>('inventory');
+  const productModeNavRef = useRef<HTMLElement>(null);
+  const productDetailRef = useRef<HTMLElement>(null);
   const analysisMenuRef = useRef<HTMLDetailsElement>(null);
   const [selectedId, setSelectedId] = useState(() => [...products].sort((a, b) => b.monthlyUnits - a.monthlyUnits)[0]?.id || '');
   const [query, setQuery] = useState('');
@@ -81,6 +84,15 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
   }, [comparisonRequest]);
 
   useEffect(() => {
+    if (!window.matchMedia('(max-width: 900px)').matches) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      productModeNavRef.current?.querySelector<HTMLElement>(':scope > .active')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mode]);
+
+  useEffect(() => {
     const availableIds = new Set(products.map((product) => product.id));
     const validIds = comparisonProductIds.filter((id) => availableIds.has(id)).slice(0, 4);
     if (validIds.length !== comparisonProductIds.length || validIds.some((id, index) => id !== comparisonProductIds[index])) {
@@ -94,6 +106,11 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (mode !== 'compare' && mode !== 'demand' && mode !== 'prices' && mode !== 'opportunities') setMode('catalog');
     }
   }, [focusProductId, products]);
+
+  useEffect(() => {
+    if (mode !== 'catalog') return;
+    productDetailRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [mode, selectedId]);
 
   useEffect(() => {
     if (!focusFamily) return;
@@ -118,11 +135,11 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     .filter(({ product }) => matchesMultiFilter(product.group, group))
     .filter(({ product }) => matchesMultiFilter(product.masterStatus, masterStatus))
     .filter(({ inventoryDecision }) => matchesMultiFilter(inventoryDecision.status, inventoryStatus))
-    .filter(({ product }) => availability === 'all' || (availability === 'stock' ? product.inventory?.status === 'positive' || product.stock > 0 : product.commercialStatus ? product.commercialStatus === 'commercializable' : product.stock > 0 && product.price > 0))
+    .filter(({ product }) => availability === 'all' || (availability === 'stock' ? productAvailableStock(product) > 0 : product.commercialStatus ? product.commercialStatus === 'commercializable' : productAvailableStock(product) > 0 && product.price > 0))
     .sort((left, right) => {
       const a = left.product;
       const b = right.product;
-      if (sort === 'stock') return b.stock - a.stock || b.monthlyUnits - a.monthlyUnits;
+      if (sort === 'stock') return productAvailableStock(b) - productAvailableStock(a) || b.monthlyUnits - a.monthlyUnits;
       if (sort === 'price') return b.price - a.price || a.name.localeCompare(b.name, 'es');
       if (sort === 'sales') return b.sales90d - a.sales90d || b.monthlyUnits - a.monthlyUnits;
       if (sort === 'kilos') return (b.kiloDataStatus !== 'unavailable' ? b.kilos90d ?? 0 : -1) - (a.kiloDataStatus !== 'unavailable' ? a.kilos90d ?? 0 : -1) || b.sales90d - a.sales90d;
@@ -130,7 +147,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
       if (sort === 'lastSale') return b.lastSaleAt.localeCompare(a.lastSaleAt) || b.sales90d - a.sales90d;
       if (sort === 'name') return a.name.localeCompare(b.name, 'es');
       if (sort === 'original') return left.originalIndex - right.originalIndex;
-      return b.monthlyUnits - a.monthlyUnits || b.sales90d - a.sales90d || b.stock - a.stock;
+      return b.monthlyUnits - a.monthlyUnits || b.sales90d - a.sales90d || productAvailableStock(b) - productAvailableStock(a);
     })
     .map(({ product }) => product);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -190,7 +207,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches) onOpenProduct(product);
   };
 
-  const modeNavigation = <nav className="product-mode-nav" aria-label="Secciones de Productos">
+  const modeNavigation = <nav ref={productModeNavRef} className="product-mode-nav" aria-label="Secciones de Productos">
     <button className={mode === 'inventory' ? 'active' : ''} aria-current={mode === 'inventory' ? 'page' : undefined} onClick={() => selectMode('inventory')}>Inventario</button>
     <button className={mode === 'catalog' ? 'active' : ''} aria-current={mode === 'catalog' ? 'page' : undefined} onClick={() => selectMode('catalog')}>Catálogo</button>
     <button className={mode === 'opportunities' ? 'active' : ''} aria-current={mode === 'opportunities' ? 'page' : undefined} onClick={() => selectMode('opportunities')}>Oportunidades</button>
@@ -262,8 +279,8 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
           <div><span className="section-kicker"><Boxes size={14} /> Catálogo operativo</span><h2>{number(filtered.length)} de {number(products.length)} productos</h2><p>Elegí un producto para consultar toda su información en la ficha de la derecha.</p></div>
           <label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Buscar producto, SKU, marca o presentación…" /></label>
           <MobileFilterSheet title="Filtrar productos" description="Acotá el catálogo sin perder el listado de vista." activeCount={catalogActiveFilterCount}>
-            <div className="product-filter-grid product-filter-grid-v3 product-filter-primary"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializable observable' }, { value: 'stock', label: 'Stock positivo' }, { value: 'all', label: 'Todo el catálogo operativo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'sales', label: 'Mayor venta 90d' }, { value: 'kilos', label: 'Más kilos 90d' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor stock' }, { value: 'price', label: 'Mayor precio' }, { value: 'lastSale', label: 'Venta más reciente' }, { value: 'name', label: 'Nombre A–Z' }, { value: 'original', label: 'Orden original' }]} onChange={(value) => { setSort(value as CatalogSort); setPage(1); }} /></div>
-            <details className="product-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros{[line, group, masterStatus, inventoryStatus].filter(Boolean).length ? ` · ${[line, group, masterStatus, inventoryStatus].filter(Boolean).length} activos` : ''}<ChevronDown size={14} /></summary><div className="product-filter-grid product-filter-grid-v3"><MultiSelectFilter label="Línea" value={line} options={lines} onChange={(value) => { setLine(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} /><MultiSelectFilter label="Inventario" value={inventoryStatus} options={[{ value: 'no_stock_with_demand', label: 'Sin stock con demanda' }, { value: 'critical_coverage', label: 'Cobertura crítica' }, { value: 'low_coverage', label: 'Cobertura baja' }, { value: 'adequate_coverage', label: 'Cobertura adecuada' }, { value: 'high_coverage', label: 'Cobertura alta' }, { value: 'stock_without_movement', label: 'Stock sin movimiento' }, { value: 'new_or_insufficient_history', label: 'Sin historia suficiente' }, { value: 'insufficient_data', label: 'Datos insuficientes' }, { value: 'out_of_assortment', label: 'Fuera de surtido/inactivo' }]} onChange={(value) => { setInventoryStatus(value); setPage(1); }} /></div></details>
+            <div className="product-filter-grid product-filter-grid-v3 product-filter-primary"><MultiSelectFilter label="Rubro" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} /><SingleSelectFilter label="Disponibilidad" value={availability} options={[{ value: 'commercial', label: 'Comercializable observable' }, { value: 'stock', label: 'Disponible para vender' }, { value: 'all', label: 'Todo el catálogo operativo' }]} onChange={(value) => { setAvailability(value as typeof availability); setPage(1); }} /><SingleSelectFilter label="Orden" value={sort} options={[{ value: 'rotation', label: 'Mayor rotación' }, { value: 'sales', label: 'Mayor venta 90d' }, { value: 'kilos', label: 'Más kilos 90d' }, { value: 'buyers', label: 'Más compradores' }, { value: 'stock', label: 'Mayor disponibilidad' }, { value: 'price', label: 'Mayor precio' }, { value: 'lastSale', label: 'Venta más reciente' }, { value: 'name', label: 'Nombre A–Z' }, { value: 'original', label: 'Orden original' }]} onChange={(value) => { setSort(value as CatalogSort); setPage(1); }} /></div>
+            <details className="product-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros{[line, group, masterStatus, inventoryStatus].filter(Boolean).length ? ` · ${[line, group, masterStatus, inventoryStatus].filter(Boolean).length} activos` : ''}<ChevronDown size={14} /></summary><div className="product-filter-grid product-filter-grid-v3"><MultiSelectFilter label="Línea" value={line} options={lines} onChange={(value) => { setLine(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Estado maestro" value={masterStatus} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setMasterStatus(value); setPage(1); }} /><MultiSelectFilter label="Inventario" value={inventoryStatus} options={[{ value: 'no_stock_with_demand', label: 'Sin disponibilidad con demanda' }, { value: 'critical_coverage', label: 'Cobertura crítica' }, { value: 'low_coverage', label: 'Cobertura baja' }, { value: 'adequate_coverage', label: 'Cobertura adecuada' }, { value: 'high_coverage', label: 'Cobertura alta' }, { value: 'stock_without_movement', label: 'Disponible sin movimiento' }, { value: 'new_or_insufficient_history', label: 'Sin historia suficiente' }, { value: 'insufficient_data', label: 'Datos insuficientes' }, { value: 'out_of_assortment', label: 'Fuera de surtido/inactivo' }]} onChange={(value) => { setInventoryStatus(value); setPage(1); }} /></div></details>
             <SavedViewsBar viewKey="products" filters={savedFilters} onApply={applySaved} />
           </MobileFilterSheet>
         </div>
@@ -277,7 +294,7 @@ export function ProductsView({ products, clients, snapshotDate, tutorialVectorMo
         </div>
         <div className="compact-pagination"><button disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button><strong>{currentPage} / {pageCount}</strong><button disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Siguiente</button></div>
       </section>
-      <section className="product-detail"><ProductPanel product={selected} products={products} clients={clients} snapshotDate={snapshotDate} inventoryReview={inventoryReviewsLoaded ? (inventoryReviews[selected.id] ?? null) : undefined} onOpenProduct={(product) => setSelectedId(product.id)} onCompareProduct={(product) => { if (!comparisonProductIds.includes(product.id) && comparisonProductIds.length < 4) onComparisonChange([...comparisonProductIds, product.id]); setMode('compare'); }} comparisonSelectedIds={comparisonProductIds} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenClient={onOpenClient} onDataChanged={onDataChanged} /></section>
+      <section ref={productDetailRef} className="product-detail"><ProductPanel product={selected} products={products} clients={clients} snapshotDate={snapshotDate} inventoryReview={inventoryReviewsLoaded ? (inventoryReviews[selected.id] ?? null) : undefined} onOpenProduct={(product) => setSelectedId(product.id)} onCompareProduct={(product) => { if (!comparisonProductIds.includes(product.id) && comparisonProductIds.length < 4) onComparisonChange([...comparisonProductIds, product.id]); setMode('compare'); }} comparisonSelectedIds={comparisonProductIds} onOpenBrand={onOpenBrand} onOpenFamily={(value) => { setFamily(value); setMode('catalog'); setPage(1); }} onOpenClient={onOpenClient} onDataChanged={onDataChanged} /></section>
       </div>
     </div>
   );

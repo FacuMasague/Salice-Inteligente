@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp,
-  Clock3, FileText, MapPin, Navigation, Route, Search, Sparkles, Truck,
+  Clock3, Database, FileText, MapPin, Navigation, Route, Search, Sparkles, Truck,
 } from 'lucide-react';
 import { groupDeliveryInvoices } from '../../shared/algorithms';
 import type { Client, DeliveryAssignmentStatus, LogisticsSnapshot, RoutePlan } from '../../shared/models';
@@ -200,9 +200,9 @@ export function RoutesView({
     <div className="page-view delivery-routes-page">
       <section className="data-card delivery-route-header" data-tour="route-picker">
         <div>
-          <span className="section-kicker"><Truck size={15} /> Repartos desde GESI · sólo lectura</span>
+          <span className="section-kicker"><Truck size={15} /> Repartos · sólo lectura</span>
           <h2>Facturas y fojas de reparto</h2>
-          <p>Una foja cerrada confirma el cierre de la carga en GESI; no demuestra que el cliente haya recibido la mercadería.</p>
+          <p>Una foja cerrada confirma el cierre administrativo de la carga; no demuestra que el cliente haya recibido la mercadería.</p>
           <div className="delivery-mode-switch"><button className={mode === 'planner' ? 'active' : ''} onClick={() => setMode('planner')}><Route size={14} /> Planificador</button><button className={mode === 'sheets' ? 'active' : ''} onClick={() => setMode('sheets')}><MapPin size={14} /> Mapa de fojas</button></div>
         </div>
         <div className="delivery-coverage"><span>Cobertura</span><strong>{compactDate(coverageFrom)}–{compactDate(coverageThrough)}</strong><small>{number(logistics.sheets.length)} fojas leídas</small></div>
@@ -251,7 +251,7 @@ export function RoutesView({
             <header><div><span className="section-kicker"><MapPin size={14} /> Mapa de fojas</span><h2>{selectedSheet ? `Foja ${selectedSheet.id}` : selectedSheetId === 'unassigned' ? 'Facturas sin asignar' : 'Distribución visible'}</h2><p>Abiertas en azul, cerradas en verde y sin asignar en naranja. Los puntos corregidos son aproximados.</p></div><div className="delivery-map-legend"><span className="open_sheet">Abierta</span><span className="closed_sheet">Cerrada</span><span className="unassigned">Sin asignar</span></div></header>
             <DeliverySheetMap points={mapPoints} onOpenClient={onOpenClient} />
           </article>
-          <article className="data-card delivery-sheet-detail">
+          <article className={`data-card delivery-sheet-detail ${selectedSheetId === 'all' || selectedSheetId === 'unassigned' ? 'bulk-selection' : ''}`}>
             <header><div><span className="section-kicker"><Truck size={14} /> Comprobantes de la selección</span><h2>{number(mapInvoices.length)} facturas · {money(mapInvoices.reduce((sum, invoice) => sum + invoice.amount, 0), true)}</h2><p>{reliableKiloSummary.reliableInvoiceCount ? `${number(reliableKiloSummary.kilos, 2)} kg estimados en ${number(reliableKiloSummary.reliableInvoiceCount)} de ${number(reliableKiloSummary.totalInvoiceCount)} facturas` : 'Kilos sin conversión disponible'}{selectedSheet ? ` · ${selectedSheet.driver || 'sin chofer'} · ${selectedSheet.zone || 'sin zona'}` : ''}</p></div></header>
             {mapInvoices.some((invoice) => invoice.kiloDataStatus === 'unavailable') && <p className="delivery-data-warning"><AlertTriangle size={13} /> Hay comprobantes con productos sin conversión a kilos; el monto continúa disponible.</p>}
             <div className="delivery-sheet-invoices">{mapInvoices.map((invoice) => {
@@ -315,10 +315,10 @@ export function RoutesView({
               })}
               <div className="depot-stop return"><span><Truck size={16} /></span><div><strong>Regreso al depósito</strong><small>Fin estimado · {minutesAsTime(plan.totalMinutes)}</small></div></div>
             </div>
-            <p className="route-algorithm-note">{plan.algorithm}. Supuestos: factor vial ×{plan.assumptions.roadFactor}, {plan.assumptions.stopMinutes} min por parada y máximo {Math.round(plan.assumptions.maxWorkMinutes / 60)} h. No incluye tránsito, capacidad, ventanas horarias ni prueba de entrega.</p>
           </div>}
         </section>
       </div>}
+      <details className="business-report-source-note"><summary><Database size={15} /> Información técnica de Rutas</summary><div><strong>Alcance de la estimación</strong><span>{plan ? `${plan.algorithm}. Factor vial ×${plan.assumptions.roadFactor}, ${plan.assumptions.stopMinutes} minutos por parada y máximo ${Math.round(plan.assumptions.maxWorkMinutes / 60)} horas. ` : ''}La estimación no incluye tránsito, capacidad, ventanas horarias ni prueba de entrega. Las ubicaciones aproximadas no se usan para calcular recorridos.</span></div></details>
     </div>
   );
 }

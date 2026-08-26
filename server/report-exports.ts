@@ -256,8 +256,12 @@ function marsWorkbook(input: Partial<Record<string, unknown>>): ReportExportWork
     { header: 'Vs período anterior %', key: 'vsPreviousPeriod', numFmt: PERCENT, dataType: 'percent' },
   ], report.periods);
   addTable(workbook, 'Trimestres', [
-    { header: 'Trimestre', key: 'quarter' }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
-    { header: 'Año anterior kg', key: 'previousYearKilos', numFmt: KILOS },
+    { header: 'Trimestre', key: 'label' },
+    { header: 'Desde', key: 'start', width: 15, numFmt: DATE, dataType: 'date' }, { header: 'Hasta', key: 'end', width: 15, numFmt: DATE, dataType: 'date' },
+    { header: 'Tramo parcial', key: 'isPartial' }, { header: 'Comparación disponible', key: 'comparisonAvailable' },
+    { header: 'Kilos', key: 'kilos', numFmt: KILOS }, { header: 'Venta neta', key: 'netAmount', numFmt: MONEY },
+    { header: 'Clientes', key: 'clients', numFmt: INTEGER }, { header: 'Mismo tramo año anterior kg', key: 'previousYearKilos', numFmt: KILOS },
+    { header: 'Mismo tramo año anterior $', key: 'previousYearNetAmount', numFmt: MONEY }, { header: 'Variación interanual %', key: 'variation', numFmt: PERCENT, dataType: 'percent' },
   ], report.quarters);
   addTable(workbook, 'Marcas', [
     { header: 'Marca', key: 'brand', width: 28 }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
@@ -303,9 +307,11 @@ function nutripetWorkbook(input: Partial<Record<string, unknown>>): ReportExport
   ];
   addTable(workbook, 'Historia mensual', timeColumns, report.monthly);
   addTable(workbook, 'Trimestres', [
-    { header: 'Trimestre', key: 'quarter' }, { header: 'Parcial', key: 'isPartial' }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
+    { header: 'Trimestre', key: 'label' }, { header: 'Desde', key: 'start', width: 15, numFmt: DATE, dataType: 'date' }, { header: 'Hasta', key: 'end', width: 15, numFmt: DATE, dataType: 'date' },
+    { header: 'Tramo parcial', key: 'isPartial' }, { header: 'Comparación disponible', key: 'comparisonAvailable' }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
     { header: 'Clientes', key: 'clients', numFmt: INTEGER }, { header: 'Unidades', key: 'units', numFmt: DECIMAL },
-    { header: 'Venta neta', key: 'netAmount', numFmt: MONEY },
+    { header: 'Venta neta', key: 'netAmount', numFmt: MONEY }, { header: 'Mismo tramo año anterior kg', key: 'previousYearKilos', numFmt: KILOS },
+    { header: 'Mismo tramo año anterior $', key: 'previousYearNetAmount', numFmt: MONEY }, { header: 'Variación interanual %', key: 'variation', numFmt: PERCENT, dataType: 'percent' },
   ], report.quarters);
   addTable(workbook, 'Marcas', [
     { header: 'Marca', key: 'brand', width: 28 }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
@@ -356,9 +362,11 @@ function bairesWorkbook(input: Partial<Record<string, unknown>>): ReportExportWo
     { header: 'Vs LY %', key: 'vsPreviousYear', numFmt: PERCENT, dataType: 'percent' }, { header: 'YTD vs LY %', key: 'ytdVsPreviousYear', numFmt: PERCENT, dataType: 'percent' },
   ], report.monthly);
   addTable(workbook, 'Trimestres', [
-    { header: 'Trimestre', key: 'quarter' }, { header: 'Parcial', key: 'isPartial' }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
+    { header: 'Trimestre', key: 'label' }, { header: 'Desde', key: 'start', width: 15, numFmt: DATE, dataType: 'date' }, { header: 'Hasta', key: 'end', width: 15, numFmt: DATE, dataType: 'date' },
+    { header: 'Tramo parcial', key: 'isPartial' }, { header: 'Comparación disponible', key: 'comparisonAvailable' }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },
     { header: 'Clientes', key: 'clients', numFmt: INTEGER }, { header: 'Unidades', key: 'units', numFmt: DECIMAL },
-    { header: 'Venta neta', key: 'netAmount', numFmt: MONEY },
+    { header: 'Venta neta', key: 'netAmount', numFmt: MONEY }, { header: 'Mismo tramo año anterior kg', key: 'previousYearKilos', numFmt: KILOS },
+    { header: 'Mismo tramo año anterior $', key: 'previousYearNetAmount', numFmt: MONEY }, { header: 'Variación interanual %', key: 'variation', numFmt: PERCENT, dataType: 'percent' },
   ], report.quarters);
   const breakdownColumns: ExportColumn[] = [
     { header: 'Nombre', key: 'name', width: 30 }, { header: 'Kilos', key: 'kilos', numFmt: KILOS },

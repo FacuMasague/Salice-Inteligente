@@ -65,6 +65,25 @@ describe('seguridad de usuarios y sesiones', () => {
     store.close();
   });
 
+  it('mantiene las sesiones por dispositivo sin vencimiento ni límite automático', () => {
+    const { path, store } = setup();
+    const admin = store.bootstrapAdmin('administrador', 'ClaveInicial2026')!;
+    const sessions = Array.from({ length: 7 }, () => store.createSession(admin.id));
+    store.close();
+
+    const database = new DatabaseSync(path);
+    database.prepare('UPDATE user_sessions SET expires_at = ? WHERE token_hash = (SELECT token_hash FROM user_sessions ORDER BY created_at LIMIT 1)')
+      .run('2020-01-01T00:00:00.000Z');
+    database.close();
+
+    const reopened = new AuthStore(path);
+    for (const session of sessions) expect(reopened.getSession(session.token)?.user.id).toBe(admin.id);
+    reopened.deleteSession(sessions[0].token);
+    expect(reopened.getSession(sessions[0].token)).toBeNull();
+    expect(reopened.getSession(sessions[1].token)?.user.id).toBe(admin.id);
+    reopened.close();
+  });
+
   it('impide deshabilitar al último administrador activo', () => {
     const { store } = setup();
     const admin = store.bootstrapAdmin('administrador', 'ClaveInicial2026')!;

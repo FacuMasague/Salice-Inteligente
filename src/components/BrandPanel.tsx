@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Boxes, ChevronRight, Info, PackageCheck, Store, TrendingUp, Warehouse, X } from 'lucide-react';
 import type { BrandAnalysisPayload } from '../../shared/brand-analysis';
 import type { Product } from '../../shared/models';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../../shared/product-stock';
 import { compactDate, money, number } from '../lib/format';
 
 export function BrandPanel({ brand, products, onClose, onOpenProduct }: {
@@ -33,9 +34,10 @@ export function BrandPanel({ brand, products, onClose, onOpenProduct }: {
   const commercialByProduct = useMemo(() => new Map((commercial?.products ?? []).map((row) => [row.productId, row])), [commercial]);
   const orderedProducts = useMemo(() => [...catalogProducts].sort((left, right) => {
     const salesDifference = (commercialByProduct.get(right.id)?.netAmount ?? 0) - (commercialByProduct.get(left.id)?.netAmount ?? 0);
-    return salesDifference || right.stock - left.stock || left.name.localeCompare(right.name, 'es');
+    return salesDifference || productAvailableStock(right) - productAvailableStock(left) || left.name.localeCompare(right.name, 'es');
   }), [catalogProducts, commercialByProduct]);
-  const stock = catalogProducts.reduce((sum, product) => sum + product.stock, 0);
+  const physicalStockCertified = catalogProducts.length > 0 && catalogProducts.every(hasWarehousePhysicalStock);
+  const inventoryTotal = catalogProducts.reduce((sum, product) => sum + (physicalStockCertified ? productWarehouseStock(product) : productAvailableStock(product)), 0);
 
   return <section className="brand-panel" role="dialog" aria-modal="true" aria-labelledby="brand-panel-title">
     <header className="brand-panel-header">
@@ -48,7 +50,7 @@ export function BrandPanel({ brand, products, onClose, onOpenProduct }: {
         <article><TrendingUp size={18} /><span>Facturación neta</span><strong>{commercial ? money(commercial.netAmount) : analysis ? money(0) : '—'}</strong><small>{commercial ? `${number(commercial.salesSharePercent, 2)}% del total` : analysis ? 'Sin ventas detalladas en 90 días' : 'Esperando datos'}</small></article>
         <article><PackageCheck size={18} /><span>Kilos netos estimados</span><strong>{commercial ? `${number(commercial.kilos, 2)} kg` : analysis ? '0 kg' : '—'}</strong><small>{commercial ? `${number(commercial.kiloSharePercent, 2)}% del total` : analysis ? 'Sin volumen atribuible en 90 días' : 'Esperando datos'}</small></article>
         <article><Boxes size={18} /><span>Productos</span><strong>{number(catalogProducts.length)}</strong><small>{number(catalogProducts.filter((product) => product.commercialStatus === 'commercializable').length)} comercializables</small></article>
-        <article><Warehouse size={18} /><span>Stock disponible</span><strong>{number(stock)}</strong><small>depósito 2</small></article>
+        <article><Warehouse size={18} /><span>{physicalStockCertified ? 'Existencia física' : 'Disponibilidad'}</span><strong>{number(inventoryTotal)}</strong><small>{physicalStockCertified ? 'almacén 2 · antes de pedidos pendientes' : 'paquete anterior · disponible para vender'}</small></article>
       </div>
       <section className="brand-panel-products">
         <header><div><span className="section-kicker">Productos de la marca</span><h3>{number(orderedProducts.length)} productos</h3></div><span>Facturación y kilos se muestran juntos.</span></header>
@@ -56,7 +58,7 @@ export function BrandPanel({ brand, products, onClose, onOpenProduct }: {
           {orderedProducts.map((product) => {
             const metrics = commercialByProduct.get(product.id);
             return <button key={product.id} onClick={() => onOpenProduct(product)}>
-              <span><strong>{product.name}</strong><small>{product.sku} · {product.family} · stock {number(product.stock)}</small></span>
+              <span><strong>{product.name}</strong><small>{product.sku} · {product.family} · {hasWarehousePhysicalStock(product) ? `almacén ${number(productWarehouseStock(product))} · ` : ''}disponible {number(productAvailableStock(product))}</small></span>
               <span><strong>{metrics ? money(metrics.netAmount, true) : 'Sin venta'}</strong><small>{metrics ? `${number(metrics.kilos, 2)} kg · ${number(metrics.buyers)} compradores` : '90 días'}</small></span>
               <ChevronRight size={16} />
             </button>;

@@ -55,6 +55,30 @@ describe('forma de pago documental', () => {
     expect(client.salesDelta).toBe(150);
   });
 
+  it('separa existencia física, pedidos comprometidos y disponibilidad del almacén 2', () => {
+    const raw = capture();
+    raw.captureMeta.inventoryIncludesZeroStock = true;
+    raw.captureMeta.almacenPrincipal = 'Mar del Plata [WPM]';
+    raw.products = [{ productoID: 'SKU-1', estado: 'A', descripcion: 'Producto', unidad1: 'UN' }];
+    raw.stocks = [{
+      productoID: 'SKU-1', empresaID: 3, sucursalID: 3, almacenID: 2, almacen: 'Mar del Plata [WPM]',
+      unidad1: 531, unidad2: 796.5, unidad1Disponible: 488, unidad2Disponible: 732,
+      unidad1NPEPendientes: 43, unidad2NPEPendientes: 64.5,
+    }];
+    raw.invoices[0].detalleItems = [{ tipoDeItem: 'P', codigoDeItem: 'SKU-1', cantidadU1: 15, importeTotalNeto: 25_000 }];
+
+    const product = normalizeCapture(raw).products[0];
+    expect(product).toMatchObject({ stock: 488, warehouseStock: 531, monthlyUnits: 5, stockCoverageMonths: 97.6 });
+    expect(product.inventory).toMatchObject({
+      warehouseId: 2,
+      rawPhysicalUnit1: 531,
+      rawPendingUnit1: 43,
+      rawAvailableUnit1: 488,
+      stockBasis: 'warehouse_physical',
+      status: 'positive',
+    });
+  });
+
   it('persiste la forma de pago de cada comprobante en la base de saldos pendientes', () => {
     const directory = mkdtempSync(join(tmpdir(), 'salice-payment-method-'));
     directories.push(directory);

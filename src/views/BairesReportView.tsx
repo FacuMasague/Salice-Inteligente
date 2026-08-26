@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, CalendarRange, PackageOpen, Scale, Store, TrendingDown, TrendingUp, Users, X } from 'lucide-react';
 import type { BairesBreakdownRow, BairesFilterKey, BairesFilters, BairesMonthlyPoint, BairesReportMeta, BairesReportPayload } from '../../shared/models';
 import { AiNarrativeCard } from '../components/AiInsights';
-import { BusinessReportFilters, BusinessReportKpis, BusinessReportPeriodNote, BusinessReportSourceNote } from '../components/BusinessReportExperience';
+import { BusinessReportFilters, BusinessReportKpis, BusinessReportSourceNote } from '../components/BusinessReportExperience';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
 import { ReportContext, ReportEmptyNotice, ReportExportActions, ReportFilterActions, ReportState, reportActiveFilterCount, reportExportUrl } from '../components/ReportExperience';
@@ -23,6 +23,7 @@ const percent = (value: number | null, signed = false) => value == null ? 'Sin b
 const variation = (current: number, previous: number) => previous ? (current - previous) / previous * 100 : null;
 const monthLabel = (value: string, long = false) => new Intl.DateTimeFormat('es-AR', { month: long ? 'long' : 'short', year: '2-digit' }).format(new Date(`${value}-15T12:00:00Z`)).replaceAll('.', '');
 const monthName = (value: string) => new Intl.DateTimeFormat('es-AR', { month: 'long' }).format(new Date(`2026-${value}-15T12:00:00Z`)).replaceAll('.', '');
+const quarterDateLabel = (value: string) => new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'short' }).format(new Date(`${value}T12:00:00Z`)).replaceAll('.', '');
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return <MultiSelectFilter label={label} value={value} options={options} onChange={onChange} />;
@@ -80,8 +81,17 @@ function ClientChart({ rows }: { rows: BairesMonthlyPoint[] }) {
 }
 
 function QuarterChart({ report }: { report: BairesReportPayload }) {
-  const max = Math.max(1, ...report.quarters.map((row) => row.kilos));
-  return <div className="nutripet-quarter-grid">{report.quarters.map((row) => <article key={row.quarter}><div><span className={row.isPartial ? 'partial' : ''} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i>{kilos(row.kilos, true)}</i></span></div><h3>{row.quarter}</h3><p>{money(row.netAmount)} · {number(row.clients)} clientes{row.isPartial ? ' · parcial' : ''}</p></article>)}</div>;
+  const max = Math.max(1, ...report.quarters.flatMap((row) => [Math.abs(row.kilos), Math.abs(row.previousYearKilos ?? 0)]));
+  return <div className="nutripet-quarter-grid">{report.quarters.map((row) => <article key={row.label || row.quarter}>
+    <div>
+      <span role="img" aria-label={`${row.label || row.quarter}, período: ${kilos(row.kilos)} kilos`} className={`current${row.isPartial ? ' partial' : ''}${row.kilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.kilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.kilos, true)}</i></span>
+      {row.previousYearKilos != null && <span role="img" aria-label={`${row.label || row.quarter}, mismo tramo de ${row.year - 1}: ${kilos(row.previousYearKilos)} kilos`} className={`previous${row.previousYearKilos < 0 ? ' negative' : ''}`} style={{ height: `${Math.max(2, Math.abs(row.previousYearKilos) / max * 100)}%` }}><i aria-hidden="true">{kilos(row.previousYearKilos, true)}</i></span>}
+    </div>
+    <h3>{row.label || row.quarter}</h3>
+    <small className="quarter-range">{row.start && row.end ? `${quarterDateLabel(row.start)}–${quarterDateLabel(row.end)}` : ''}{row.isPartial ? ' · tramo parcial' : ''}</small>
+    <p>{money(row.netAmount)} · {number(row.clients)} clientes</p>
+    <p className="quarter-comparison">{row.comparisonAvailable ? `${percent(row.variation, true)} vs mismo tramo ${row.year - 1}` : 'Sin cobertura interanual comparable'}</p>
+  </article>)}</div>;
 }
 
 function BreakdownTable({ rows, firstLabel, onOpenName }: { rows: BairesBreakdownRow[]; firstLabel: string; onOpenName?: (name: string) => void }) {
@@ -106,7 +116,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
 
   const advancedFilterCount = useMemo(() => (['brand', 'subcategory', 'branch'] as const).filter((key) => filters[key]).length, [filters]);
   const update = (key: keyof BairesFilters, value: string) => setFilters((current) => { if (key === 'year' && meta) { const available = meta.monthsByYear[value] ?? []; return { ...current, year: value, month: available.includes(current.month) ? current.month : available.at(-1) ?? current.month }; } return { ...current, [key]: value }; });
-  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Baires" detail="Reconstruyendo volumen, clientes y comparaciones desde GESI…" />;
+  if (!meta && loading) return <ReportState state="loading" title="Preparando Reporte Baires" detail="Reconstruyendo volumen, clientes y comparaciones…" />;
   if (!meta || (!report && error)) return <ReportState state="error" title="No pudimos abrir Reporte Baires" detail={error} onRetry={() => location.reload()} />;
   if (!report) return <ReportState state="loading" title="Calculando Reporte Baires" detail="Aplicando el universo y los filtros seleccionados." />;
 
@@ -128,7 +138,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
       dataTour="baires-overview"
       kicker={<><PackageOpen size={14} /> Reporte Baires</>}
       title={<>Baires · {monthLabel(report.selectedMonth, true)}</>}
-      description="Volumen y cobertura de Baires SPT y Baires Masivo calculados directamente desde GESI."
+      description="Volumen y cobertura de Baires SPT y Baires Masivo calculados sobre los movimientos disponibles."
       primary={<><SingleSelectFilter label="Año" value={filters.year} options={meta.years} onChange={(value) => update('year', value)} /><SingleSelectFilter label="Mes" value={filters.month} options={(meta.monthsByYear[filters.year] ?? []).map((month) => ({ value: month, label: monthName(month) }))} onChange={(value) => update('month', value)} /><SelectFilter label={FILTER_LABELS.segment} value={filters.segment} options={meta.options.segment} onChange={(value) => update('segment', value)} /></>}
       advanced={<><SelectFilter label={FILTER_LABELS.brand} value={filters.brand} options={meta.options.brand} onChange={(value) => update('brand', value)} /><SelectFilter label={FILTER_LABELS.subcategory} value={filters.subcategory} options={meta.options.subcategory} onChange={(value) => update('subcategory', value)} /><SelectFilter label={FILTER_LABELS.branch} value={filters.branch} options={meta.options.branch} onChange={(value) => update('branch', value)} /><button className="button secondary" disabled={!selectedFilterCount} onClick={reset}><X size={14} /> Restablecer</button></>}
       activeFilterCount={advancedFilterCount}
@@ -142,7 +152,6 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
     <ReportContext universe="Empresa 3 / sucursal 3 · grupos Baires SPT y Baires Masivo" period={`${report.periodStart} → ${report.periodEnd}`} cutoff={report.sourceMaxDate} comparison={report.comparisonAvailable ? 'Mes anterior, mismo mes del año anterior y acumulado equivalente' : 'Comparación fuera de cobertura'} partial={report.isPartial} warnings={meta.unavailableDocumentCount ? [`${meta.unavailableDocumentCount} comprobantes sin detalle.`] : []} related={[{ view: 'commercial-sales', label: 'Abrir Ventas Comercial' }]} exports={<ReportExportActions links={[{ href: reportExportUrl('baires', filters), label: 'Exportar informe', kind: 'xlsx' }]} />} />
     <AiNarrativeCard artifact={report.aiNarrative} />
     {!report.current.clients && !report.current.kilos && <ReportEmptyNotice />}
-    <BusinessReportPeriodNote partial={report.isPartial} title={`${monthLabel(report.selectedMonth, true)} · corte al ${report.periodEnd.split('-').reverse().join('/')}`} detail={report.isPartial ? `Mes en curso: ${report.elapsedDays} días. Mes anterior, año anterior y acumulado usan el mismo día de corte.` : 'Mes completo. Las comparaciones usan períodos calendario equivalentes.'} />
     <BusinessReportKpis items={[
       { label: 'Kilos / facturación', value: <>{kilos(report.current.kilos)} kg</>, detail: `${money(report.current.netAmount)} · ${number(report.current.units)} unidades`, icon: <Scale size={20} />, tone: 'green' },
       { label: 'Mes anterior comparable', value: <>{kilos(report.previousMonth.kilos)} kg</>, detail: `${money(report.previousMonth.netAmount)} · ${percent(currentVsPrevious, true)}`, icon: currentVsPrevious != null && currentVsPrevious >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />, tone: currentVsPrevious != null && currentVsPrevious >= 0 ? 'green' : 'ochre' },
@@ -152,7 +161,7 @@ export function BairesReportView({ onOpenBrand }: { onOpenBrand: (brand: string)
       { label: 'Clientes año anterior', value: number(report.previousYear.clients), detail: `${percent(clientVsYear, true)} variación actual`, icon: <Users size={20} />, tone: 'ochre' },
     ]} />
     <section className="data-card nutripet-evolution-card"><div className="data-card-header"><div><span className="section-kicker"><TrendingUp size={14} /> Evolución</span><h2>Volumen y acumulado interanual</h2><p>Últimos 13 meses disponibles. Barras en kilos y línea acumulada contra el año anterior.</p></div><div className="nutripet-legend"><span><i />Volumen</span><span><i className="ratio" />Acumulado vs año anterior</span><span><i className="partial" />Mes parcial</span></div></div><EvolutionChart report={report} /></section>
-    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Volumen por trimestre · {filters.year}</h2><p>El mes seleccionado no limita esta vista anual.</p></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
+    <div className="nutripet-secondary-grid"><section className="data-card nutripet-client-card"><div className="data-card-header"><div><span className="section-kicker"><Users size={14} /> Cobertura</span><h2>Clientes por mes</h2><p>Cada cliente se cuenta una sola vez por mes.</p></div></div><ClientChart rows={report.monthly} /></section><section className="data-card nutripet-quarter-card"><div className="data-card-header"><div><span className="section-kicker"><CalendarRange size={14} /> Trimestres</span><h2>Trimestres {report.selectedMonth.slice(0, 4)}</h2><p>Desde T1 hasta el trimestre alcanzado; cada uno se compara con el mismo tramo del año anterior.</p></div><div className="nutripet-legend"><span><i />Período</span><span><i className="prior" />Mismo tramo año anterior</span></div></div><div className="quarter-chart-scroll"><QuarterChart report={report} /></div></section></div>
     <section className="data-card nutripet-brand-card"><div className="data-card-header"><div><span className="section-kicker"><Store size={14} /> Marcas</span><h2>Mix del mes seleccionado</h2><p>Volumen y comparación contra el mismo corte del año anterior.</p></div><span className="count-badge">{number(report.brands.length)} marcas</span></div><BreakdownTable rows={report.brands} firstLabel="Marca" onOpenName={onOpenBrand} /></section>
     <section className="data-card nutripet-product-card"><div className="data-card-header"><div><span className="section-kicker"><PackageOpen size={14} /> Subrubros</span><h2>Composición del mes seleccionado</h2><p>Seleccioná cualquier encabezado para alternar orden ascendente, descendente y original.</p></div><span className="count-badge">{number(report.subcategories.length)} subrubros</span></div><BreakdownTable rows={report.subcategories} firstLabel="Subrubro" /></section>
     <BusinessReportSourceNote source={meta.sourceSystem}>{number(meta.rowCount)} movimientos Baires · cobertura GESI {meta.coverageFrom} a {meta.maxDate} · empresa 3 / sucursal 3 · grupos Baires SPT y Baires Masivo · excluye rubro POP y Via Salice MDP S.A.{meta.unavailableDocumentCount ? ` GESI no entregó el detalle de ${number(meta.unavailableDocumentCount)} de ${number(meta.sourceDocumentCount)} comprobantes; quedan identificados para el próximo refresco.` : ''} El PBIX se usa sólo como referencia funcional y de conciliación.</BusinessReportSourceNote>

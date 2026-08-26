@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDemoSnapshot } from '../server/data/demo-snapshot';
 import { buildCommercialOpportunities, buildProductClientOpportunities, commercialOpportunityPolicy, isCommercialOpportunityEligible } from './commercial-opportunities';
+import type { Product } from './models';
 
 describe('oportunidades comerciales explicables', () => {
   it('excluye productos sin stock, inactivos e incompatibles con la especie dominante', () => {
@@ -44,6 +45,54 @@ describe('oportunidades comerciales explicables', () => {
     const result = buildCommercialOpportunities(client, snapshot.clients, products, 30).find((item) => item.product.id === substitute.id);
     expect(result?.kinds).toContain('stockout_substitute');
     expect(result?.replacedProduct?.id).toBe(anchor.id);
+  });
+
+  it('nunca propone como sustituto otro producto que el cliente ya compró', () => {
+    const snapshot = createDemoSnapshot();
+    const client = snapshot.clients[0]!;
+    const owned = new Set(client.purchases.map((purchase) => purchase.productId));
+    const anchorPurchase = client.purchases[0]!;
+    const otherOwnedPurchase = client.purchases.find((purchase) => purchase.productId !== anchorPurchase.productId)!;
+    const anchor = snapshot.products.find((product) => product.id === anchorPurchase.productId)!;
+    const otherOwned = snapshot.products.find((product) => product.id === otherOwnedPurchase.productId)!;
+    const unavailable = {
+      ...anchor,
+      stock: 0,
+      units90d: Math.max(anchor.units90d, 10),
+      inventory: { ...anchor.inventory, status: 'zero' as const, rawAvailableUnit1: 0 },
+    };
+    const alreadyPurchasedAlternative = {
+      ...anchor,
+      id: otherOwned.id,
+      sku: otherOwned.sku,
+      name: 'Alternativa ya comprada',
+      stock: 20,
+      inventory: { ...anchor.inventory, status: 'positive' as const, rawAvailableUnit1: 20 },
+    };
+    const newAlternative = {
+      ...anchor,
+      id: 'TEST-SUSTITUTO-NUEVO',
+      sku: 'TEST-SUSTITUTO-NUEVO',
+      name: 'Alternativa todavía no comprada',
+      stock: 20,
+      inventory: { ...anchor.inventory, status: 'positive' as const, rawAvailableUnit1: 20 },
+    };
+    const products: Product[] = [
+      ...snapshot.products.map((product) => ({
+        ...product,
+        stock: 0,
+        inventory: { ...product.inventory, status: 'zero' as const, rawAvailableUnit1: 0 },
+      })).filter((product) => product.id !== anchor.id && product.id !== otherOwned.id),
+      unavailable,
+      alreadyPurchasedAlternative,
+      newAlternative,
+    ];
+
+    const result = buildCommercialOpportunities(client, snapshot.clients, products, 50);
+
+    expect(result.every((item) => !owned.has(item.product.id))).toBe(true);
+    expect(result.find((item) => item.product.id === newAlternative.id)?.kinds).toContain('stockout_substitute');
+    expect(result.some((item) => item.product.id === alreadyPurchasedAlternative.id)).toBe(false);
   });
 
   it('marca stock alto sólo como una señal comercial adicional', () => {

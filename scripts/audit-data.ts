@@ -30,6 +30,7 @@ for (const product of data.products) {
   check(values.length === vectorDimensions, `${product.id}: el vector no tiene ${vectorDimensions} dimensiones`);
   check(values.every((value) => value >= 0 && value <= 100), `${product.id}: vector fuera de 0–100`);
   check(product.price >= 0 && product.stock >= 0 && product.monthlyUnits >= 0, `${product.id}: precio, stock o rotación inválidos`);
+  check((product.warehouseStock ?? product.stock) >= 0, `${product.id}: existencia física del almacén inválida`);
 }
 
 for (const client of data.clients) {
@@ -58,7 +59,8 @@ for (const client of data.clients) {
   if (recommendationAuditIDs.has(client.id)) {
     const owned = new Set(client.purchases.map((purchase) => purchase.productId));
     const recommendations = recommendProducts(client, data.clients, data.products);
-    check(recommendations.every((item) => !owned.has(item.product.id)), `${prefix}: se recomienda un producto ya comprado`);
+    const repeatedRecommendations = recommendations.filter((item) => owned.has(item.product.id)).map((item) => item.product.id);
+    check(repeatedRecommendations.length === 0, `${prefix}: se recomienda un producto ya comprado (${repeatedRecommendations.join(', ')})`);
     check(recommendations.every((item, index) => index === 0 || recommendations[index - 1].score >= item.score), `${prefix}: recomendaciones desordenadas`);
     check(recommendations.every((item) => ['reliable', 'exploratory', 'insufficient'].includes(item.confidence) && item.peerSampleSize >= 0), `${prefix}: confianza de recomendación inválida`);
   }

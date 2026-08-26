@@ -51,6 +51,23 @@ Después de una activación aprobada, el sistema agrega a `operations.sqlite` un
 
 Los candidatos nunca son leídos por el servidor antes de aprobarse. Si una etapa falla, se elimina solamente esa generación y el manifiesto activo continúa apuntando al paquete anterior. No existe una ventana en la que el servidor combine una base comercial nueva con un snapshot viejo.
 
+### Cobertura de fojas
+
+La logística conserva el mismo año móvil que las facturas y consulta además 45 días de solapamiento para no perder una foja que haya comenzado antes del corte pero termine dentro de la cobertura. La primera actualización que detecta una captura antigua limitada a 45 días completa ese histórico.
+
+En las siguientes actualizaciones sólo se conservan fojas históricas cerradas cuya captura coincide con el paquete activo. Todas las cabeceras de la ventana reciente —incluso las cerradas— vuelven a leer su detalle porque la fuente puede corregir asignaciones después del cierre. Una foja abierta más antigua extiende la consulta hasta su fecha. Si el archivo anterior es ilegible, está vacío o no corresponde al paquete activo, se descarta como caché y se reconstruye el año completo.
+
+Antes de integrar el histórico se bloquean IDs inválidos o duplicados y cabeceras de otra empresa. La paginación de fojas debe entregar exactamente todas las filas anunciadas y, si existe un paquete aprobado, ninguna foja que debía volver a consultarse puede desaparecer. Cada foja debe incluir una lista de comprobantes válida, aunque esté vacía, y cada asignación debe corresponder a una factura capturada dentro de empresa 3 / sucursal 3. Las asignaciones anteriores al inicio anual se validan con el tramo auxiliar del solapamiento y luego se excluyen del paquete publicado.
+
+Para comparar, sin modificar datos, las cabeceras que devuelve la fuente con el paquete activo:
+
+```bash
+pnpm run audit:delivery-sheets
+pnpm run audit:delivery-sheets -- 2026-01-01
+```
+
+El segundo comando permite indicar un inicio excepcional. El resultado informa cobertura, cantidad por mes y diferencias de identificadores; nunca imprime credenciales ni contenido comercial de los comprobantes.
+
 ## IA incremental
 
 El enriquecimiento comienza después de activar el paquete determinístico. Una falla, omisión por presupuesto o salida inválida de OpenAI queda registrada, pero no revierte los datos aprobados.

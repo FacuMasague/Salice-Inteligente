@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, EyeOff, MapPinned, TrendingUp, Users, WalletCards } from 'lucide-react';
+import { ChevronDown, EyeOff, MapPinned } from 'lucide-react';
 import type { Client, LogisticsSnapshot, Product } from '../../shared/models';
 import { decodeMultiFilter, matchesMultiFilter } from '../../shared/multi-filter';
 import { ClientMap } from '../components/ClientMap';
@@ -8,8 +8,7 @@ import { AnimatedLayer } from '../components/AnimatedLayer';
 import { MobileFilterSheet } from '../components/MobileFilterSheet';
 import { MultiSelectFilter } from '../components/MultiSelectFilter';
 import { SavedViewsBar } from '../components/SavedViewsBar';
-import { clientKilos90d, productContentById } from '../lib/commercial-metrics';
-import { money, number, zoneLabel } from '../lib/format';
+import { number, zoneLabel } from '../lib/format';
 
 interface MapDashboardProps {
   clients: Client[];
@@ -37,7 +36,6 @@ export function MapDashboard({ clients, products, logistics, selected, quickView
   const [portfolioStatus, setPortfolioStatus] = useState('');
   const [locationStatus, setLocationStatus] = useState('');
   const [scope, setScope] = useState('regional');
-  const activeClients = useMemo(() => clients.filter((client) => client.active), [clients]);
   const visibleByStatus = useMemo(() => clients.filter((client) => (
     matchesMultiFilter(client.active ? 'active' : 'inactive', clientVisibility)
   )), [clients, clientVisibility]);
@@ -56,18 +54,6 @@ export function MapDashboard({ clients, products, logistics, selected, quickView
     && matchesMultiFilter(client.health, health)
     && matchesMultiFilter(client.portfolioStatus, portfolioStatus)
     && matchesMultiFilter(client.locationStatus ?? 'original', locationStatus)), [scopedClients, zone, health, portfolioStatus, locationStatus]);
-  const portfolio = activeClients.reduce((sum, client) => sum + client.sales90d, 0);
-  const contentByProduct = useMemo(() => productContentById(products), [products]);
-  const portfolioKiloMetric = useMemo(() => activeClients.reduce((total, client) => {
-    const metric = clientKilos90d(client, contentByProduct);
-    return { kilos: total.kilos + metric.kilos, complete: total.complete && metric.complete };
-  }, { kilos: 0, complete: true }), [activeClients, contentByProduct]);
-  const debt = activeClients.reduce((sum, client) => sum + client.balance, 0);
-  const critical = activeClients.filter((client) => client.health === 'critical').length;
-  const trend = activeClients.reduce((totals, client) => totals.map((total, index) => total + (client.salesTrend[index] || 0)), [0, 0, 0, 0, 0, 0]);
-  const previousQuarter = trend.slice(0, 3).reduce((sum, value) => sum + value, 0);
-  const currentQuarter = trend.slice(3).reduce((sum, value) => sum + value, 0);
-  const portfolioDelta = previousQuarter ? Math.round((currentQuarter - previousQuarter) / previousQuarter * 100) : 0;
   const savedFilters = { scope, clientVisibility, portfolioStatus, locationStatus, zone, health, selectedClientId: selected ? String(selected.id) : '' };
   const activeFilterCount = [scope === 'regional' ? '' : scope, clientVisibility, portfolioStatus, locationStatus, zone, health].filter(Boolean).length;
   const applySaved = (saved: Record<string, string>) => {
@@ -86,13 +72,6 @@ export function MapDashboard({ clients, products, logistics, selected, quickView
 
   return (
     <div className="map-dashboard">
-      <div className="kpi-strip" data-tour="map-kpis">
-        <article className="kpi-card"><div className="kpi-icon green"><Users size={20} /></div><div><span>Clientes activos</span><strong>{number(activeClients.length)}</strong><small>{number(activeClients.filter((client) => client.portfolioStatus === 'confirmed').length)} confirmados en sucursal · {number(activeClients.filter((client) => client.portfolioStatus === 'review').length)} a revisar</small></div></article>
-        <article className="kpi-card"><div className="kpi-icon ochre"><TrendingUp size={20} /></div><div><span>Facturación / kilos · 90 días</span><strong>{money(portfolio, true)}</strong><small>{number(portfolioKiloMetric.kilos, 2)} kg{portfolioKiloMetric.complete ? '' : ' · conversión parcial'}</small><small className={portfolioDelta >= 0 ? 'positive' : 'negative'}>{portfolioDelta >= 0 ? '↑' : '↓'} {Math.abs(portfolioDelta)}% en facturación vs. trimestre anterior</small></div></article>
-        <article className="kpi-card"><div className="kpi-icon blue"><WalletCards size={20} /></div><div><span>Saldo neto en cuenta corriente</span><strong>{money(debt, true)}</strong><small>{number(activeClients.filter((client) => client.balance > 0).length)} clientes activos con saldo deudor</small></div></article>
-        <article className="kpi-card"><div className="kpi-icon red"><AlertCircle size={20} /></div><div><span>Riesgo de cobranza alto</span><strong>{critical}</strong><small>puntaje 55 o superior · revisar antes de vender</small></div></article>
-      </div>
-
       <SavedViewsBar viewKey="map" filters={savedFilters} onApply={applySaved} />
 
       <div className={`map-workspace ${quickViewOpen && selected ? 'with-panel' : ''}`}>

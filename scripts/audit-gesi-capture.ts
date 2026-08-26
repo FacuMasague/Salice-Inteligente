@@ -4,6 +4,7 @@ import chain from 'stream-chain';
 import { parser } from 'stream-json';
 import { ignore } from 'stream-json/filters/ignore.js';
 import { streamObject } from 'stream-json/streamers/stream-object.js';
+import { deliverySheetEndsAt } from '../server/gesi/delivery-sheet-capture.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 import { invoiceCreditTermDays } from '../shared/credit-terms.js';
 
@@ -27,6 +28,9 @@ partialCapture.sptCreditNotes = [];
 const capture = partialCapture as GesiRawCapture;
 
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const finiteInventoryValue = (value: unknown) => value != null
+  && !(typeof value === 'string' && value.trim() === '')
+  && Number.isFinite(Number(value));
 const text = (value: unknown) => value == null ? '' : String(value).trim();
 const date = (value: unknown) => text(value).slice(0, 10);
 const distinct = <T>(values: T[]) => new Set(values).size;
@@ -91,7 +95,7 @@ const allItems = invoiceWithDetail.flatMap((row) => row.detalleItems as GesiRow[
 const soldProductIDs = uniqueStrings(allItems.filter((row) => text(row.tipoDeItem) === 'P'), 'codigoDeItem');
 const activeMasterProductIDs = new Set(capture.products.filter((row) => text(row.estado) === 'A').map((row) => text(row.productoID)).filter(Boolean));
 const nonzeroInventoryProductIDs = new Set(capture.stocks
-  .filter((row) => number(row.unidad1Disponible) !== 0 || number(row.unidad2Disponible) !== 0)
+  .filter((row) => number(row.unidad1) !== 0 || number(row.unidad2) !== 0 || number(row.unidad1Disponible) !== 0 || number(row.unidad2Disponible) !== 0)
   .map((row) => text(row.productoID)).filter(Boolean));
 const catalogProductIDs = new Set([...activeMasterProductIDs, ...nonzeroInventoryProductIDs, ...soldProductIDs]);
 const stockRowIDs = capture.stocks.map((row) => text(row.productoID)).filter(Boolean);
@@ -140,6 +144,7 @@ const clientCoordinates = capture.clients.map((row) => ({ id: number(row.cliente
 const regionalCoordinates = clientCoordinates.filter(({ point }) => point && point[0] >= -42 && point[0] <= -34 && point[1] >= -61 && point[1] <= -55);
 const branchDefinitions = capture.clients.flatMap((row) => Array.isArray(row.lstDefinicionClienteSucursal) ? row.lstDefinicionClienteSucursal as GesiRow[] : []);
 const deliverySheets = capture.deliverySheets ?? [];
+const deliverySheetIDs = deliverySheets.map((row) => number(row.fojaID));
 const assignedDeliveryDocuments = deliverySheets.flatMap((row) => Array.isArray(row.listaDeComprobantesAsignados) ? row.listaDeComprobantesAsignados as GesiRow[] : []);
 const assignedInvoiceIDs = new Set(assignedDeliveryDocuments.map(documentKey).filter((id) => invoiceIDs.has(id)));
 const unassignedDeliveryInvoiceIDs = new Set((capture.unassignedDeliveryDocuments ?? []).map(documentKey).filter((id) => invoiceIDs.has(id)));
@@ -177,9 +182,17 @@ const report = {
     uniqueInventoryProducts: stockProductIDs.size,
     duplicateInventoryRows: capture.captureMeta.inventoryDuplicateRows ?? stockRowIDs.length - distinct(stockRowIDs),
     invalidInventoryRows: capture.captureMeta.inventoryInvalidRows ?? capture.stocks.filter((row) => !text(row.productoID)).length,
-    positiveUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) > 0).length,
-    zeroUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) === 0).length,
-    negativeUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) < 0).length,
+    positivePhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) > 0).length,
+    zeroPhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) === 0).length,
+    negativePhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) < 0).length,
+    positiveAvailableUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) > 0).length,
+    zeroAvailableUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) === 0).length,
+    negativeAvailableUnit1Products: capture.stocks.filter((row) => number(row.unidad1Disponible) < 0).length,
+    committedStockProducts: capture.stocks.filter((row) => number(row.unidad1) > number(row.unidad1Disponible)).length,
+    stockReconciliationWarnings: capture.stocks.filter((row) => (
+      Math.abs(number(row.unidad1) - number(row.unidad1Disponible) - number(row.unidad1NPEPendientes)) > .01
+      || Math.abs(number(row.unidad2) - number(row.unidad2Disponible) - number(row.unidad2NPEPendientes)) > .01
+    )).length,
     missingInventoryProducts: [...productIDs].filter((id) => !stockProductIDs.has(id)).length,
     activeMasterProducts: activeMasterProductIDs.size,
     inactiveMasterProducts: capture.products.filter((row) => text(row.estado) === 'I').length,
@@ -198,7 +211,8 @@ const report = {
     catalogActiveOrNonzeroInventoryOrSales: catalogProductIDs.size,
     soldMissingFromMaster: [...soldProductIDs].filter((id) => !productIDs.has(id)).length,
     catalogMissingPriceDefinition: [...catalogProductIDs].filter((id) => !priceProductIDs.has(id)).length,
-    stockValues: quantiles(capture.stocks.map((row) => number(row.unidad1Disponible))),
+    physicalStockValues: quantiles(capture.stocks.map((row) => number(row.unidad1))),
+    availableStockValues: quantiles(capture.stocks.map((row) => number(row.unidad1Disponible))),
   },
   invoices: {
     rows365d: capture.invoices.length,
@@ -251,13 +265,17 @@ const report = {
   },
   logistics: {
     coverageFrom: capture.captureMeta.logisticsFrom ?? '',
+    fetchedFrom: capture.captureMeta.logisticsFetchFrom ?? capture.captureMeta.logisticsFrom ?? '',
     sheets: deliverySheets.length,
+    uniqueSheets: distinct(deliverySheetIDs),
     openSheets: deliverySheets.filter((row) => ['1', 'A'].includes(text(row.estado).toUpperCase()) && !date(row.fechaCerrada)).length,
     closedSheets: deliverySheets.filter((row) => ['2', 'C'].includes(text(row.estado).toUpperCase()) || Boolean(date(row.fechaCerrada))).length,
     sheetsWithDriver: deliverySheets.filter((row) => number(row.repartidorID) > 0).length,
     sheetsWithAssignedDocuments: deliverySheets.filter((row) => Array.isArray(row.listaDeComprobantesAsignados) && row.listaDeComprobantesAsignados.length > 0).length,
+    sheetsWithoutCompleteDetail: deliverySheets.filter((row) => !Array.isArray(row.listaDeComprobantesAsignados)).length,
     assignedDocuments: assignedDeliveryDocuments.length,
     assignedInvoicesInCapture: assignedInvoiceIDs.size,
+    assignedDocumentsOutsideScopeOrCapture: assignedDeliveryDocuments.filter((row) => number(row.empresaID) !== 3 || !invoiceIDs.has(documentKey(row))).length,
     explicitlyUnassignedInvoicesInCapture: unassignedDeliveryInvoiceIDs.size,
     invoiceAssignmentsDuplicated: assignedDeliveryDocuments.map(documentKey).filter((id, index, rows) => invoiceIDs.has(id) && rows.indexOf(id) !== index).length,
   },
@@ -271,7 +289,7 @@ const qualityWarnings: string[] = [];
 const require = (condition: boolean, message: string) => { if (!condition) requiredIssues.push(message); };
 require(capture.captureMeta.empresaID === 3, `Empresa de inventario ${capture.captureMeta.empresaID}; esperada 3.`);
 require(capture.captureMeta.sucursalID === 3, `Sucursal de inventario ${capture.captureMeta.sucursalID}; esperada 3.`);
-require(capture.captureMeta.almacenPrincipalID === 2, `Depósito de inventario ${capture.captureMeta.almacenPrincipalID}; esperado 2.`);
+require(capture.captureMeta.almacenPrincipalID === 2, `Almacén de inventario ${capture.captureMeta.almacenPrincipalID}; esperado 2.`);
 require(capture.captureMeta.inventoryIncludesZeroStock === true, 'La captura no certifica incluir productos sin existencias.');
 require(capture.products.length === productIDs.size, 'El maestro contiene productoID duplicados.');
 require(capture.stocks.length === stockProductIDs.size, 'Las existencias normalizadas contienen productoID duplicados.');
@@ -297,10 +315,27 @@ require(
   (capture.deliverySheets ?? []).every((row) => number(row.empresaID) === 3),
   'Hay fojas fuera de empresa 3; GESI no informa sucursalID en este recurso.',
 );
-require(capture.stocks.every((row) => Number.isFinite(Number(row.unidad1Disponible)) && Number.isFinite(Number(row.unidad2Disponible))), 'Hay existencias con unidades disponibles no numéricas.');
+require(deliverySheetIDs.every((id) => Number.isInteger(id) && id > 0), 'Hay fojas sin fojaID entero positivo.');
+require(deliverySheets.length === distinct(deliverySheetIDs), 'Hay fojaID duplicados en la captura logística.');
+require(
+  deliverySheets.every((row) => deliverySheetEndsAt(row) >= date(capture.captureMeta.logisticsFrom)),
+  'Hay fojas cuyo período termina antes del inicio de cobertura logística declarado.',
+);
+require(
+  deliverySheets.every((row) => Array.isArray(row.listaDeComprobantesAsignados)),
+  'Hay fojas sin un detalle completo de comprobantes asignados.',
+);
+require(
+  assignedDeliveryDocuments.every((row) => number(row.empresaID) === 3 && invoiceIDs.has(documentKey(row))),
+  'Hay comprobantes asignados a fojas fuera de empresa 3 o ausentes del universo de facturas 3/3 capturado.',
+);
+require(capture.stocks.every((row) => finiteInventoryValue(row.unidad1) && finiteInventoryValue(row.unidad2)), 'Hay existencias físicas del almacén con unidades ausentes o no numéricas.');
+require(capture.stocks.every((row) => finiteInventoryValue(row.unidad1Disponible) && finiteInventoryValue(row.unidad2Disponible)), 'Hay disponibilidades del almacén con unidades ausentes o no numéricas.');
+require(capture.stocks.every((row) => finiteInventoryValue(row.unidad1NPEPendientes) && finiteInventoryValue(row.unidad2NPEPendientes)), 'Hay pedidos pendientes del almacén con unidades ausentes o no numéricas.');
 if ((capture.captureMeta.inventoryDuplicateRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryDuplicateRows} fila(s) de existencias duplicada(s) fueron deduplicadas.`);
 if ((capture.captureMeta.inventoryInvalidRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryInvalidRows} fila(s) de existencias sin productoID fueron excluidas.`);
-if ((capture.captureMeta.inventoryScopeRepairedRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryScopeRepairedRows} fila(s) de existencias sin alcance específico o con marcador global 65535 y stock cero se asociaron a empresa 3, sucursal 3 y depósito 2 solicitados al endpoint.`);
+if ((capture.captureMeta.inventoryScopeRepairedRows ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryScopeRepairedRows} fila(s) de existencias sin alcance específico o con marcador global 65535 y stock cero se asociaron a empresa 3, sucursal 3 y almacén 2 solicitados al endpoint.`);
+if ((capture.captureMeta.inventoryStockReconciliationWarnings ?? 0) > 0) qualityWarnings.push(`${capture.captureMeta.inventoryStockReconciliationWarnings} producto(s) no reconcilian existencia física menos pedidos pendientes con disponibilidad.`);
 if (capture.products.some((row) => !text(row.unidad1))) qualityWarnings.push(`${capture.products.filter((row) => !text(row.unidad1)).length} maestro(s) no informan unidad primaria.`);
 if (capture.products.some((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0)) qualityWarnings.push(`${capture.products.filter((row) => text(row.unidad2) && number(row.unidad2XUnidad1) <= 0).length} maestro(s) informan U2 sin una relación positiva U2/U1.`);
 

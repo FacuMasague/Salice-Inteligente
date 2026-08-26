@@ -55,7 +55,9 @@ export function groupDeliveryInvoices(invoices: DeliveryInvoice[], clients: Clie
     const preferredLocality = groupedInvoices.map((invoice) => invoice.locality).find(Boolean) || client?.locality || 'Sin localidad';
     return {
       clientId,
-      clientName: client?.tradeName || client?.name || `Cliente ${clientId}`,
+      // La razón social es la identidad principal al seleccionar y ordenar
+      // facturas. El nombre de fantasía queda como dato complementario en la UI.
+      clientName: client?.name || client?.tradeName || `Cliente ${clientId}`,
       address: preferredAddress || 'Sin domicilio informado',
       locality: preferredLocality,
       // A locality centroid is useful for display, but never safe enough for

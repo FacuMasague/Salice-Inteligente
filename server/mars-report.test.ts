@@ -56,7 +56,15 @@ describeWithDatabase('Reporte Mars construido desde GESI', () => {
     expect(report!.current.clients).toBe(report!.current.accounts);
     expect(report!.periods.find((period) => period.label === meta.latestPeriod)?.isPartial).toBe(report!.isPartial);
     expect(report!.brands.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(report!.current.kilos, 6);
-    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(report!.periods.reduce((sum, row) => sum + row.kilos, 0), 6);
+    expect(report!.quarters.length).toBeGreaterThanOrEqual(1);
+    expect(report!.quarters.length).toBeLessThanOrEqual(4);
+    expect(report!.quarters.at(-1)?.end).toBe(meta.reportingDate);
+    expect(report!.quarters.every((row) => row.year === Number(meta.latestYear) && new RegExp(`^Q[1-4] ${meta.latestYear}$`).test(row.label))).toBe(true);
+    expect(report!.quarters.filter((row) => !row.comparisonAvailable).every((row) => row.previousYearKilos == null)).toBe(true);
+    const windowStart = report!.quarters[0].start;
+    const windowEnd = report!.quarters.at(-1)!.end;
+    const windowPeriods = report!.periods.filter((period) => period.start >= windowStart && period.start <= windowEnd);
+    expect(report!.quarters.reduce((sum, row) => sum + row.kilos, 0)).toBeCloseTo(windowPeriods.reduce((sum, row) => sum + row.kilos, 0), 6);
   }, 15_000);
 
   it('recalcula todas las métricas al filtrar una marca', () => {

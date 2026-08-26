@@ -11,12 +11,15 @@ export interface GesiRawCapture {
     inventoryDuplicateRows?: number;
     inventoryInvalidRows?: number;
     inventoryScopeRepairedRows?: number;
+    inventoryCommittedRows?: number;
+    inventoryStockReconciliationWarnings?: number;
     historyFrom: string;
     salesHistoryFrom: string;
     sptFetchFrom: string;
     salesDetailFrom: string;
     sptSalesDetailFrom: string;
     logisticsFrom?: string;
+    logisticsFetchFrom?: string;
     historyUntil: string;
     optionalEndpointWarnings: string[];
   };

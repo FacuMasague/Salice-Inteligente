@@ -26,6 +26,7 @@ import { SingleSelectFilter } from './SingleSelectFilter';
 import { SortButton } from './SortButton';
 import { cycleSort, emptySort, sortItems } from '../lib/sorting';
 import { number, shortDate } from '../lib/format';
+import { hasWarehousePhysicalStock, productAvailableStock, productWarehouseStock } from '../../shared/product-stock';
 
 type InventorySortKey = 'product' | 'status' | 'stock' | 'rotation' | 'coverage' | 'review';
 
@@ -126,7 +127,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
   const sorted = sortItems(filtered, sort, (row, key) => {
     if (key === 'product') return row.product.name;
     if (key === 'status') return INVENTORY_DECISION_ORDER.indexOf(row.decision.status);
-    if (key === 'stock') return row.product.inventory.rawAvailableUnit1;
+    if (key === 'stock') return productAvailableStock(row.product);
     if (key === 'rotation') return row.product.monthlyUnits;
     if (key === 'coverage') return row.product.stockCoverageMonths;
     return row.review?.status === 'reviewed' ? 2 : row.review?.status === 'in_review' ? 1 : 0;
@@ -191,7 +192,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
 
   return <div className="inventory-decision-page">
     <section className="data-card inventory-decision-hero">
-      <div><span className="section-kicker"><ClipboardCheck size={15} /> Bandeja de decisión · depósito 2</span><h2>Inventario para revisar y decidir</h2><p>Incluye productos con stock positivo o rotación en los últimos 90 días. Los otros {number(excludedCount)} productos siguen disponibles en Catálogo.</p></div>
+      <div><span className="section-kicker"><ClipboardCheck size={15} /> Bandeja de decisión · almacén 2</span><h2>Inventario para revisar y decidir</h2><p>Incluye productos con disponibilidad para vender o rotación en los últimos 90 días. Los otros {number(excludedCount)} productos siguen disponibles en Catálogo.</p></div>
       <details className="inventory-policy-details"><summary>Cómo se prioriza <ChevronDown size={14} /></summary><div><strong>Política {INVENTORY_DECISION_POLICY.version}</strong><span>Crítica &lt; 0,5 mes · baja &lt; 1 mes · adecuada 1–&lt;3 meses · alta ≥ 3 meses.</span><small>No hay excepciones familiares configuradas.</small></div></details>
     </section>
     <section className="data-card inventory-command-card">
@@ -209,7 +210,7 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
           <MultiSelectFilter label="Estado" value={status} options={statusOptions} onChange={(value) => { setStatus(value); setPage(1); }} />
           <MultiSelectFilter label="Marca" value={brand} options={brands} onChange={(value) => { setBrand(value); setPage(1); }} />
           <MultiSelectFilter label="Revisión" value={reviewState} options={[{ value: 'unreviewed', label: INVENTORY_REVIEW_LABELS.unreviewed }, { value: 'in_review', label: INVENTORY_REVIEW_LABELS.in_review }, { value: 'reviewed', label: INVENTORY_REVIEW_LABELS.reviewed }]} onChange={(value) => { setReviewState(value); setPage(1); }} />
-          <details className="inventory-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros <ChevronDown size={14} /></summary><div className="inventory-filter-grid"><MultiSelectFilter label="Familia" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Actividad" value={activity} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setActivity(value); setPage(1); }} /><MultiSelectFilter label="Rotación" value={rotation} options={[{ value: 'with_rotation', label: 'Con movimiento 90d' }, { value: 'without_rotation', label: 'Stock sin movimiento' }, { value: 'not_evaluable', label: 'No evaluable' }]} onChange={(value) => { setRotation(value); setPage(1); }} /></div></details>
+          <details className="inventory-more-filters"><summary><SlidersHorizontal size={14} /> Más filtros <ChevronDown size={14} /></summary><div className="inventory-filter-grid"><MultiSelectFilter label="Familia" value={family} options={families} onChange={(value) => { setFamily(value); setPage(1); }} /><MultiSelectFilter label="Grupo" value={group} options={groups} onChange={(value) => { setGroup(value); setPage(1); }} /><MultiSelectFilter label="Actividad" value={activity} options={[{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'unknown', label: 'Sin estado' }]} onChange={(value) => { setActivity(value); setPage(1); }} /><MultiSelectFilter label="Rotación" value={rotation} options={[{ value: 'with_rotation', label: 'Con movimiento 90d' }, { value: 'without_rotation', label: 'Disponible sin movimiento' }, { value: 'not_evaluable', label: 'No evaluable' }]} onChange={(value) => { setRotation(value); setPage(1); }} /></div></details>
         </MobileFilterSheet>
       </div>
       {loadError && <p className="form-error">{loadError}</p>}
@@ -220,14 +221,14 @@ export function InventoryDecisionTray({ products, reviews, loadError, onReviewSa
       <div className="table-wrap"><table className="data-table inventory-decision-table"><thead><tr>
         <th><SortButton label="Producto" direction={direction('product')} onClick={() => changeSort('product')} /></th>
         <th><SortButton label="Estado" direction={direction('status')} onClick={() => changeSort('status')} /></th>
-        <th><SortButton label="Stock U1" direction={direction('stock')} onClick={() => changeSort('stock')} /></th>
+        <th><SortButton label="Disponible U1" direction={direction('stock')} onClick={() => changeSort('stock')} /></th>
         <th><SortButton label="Rotación/mes" direction={direction('rotation')} onClick={() => changeSort('rotation')} /></th>
         <th><SortButton label="Cobertura" direction={direction('coverage')} onClick={() => changeSort('coverage')} /></th>
         <th><SortButton label="Revisión" direction={direction('review')} onClick={() => changeSort('review')} /></th>
       </tr></thead><tbody>{visible.map((row) => <tr key={row.product.id} className={row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'inventory-reopened-row' : row.review?.status === 'reviewed' ? 'inventory-reviewed-row' : row.review?.status === 'in_review' ? 'inventory-in-review-row' : ''} tabIndex={0} role="button" aria-label={`Abrir producto ${row.product.name}`} onClick={() => onOpenProduct(row.product)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenProduct(row.product); } }}>
         <td><button className="entity-link inventory-product-link" onClick={(event) => { event.stopPropagation(); onOpenProduct(row.product); }}><strong>{row.product.name}</strong><small>{row.product.sku} · {useful(row.product.brand)} · {useful(row.product.family)}</small></button></td>
         <td><span className={`inventory-status-badge ${statusTone(row.decision.status)}`}>{row.decision.label}</span></td>
-        <td><strong>{row.product.inventory.rawAvailableUnit1 == null ? 'Sin dato' : row.product.inventory.rawAvailableUnit1.toLocaleString('es-AR')}</strong><small>{row.product.unit || 'U1 no informada'}</small></td>
+        <td><strong>{row.product.inventory.rawAvailableUnit1 == null ? 'Sin dato' : productAvailableStock(row.product).toLocaleString('es-AR')}</strong><small>{hasWarehousePhysicalStock(row.product) ? `${productWarehouseStock(row.product).toLocaleString('es-AR')} en almacén · ${row.product.unit || 'U1'}` : row.product.unit || 'U1 no informada'}</small></td>
         <td><strong>{row.product.monthlyUnits.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong><small>{row.product.units90d.toLocaleString('es-AR')} en 90d</small></td>
         <td><strong>{row.product.stockCoverageMonths == null ? 'No calculable' : `${row.product.stockCoverageMonths.toLocaleString('es-AR', { maximumFractionDigits: 2 })} meses`}</strong><small>umbral {row.decision.thresholdSource === 'general' ? 'general' : 'familiar'}</small></td>
         <td><button className={`inventory-review-button ${reviewStatus(row.review)} ${row.review?.status === 'unreviewed' && row.review.reopenedAt ? 'reopened' : ''}`} onClick={(event) => { event.stopPropagation(); openReview(row); }}>{row.review?.status === 'unreviewed' && row.review.reopenedAt ? <RotateCcw size={14} /> : row.review?.status === 'reviewed' ? <Check size={14} /> : <ClipboardCheck size={14} />}<span>{inventoryReviewDisplayLabel(row.review)}</span></button>{row.review && row.review.incidentNumber > 1 && <small>Incidencia {row.review.incidentNumber}</small>}{row.review?.note && <small title={row.review.note}>{noteExcerpt(row.review.note)}</small>}</td>

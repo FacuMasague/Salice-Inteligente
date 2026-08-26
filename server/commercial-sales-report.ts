@@ -8,6 +8,7 @@ import type {
   CommercialSalesMetrics,
   CommercialSalesMixRow,
   CommercialSalesMonthlyPoint,
+  CommercialSalesProductGroupMixRow,
   CommercialSalesProductRow,
   CommercialSalesReportMeta,
   CommercialSalesReportPayload,
@@ -17,6 +18,7 @@ import { decodeMultiFilter, normalizeMultiFilter } from '../shared/multi-filter.
 import { cutoffDate, daysInclusive, includeReportingMonth, isoDate as iso, monthEnd, monthStart, reportingDate, shiftedMonth, utcDate } from './reporting-periods.js';
 import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
+import { COMMERCIAL_PRODUCT_GROUP_REST_LABEL, SPT_MAIN_PRODUCT_GROUPS } from './report-product-groups.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
 
@@ -204,6 +206,65 @@ function mix(database: DatabaseSync, filters: CommercialSalesFilters, start: str
   });
 }
 
+const productGroupMixCase = `CASE
+  ${SPT_MAIN_PRODUCT_GROUPS.map((group) => `WHEN UPPER(TRIM(product_group)) = '${group.toUpperCase().replaceAll("'", "''")}' THEN '${group.replaceAll("'", "''")}'`).join('\n  ')}
+  ELSE '${COMMERCIAL_PRODUCT_GROUP_REST_LABEL}' END`;
+
+function productGroupMixPeriod(database: DatabaseSync, filters: CommercialSalesFilters, start: string, end: string) {
+  const where = buildWhere(filters, start, end);
+  const raw = rows<{ label: string; netAmount: number; kilos: number; units: number; clients: number }>(database.prepare(`
+    SELECT ${productGroupMixCase} AS label, COALESCE(SUM(net_amount), 0) AS netAmount,
+           COALESCE(SUM(kilos), 0) AS kilos, COALESCE(SUM(units), 0) AS units,
+           COUNT(DISTINCT client_id) AS clients
+    FROM movements WHERE ${where.sql} GROUP BY label
+  `), where.parameters);
+  return {
+    byLabel: new Map(raw.map((row) => [row.label, row])),
+    total: raw.reduce((sum, row) => sum + Number(row.netAmount), 0),
+  };
+}
+
+function productGroupMix(
+  database: DatabaseSync,
+  filters: CommercialSalesFilters,
+  periods: {
+    current: { start: string; end: string };
+    previousPeriod: { start: string; end: string };
+    previousYear: { start: string; end: string };
+  },
+): CommercialSalesProductGroupMixRow[] {
+  const current = productGroupMixPeriod(database, filters, periods.current.start, periods.current.end);
+  const previousPeriod = productGroupMixPeriod(database, filters, periods.previousPeriod.start, periods.previousPeriod.end);
+  const previousYear = productGroupMixPeriod(database, filters, periods.previousYear.start, periods.previousYear.end);
+  const empty: CommercialSalesMetrics = { netAmount: 0, kilos: 0, units: 0, clients: 0 };
+  const metrics = (row: CommercialSalesMetrics | undefined): CommercialSalesMetrics => ({
+    netAmount: Number(row?.netAmount ?? 0),
+    kilos: Number(row?.kilos ?? 0),
+    units: Number(row?.units ?? 0),
+    clients: Number(row?.clients ?? 0),
+  });
+
+  return [...SPT_MAIN_PRODUCT_GROUPS, COMMERCIAL_PRODUCT_GROUP_REST_LABEL].map((label) => {
+    const currentRow = metrics(current.byLabel.get(label) ?? empty);
+    const previousPeriodRow = metrics(previousPeriod.byLabel.get(label) ?? empty);
+    const previousYearRow = metrics(previousYear.byLabel.get(label) ?? empty);
+    return {
+      label,
+      ...currentRow,
+      share: metricShare(currentRow.netAmount, current.total),
+      previousPeriod: previousPeriodRow,
+      previousPeriodShare: metricShare(previousPeriodRow.netAmount, previousPeriod.total),
+      previousYear: previousYearRow,
+      previousYearShare: metricShare(previousYearRow.netAmount, previousYear.total),
+      netAmountVariationPreviousPeriod: metricVariation(currentRow.netAmount, previousPeriodRow.netAmount),
+      netAmountVariationPreviousYear: metricVariation(currentRow.netAmount, previousYearRow.netAmount),
+    };
+  }).sort((left, right) => right.netAmount - left.netAmount
+    || right.previousPeriod.netAmount - left.previousPeriod.netAmount
+    || right.previousYear.netAmount - left.previousYear.netAmount
+    || left.label.localeCompare(right.label, 'es'));
+}
+
 function brandBreakdown(database: DatabaseSync, filters: CommercialSalesFilters, start: string, end: string, elapsedDays: number): { rows: CommercialSalesBrandRow[]; total: CommercialSalesBrandTotal } {
   const foodClause = `category IN (${FOOD_CATEGORIES.map((category) => `'${category.replaceAll("'", "''")}'`).join(', ')})`;
   const where = buildWhere(filters, start, end, foodClause);
@@ -296,6 +357,12 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
   const previousEnd = filters.periodMode === 'year'
     ? filters.year === meta.latestYear ? `${anchorYear - 1}${meta.reportingDate.slice(4)}` : `${anchorYear - 1}-12-31`
     : iso(cutoffDate(previous.year, previous.month, cutoffDay));
+  const previousYearStart = filters.periodMode === 'year'
+    ? previousStart
+    : iso(monthStart(anchorYear - 1, anchorMonth));
+  const previousYearEnd = filters.periodMode === 'year'
+    ? previousEnd
+    : iso(cutoffDate(anchorYear - 1, anchorMonth, cutoffDay));
   const elapsedDays = daysInclusive(currentStart, currentEnd);
 
   const current = metric(database, buildWhere(filters, currentStart, currentEnd));
@@ -354,6 +421,16 @@ export function buildCommercialSalesReport(input: Partial<Record<string, unknown
     variation: metricVariation(current.netAmount, comparison.netAmount),
     segments,
     mix: mix(database, filters, currentStart, currentEnd),
+    productGroupMix: productGroupMix(database, filters, {
+      current: { start: currentStart, end: currentEnd },
+      previousPeriod: { start: previousStart, end: previousEnd },
+      previousYear: { start: previousYearStart, end: previousYearEnd },
+    }),
+    mixPeriods: {
+      current: { start: currentStart, end: currentEnd },
+      previousPeriod: { start: previousStart, end: previousEnd, available: meta.coverageFrom <= previousStart },
+      previousYear: { start: previousYearStart, end: previousYearEnd, available: meta.coverageFrom <= previousYearStart },
+    },
     monthly,
     brandTotal: brandData.total,
     brands: brandData.rows,
