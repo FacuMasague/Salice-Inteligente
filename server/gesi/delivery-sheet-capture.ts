@@ -56,6 +56,27 @@ export function assertDeliverySheetDetail(row: GesiRow) {
 }
 
 /**
+ * GetItem representa algunas fojas sin comprobantes con `null`, aun cuando la
+ * propiedad está presente. El capturador confirma esa señal con tres lecturas
+ * antes de llamar a esta función. Sólo se normaliza un estado logístico conocido
+ * y sin contradecir un detalle aprobado anterior. Una propiedad ausente o un
+ * valor malformado siguen siendo respuestas incompletas y bloquean el paquete.
+ */
+export function normalizeNullDeliverySheetAssignments(row: GesiRow, previous?: GesiRow) {
+  if (row.listaDeComprobantesAsignados !== null) return row;
+  const id = deliverySheetId(row);
+  const status = String(row.estado ?? '').trim().toUpperCase();
+  if (!deliverySheetIsClosed(row) && status !== '1' && status !== 'A') {
+    throw new Error(`La foja ${Number.isInteger(id) && id > 0 ? id : 'sin ID'} devolvió null con un estado logístico no verificable.`);
+  }
+  const previousAssignments = previous?.listaDeComprobantesAsignados;
+  if (Array.isArray(previousAssignments) && previousAssignments.length > 0) {
+    throw new Error(`La foja ${id} devolvió null pero el detalle aprobado anterior contenía ${previousAssignments.length} comprobante(s).`);
+  }
+  return { ...row, listaDeComprobantesAsignados: [] };
+}
+
+/**
  * Una captura aprobada también funciona como control de continuidad. Las
  * fojas que estaban dentro de la ventana que acabamos de volver a consultar
  * no pueden desaparecer silenciosamente de GetList: una respuesta paginada
@@ -93,6 +114,7 @@ export function scopeDeliverySheetAssignments(
   documentIdentity: (row: GesiRow) => string,
   expectedCompanyId = 3,
   expectedBranchId = 3,
+  excludedInvoiceIdentities = new Set<string>(),
 ) {
   const coverageDate = coverageFrom.slice(0, 10);
   const invoiceByIdentity = new Map(invoiceHeaders.map((row) => [documentIdentity(row), row]));
@@ -104,8 +126,15 @@ export function scopeDeliverySheetAssignments(
         Number(assigned.empresaID) !== expectedCompanyId
         || !sourceInvoice
         || Number(sourceInvoice.empresaID) !== expectedCompanyId
-        || Number(sourceInvoice.sucursalID) !== expectedBranchId
       ) {
+        throw new Error(`La foja ${deliverySheetId(sheet)} contiene un comprobante que no pertenece al universo empresa ${expectedCompanyId} / sucursal ${expectedBranchId} capturado.`);
+      }
+      // Las fojas pueden conservar facturas anuladas u operaciones de otra
+      // sucursal que GetList no incorpora al universo 3/3. El capturador sólo
+      // agrega una identidad a este conjunto después de recuperarla por GetItem
+      // y verificar su alcance/estado; nunca se excluye por una mera ausencia.
+      if (excludedInvoiceIdentities.has(documentIdentity(assigned))) return false;
+      if (Number(sourceInvoice.sucursalID) !== expectedBranchId) {
         throw new Error(`La foja ${deliverySheetId(sheet)} contiene un comprobante que no pertenece al universo empresa ${expectedCompanyId} / sucursal ${expectedBranchId} capturado.`);
       }
       const emittedAt = date(sourceInvoice.fechaDeEmision ?? assigned.fechaDeEmision);

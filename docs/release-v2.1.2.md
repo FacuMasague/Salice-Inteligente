@@ -59,6 +59,16 @@ La actualización real del 25 de agosto llegó correctamente hasta la auditoría
 
 La v2.1.2 aplica la exclusión a todos los productos comprados también al construir sustitutos y vuelve a comprobar el contrato antes de publicar el resultado. La auditoría no se relaja: sigue bloqueando cualquier contradicción y ahora incluye los IDs de los productos repetidos en el diagnóstico.
 
+La captura logística también contempla irregularidades verificadas de la API sin convertirlas silenciosamente en datos válidos:
+
+- una foja que devuelve `listaDeComprobantesAsignados: null` sólo se conserva como vacía después de tres lecturas consecutivas, un estado logístico conocido y ausencia de un detalle aprobado anterior contradictorio;
+- una propiedad ausente, una lista malformada o un estado desconocido continúan bloqueando el paquete;
+- los comprobantes ausentes del listado comercial se recuperan individualmente y deben declarar empresa y sucursal verificables;
+- las facturas anuladas y los comprobantes de otras sucursales que GESI mantiene dentro de una foja de empresa 3 se excluyen explícitamente;
+- las asignaciones cuya factura no integra la captura comercial aprobable también se excluyen, para que logística y ventas publiquen exactamente el mismo universo documental.
+
+La actualización completa validada el 25 de agosto (captura UTC del 26 de agosto) procesó 1.630 fojas y activó atómicamente el paquete `5d682d5f-5ff4-4f53-bd16-ea95f1abbcc4`. La auditoría confirmó cero asignaciones fuera de alcance o ausentes del universo comercial, cero filas comerciales fuera de empresa 3/sucursal 3 y 266.241 movimientos únicos. Se excluyeron 66 asignaciones fuera de la captura comercial aprobable; dentro de ese conjunto se verificaron una factura anulada y ocho comprobantes de otras sucursales. La etapa determinística terminó correctamente; el enriquecimiento de IA falló sin llamadas nuevas ni costo y no invalidó el paquete.
+
 ## Reglas que no cambian
 
 - Los cálculos determinísticos siguen siendo la fuente de verdad.

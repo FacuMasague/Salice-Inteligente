@@ -23,6 +23,7 @@ import {
   deliverySheetIsClosed,
   deliverySheetOverlapsCoverage,
   deliverySheetStartsAt,
+  normalizeNullDeliverySheetAssignments,
   scopeDeliverySheetAssignments,
 } from '../server/gesi/delivery-sheet-capture.js';
 import { normalizeInventoryRows } from '../server/gesi/inventory-capture.js';
@@ -396,15 +397,39 @@ const deliverySheetHeaders = fetchedDeliverySheetHeaders
   .filter((row) => deliverySheetOverlapsCoverage(row, logisticsFrom));
 const currentDeliverySheets: GesiRow[] = [];
 let fetchedDeliverySheetDetails = 0;
+const normalizedEmptyDeliverySheetIDs: number[] = [];
+const normalizedOpenEmptyDeliverySheetIDs: number[] = [];
 for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
   const row = deliverySheetHeaders[index];
   try {
     // Toda cabecera de la ventana reciente se vuelve a consultar, incluso si
     // ya estaba cerrada: GESI puede corregir asignaciones después del cierre.
-    const payload = await client.request<GesiRow>(`/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${deliverySheetId(row)}`);
-    const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
-    if (!detail) throw new Error('la respuesta no contiene el detalle de la foja');
-    const complete = { ...row, ...detail };
+    const detailPath = `/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${deliverySheetId(row)}`;
+    let detail: GesiRow | undefined;
+    let consecutiveNullResponses = 0;
+    for (let detailAttempt = 1; detailAttempt <= 3; detailAttempt += 1) {
+      const payload = await client.request<GesiRow>(detailPath);
+      detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
+      if (!detail) throw new Error(`${detailAttempt === 1 ? 'la respuesta' : 'la reconsulta'} no contiene el detalle de la foja`);
+      if (detail.listaDeComprobantesAsignados !== null) break;
+      consecutiveNullResponses += 1;
+      if (detailAttempt < 3) {
+        await client.login();
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+    }
+    const received = { ...row, ...detail };
+    if (received.listaDeComprobantesAsignados === null && consecutiveNullResponses !== 3) {
+      throw new Error('la lista null no fue confirmada en tres lecturas consecutivas');
+    }
+    const complete = normalizeNullDeliverySheetAssignments(
+      received,
+      previousDeliverySheetById.get(deliverySheetId(row)),
+    );
+    if (received.listaDeComprobantesAsignados === null) {
+      normalizedEmptyDeliverySheetIDs.push(deliverySheetId(row));
+      if (!deliverySheetIsClosed(received)) normalizedOpenEmptyDeliverySheetIDs.push(deliverySheetId(row));
+    }
     assertDeliverySheetHeaders([complete], `Detalle de foja ${deliverySheetId(row)}`, empresaID);
     assertDeliverySheetDetail(complete);
     currentDeliverySheets.push(complete);
@@ -418,18 +443,99 @@ for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
   }
   if (index + 1 < deliverySheetHeaders.length) await new Promise((resolve) => setTimeout(resolve, 750));
 }
+if (normalizedEmptyDeliverySheetIDs.length) {
+  const sample = normalizedEmptyDeliverySheetIDs.slice(0, 10).join(', ');
+  optionalEndpointWarnings.push(`Fojas: GESI devolvió null tres veces para ${normalizedEmptyDeliverySheetIDs.length} foja(s) sin detalle aprobado contradictorio; se conservaron como listas vacías (${normalizedOpenEmptyDeliverySheetIDs.length} abiertas; IDs ${sample}${normalizedEmptyDeliverySheetIDs.length > 10 ? ', …' : ''}).`);
+}
 assertDeliverySheetHeaders(currentDeliverySheets, 'Detalles logísticos recibidos', empresaID);
 const deliverySheetById = new Map(preservedDeliverySheets.map((row) => [deliverySheetId(row), row]));
 currentDeliverySheets.forEach((row) => deliverySheetById.set(deliverySheetId(row), row));
 const integratedDeliverySheets = [...deliverySheetById.values()];
 assertDeliverySheetHeaders(integratedDeliverySheets, 'Captura logística integrada', empresaID);
+
+// GetList se consulta para el universo 3/3 no anulado, pero GESI puede conservar
+// dentro de una foja facturas anuladas, operaciones de otra sucursal o una fila
+// de borde que no integra la captura comercial publicable. Resolver las ausencias
+// por GetItem permite clasificarlas con empresa, sucursal y estado verificables;
+// una identidad irresoluble o de alcance indeterminado sigue bloqueando.
+const assignedDeliveryDocuments = integratedDeliverySheets.flatMap((sheet) => (
+  Array.isArray(sheet.listaDeComprobantesAsignados)
+    ? sheet.listaDeComprobantesAsignados as GesiRow[]
+    : []
+));
+const listedLogisticsInvoiceIDs = new Set(logisticsInvoiceHeaders.map(documentIdentity));
+const unlistedAssignedDocuments = [...new Map(
+  assignedDeliveryDocuments
+    .filter((row) => !listedLogisticsInvoiceIDs.has(documentIdentity(row)))
+    .map((row) => [documentIdentity(row), row]),
+).values()];
+let verifiedLogisticsInvoiceHeaders = logisticsInvoiceHeaders;
+const canceledDeliveryInvoiceIDs = new Set<string>();
+const foreignBranchDeliveryInvoiceIDs = new Set<string>();
+if (unlistedAssignedDocuments.length) {
+  await client.login();
+  const recovered = await fetchDocumentDetails(
+    'Comprobantes de fojas ausentes del listado comercial',
+    '/api/Ventas/Comprobantes/Facturas/GetItem?incluirDetalleDeVenta=N',
+    unlistedAssignedDocuments,
+    () => true,
+    500,
+    1,
+    1_000,
+  );
+  const recoveredByIdentity = new Map(recovered.map((row) => [documentIdentity(row), row]));
+  const missingDetails = unlistedAssignedDocuments.filter((row) => !recoveredByIdentity.has(documentIdentity(row)));
+  if (missingDetails.length) {
+    const sample = missingDetails.slice(0, 10).map(documentIdentity).join(', ');
+    throw new Error(`Las fojas contienen ${missingDetails.length} comprobante(s) que no pudieron resolverse por GetItem: ${sample}${missingDetails.length > 10 ? ', …' : ''}.`);
+  }
+  for (const row of recovered) {
+    const identity = documentIdentity(row);
+    const sourceCompanyID = Number(row.empresaID);
+    const sourceBranchID = Number(row.sucursalID);
+    if (sourceCompanyID !== empresaID || !Number.isInteger(sourceBranchID) || sourceBranchID <= 0) {
+      throw new Error(`El comprobante ${identity} asignado a una foja no tiene un alcance de empresa/sucursal verificable.`);
+    }
+    if (sourceBranchID !== sucursalID) foreignBranchDeliveryInvoiceIDs.add(identity);
+    else if (row.anulado === true) canceledDeliveryInvoiceIDs.add(identity);
+  }
+  verifiedLogisticsInvoiceHeaders = [...new Map(
+    [...logisticsInvoiceHeaders, ...recovered].map((row) => [documentIdentity(row), row]),
+  ).values()];
+  if (canceledDeliveryInvoiceIDs.size) optionalEndpointWarnings.push(`Fojas: se verificaron y excluyeron ${canceledDeliveryInvoiceIDs.size} factura(s) anulada(s) que GESI conservaba asignadas.`);
+  if (foreignBranchDeliveryInvoiceIDs.size) optionalEndpointWarnings.push(`Fojas: se verificaron y excluyeron ${foreignBranchDeliveryInvoiceIDs.size} comprobante(s) de otras sucursales que GESI conservaba dentro de fojas de empresa 3.`);
+}
+const verifiedLogisticsInvoiceByID = new Map(
+  verifiedLogisticsInvoiceHeaders.map((row) => [documentIdentity(row), row]),
+);
+const publishedInvoiceIDs = new Set(allInvoiceHeaders.map(documentIdentity));
+const outsidePublishedInvoiceIDs = new Set(
+  assignedDeliveryDocuments
+    .filter((row) => {
+      const identity = documentIdentity(row);
+      const source = verifiedLogisticsInvoiceByID.get(identity);
+      if (!source) return false;
+      const emittedAt = String(source.fechaDeEmision ?? row.fechaDeEmision ?? '').slice(0, 10);
+      return emittedAt >= logisticsFrom.slice(0, 10) && !publishedInvoiceIDs.has(identity);
+    })
+    .map(documentIdentity),
+);
+if (outsidePublishedInvoiceIDs.size) {
+  optionalEndpointWarnings.push(`Fojas: se excluyeron ${outsidePublishedInvoiceIDs.size} asignación(es) cuya factura fuente fue verificable pero no integra la captura comercial aprobable; logística y ventas conservan el mismo universo documental.`);
+}
+const excludedDeliveryInvoiceIDs = new Set([
+  ...canceledDeliveryInvoiceIDs,
+  ...foreignBranchDeliveryInvoiceIDs,
+  ...outsidePublishedInvoiceIDs,
+]);
 const deliverySheets = scopeDeliverySheetAssignments(
   integratedDeliverySheets,
-  logisticsInvoiceHeaders,
+  verifiedLogisticsInvoiceHeaders,
   logisticsFrom,
   documentIdentity,
   empresaID,
   sucursalID,
+  excludedDeliveryInvoiceIDs,
 );
 console.log(`Detalle de fojas: ${currentDeliverySheets.length}/${deliverySheetHeaders.length} (${fetchedDeliverySheetDetails} consultados; ${preservedDeliverySheets.length} históricos aprobados conservados)`);
 await client.login();
