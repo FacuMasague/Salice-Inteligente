@@ -6,7 +6,7 @@ import {
   storeLastAppView,
 } from './view-navigation';
 
-describe('navegación persistente', () => {
+describe('navegación de la pestaña actual', () => {
   it('prioriza una vista válida del enlace sobre la vista guardada', () => {
     const storage = { getItem: vi.fn(() => 'clients') };
     expect(resolveInitialAppView({
@@ -18,7 +18,7 @@ describe('navegación persistente', () => {
     expect(storage.getItem).not.toHaveBeenCalled();
   });
 
-  it('restaura la última vista del usuario cuando no hay un enlace válido', () => {
+  it('restaura la vista de la pestaña al recargar cuando no hay un enlace válido', () => {
     const storage = { getItem: vi.fn((key: string) => key === lastViewStorageKey('u-2') ? 'routes' : null) };
     expect(resolveInitialAppView({
       userId: 'u-2',
@@ -26,6 +26,15 @@ describe('navegación persistente', () => {
       location: { search: '' },
       storage,
     })).toBe('routes');
+  });
+
+  it('abre Inicio en una pestaña nueva sin enlace ni estado de sesión', () => {
+    expect(resolveInitialAppView({
+      userId: 'u-nuevo',
+      role: 'office',
+      location: { search: '' },
+      storage: { getItem: () => null },
+    })).toBe('home');
   });
 
   it('no hereda la URL interna de otro usuario del mismo navegador', () => {

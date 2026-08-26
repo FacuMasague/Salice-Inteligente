@@ -67,3 +67,14 @@ export function rollingCalendarQuarterWindows(reportingDate: string, monthCount 
 
   return windows;
 }
+
+/**
+ * Devuelve solamente los trimestres del año del corte, desde T1 hasta el
+ * trimestre alcanzado. Conserva el corte parcial y la comparación interanual
+ * equivalente de cada tramo.
+ */
+export function calendarQuarterWindowsForYear(reportingDate: string, coverageFrom = ''): RollingCalendarQuarterWindow[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportingDate)) return [];
+  const elapsedMonths = Number(reportingDate.slice(5, 7));
+  return rollingCalendarQuarterWindows(reportingDate, elapsedMonths, coverageFrom);
+}

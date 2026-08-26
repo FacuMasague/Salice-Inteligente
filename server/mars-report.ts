@@ -306,7 +306,7 @@ function marsQuarterSeries(
   coverageFrom: string,
 ): MarsQuarterPoint[] {
   const groups = new Map<string, MarsPeriodDefinition[]>();
-  for (const period of rollingMarsPeriods(selected).filter((candidate) => candidate.end >= coverageFrom)) {
+  for (const period of rollingMarsPeriods(selected).filter((candidate) => candidate.year === selected.year && candidate.end >= coverageFrom)) {
     const key = `${period.year}-${period.quarter}`;
     groups.set(key, [...(groups.get(key) ?? []), period]);
   }

@@ -17,7 +17,7 @@ import { resolveActiveDataPaths } from './data-bundle.js';
 import { metricRatio as ratio, metricShare, metricVariation, readMovementMetrics } from './report-metrics.js';
 import { compileMovementUniverse, EXECUTABLE_UNIVERSES } from './report-universes.js';
 import { ReloadableReadonlyDatabase } from './reloadable-database.js';
-import { rollingCalendarQuarterWindows } from './rolling-quarter-series.js';
+import { calendarQuarterWindowsForYear } from './rolling-quarter-series.js';
 
 const reportPath = () => process.env.SALICE_SPT_DB_PATH
   ? resolve(process.env.SALICE_SPT_DB_PATH)
@@ -304,7 +304,7 @@ export function buildNutriPetReport(input: Partial<Record<string, unknown>>): Nu
     const point = shiftMonth(latestYear, latestMonth, index - 12);
     return monthlyPoint(value, filters, point.year, point.month, meta);
   });
-  const quarters: NutriPetQuarterPoint[] = rollingCalendarQuarterWindows(meta.reportingDate, 13, meta.coverageFrom).map((window) => {
+  const quarters: NutriPetQuarterPoint[] = calendarQuarterWindowsForYear(periodEnd, meta.coverageFrom).map((window) => {
     const current = metric(value, filters, window.start, window.end);
     const comparisonAvailable = meta.coverageFrom <= window.previousYearStart;
     const previousYear = comparisonAvailable

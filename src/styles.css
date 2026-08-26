@@ -2370,22 +2370,6 @@ code { background: var(--sage-100); border-radius: 5px; padding: 2px 6px; }
   font-size:11px;
   font-weight:800;
 }
-.business-report-period-note {
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin:0 0 10px;
-  padding:10px 13px;
-  color:#47695b;
-  background:#edf6f0;
-  border:1px solid #d7e8dc;
-  border-radius:9px;
-}
-.business-report-period-note.partial { color:#826326;background:#fff8e8;border-color:#f0dfb7; }
-.business-report-period-note > svg { flex:0 0 auto; }
-.business-report-period-note div { display:grid;gap:2px; }
-.business-report-period-note strong { font-size:12px; }
-.business-report-period-note span { color:inherit;font-size:10.5px;line-height:1.4;opacity:.88; }
 .business-report-kpis { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:10px; }
 .business-report-kpis article {
   display:flex;
@@ -4691,3 +4675,20 @@ html.tutorial-open body { overflow:hidden !important; overscroll-behavior:none; 
 @media(max-width:1200px){.settings-client-scope-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.delivery-sheet-map-card{min-height:460px}.delivery-sheet-map{min-height:400px}}
 @media(max-width:900px){.settings-client-scope-grid{grid-template-columns:1fr;padding:0 12px 12px}.settings-inline-technical{margin:0 12px 12px}}
+
+/* v2.1.5 · fojas limitadas sin encerrar el detalle de comprobantes */
+.delivery-sheet-workspace{height:auto;max-height:none;align-items:start}
+.delivery-sheet-directory{height:auto;max-height:clamp(560px,calc(100dvh - 220px),760px)}
+.delivery-sheet-main{grid-template-rows:minmax(430px,480px) auto}
+.delivery-sheet-map-card{height:100%}
+.delivery-sheet-detail{overflow:visible}
+.delivery-sheet-detail>.delivery-sheet-invoices{flex:none;overflow:visible}
+.delivery-sheet-detail.bulk-selection>.delivery-sheet-invoices{max-height:520px;overflow:auto}
+
+@media(max-width:1000px){
+  .delivery-sheet-directory{height:min(350px,55dvh);max-height:350px}
+  .delivery-sheet-main{grid-template-rows:auto auto}
+  .delivery-sheet-map-card{height:auto}
+  .delivery-sheet-detail>.delivery-sheet-invoices{max-height:none;overflow:visible}
+  .delivery-sheet-detail.bulk-selection>.delivery-sheet-invoices{max-height:360px;overflow:auto}
+}

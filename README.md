@@ -1,8 +1,8 @@
-# Salice Inteligente · v2.1.4
+# Salice Inteligente · v2.1.5
 
-Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.4 termina de equilibrar cuatro espacios de trabajo: amplía el mapa de fojas, alinea la altura del directorio de Marcas con su detalle, ordena verticalmente los grupos de Inicio y corrige el espaciado del alcance de clientes en Configuración. En teléfonos se conserva siempre la vista simple de v2.0.
+Salice Inteligente reúne la operación comercial, administrativa, logística y de reportes de Salice en una sola interfaz web. La v2.1.5 deja visible todo el detalle de comprobantes del mapa de fojas sin permitir que su directorio crezca indefinidamente, distingue una recarga de una apertura nueva, limita los trimestres de Mars, NutriPet y Baires al año elegido y elimina avisos de período repetidos. También conserva la sesión iniciada por dispositivo hasta que el usuario la cierre o su acceso sea revocado. En teléfonos se conserva siempre la vista simple de v2.0.
 
-La versión no modifica permisos ni persistencia. En inventario corrige una distinción funcional: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También amplía la cobertura histórica de fojas de reparto, pero conserva el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
+La versión no modifica roles, universos comerciales ni datos operativos. Cambia únicamente la vigencia de las sesiones para conservar cada dispositivo conectado hasta el cierre manual o una revocación de acceso. En inventario se mantiene la distinción funcional incorporada en v2.1.2: un artículo con existencia física en el almacén sigue perteneciendo al catálogo aunque toda esa existencia esté comprometida; cobertura, alertas y oportunidades continúan usando únicamente lo disponible para vender. También se conserva la cobertura histórica ampliada de fojas de reparto, junto con el alcance, la auditoría y la activación atómica. Saldos pendientes continúa como reporte independiente y Oportunidades sigue siendo una sección principal de Productos.
 
 La v1.3.1 incorporó la creación y actualización de objetivos comerciales directamente desde Reporte General, con nombre elegido por la persona, historial mensual inmutable, exportación compatible con el Excel actual y migración secundaria dentro del historial. Esa funcionalidad continúa integrada en la v1.4.0.
 
@@ -177,7 +177,7 @@ pnpm run build
 
 Los scripts de captura, auditoría, enriquecimiento y recuperación están destinados al responsable técnico y se documentan dentro de `docs/`.
 
-## Alcance que continúa fuera de v2.1.4
+## Alcance que continúa fuera de v2.1.5
 
 - Empaquetado instalable.
 - Flujos, perfiles y permisos específicos para vendedores o fleteros; corresponden a la segunda parte planificada de v2.
@@ -217,3 +217,4 @@ Las entregas de esta fase están documentadas en:
 - `docs/release-v2.1.2.md`
 - `docs/release-v2.1.3.md`
 - `docs/release-v2.1.4.md`
+- `docs/release-v2.1.5.md`

@@ -32,7 +32,7 @@ export type AppViewId = typeof APP_VIEW_IDS[number];
 const APP_VIEW_ID_SET = new Set<string>(APP_VIEW_IDS);
 export const VIEW_HISTORY_USER_KEY = 'saliceViewUserId';
 
-export const lastViewStorageKey = (userId: string) => `salice-last-view-v213-${userId}`;
+export const lastViewStorageKey = (userId: string) => `salice-current-tab-view-v215-${userId}`;
 
 export function isAppViewAllowed(value: unknown, role: UserRole): value is AppViewId {
   if (typeof value !== 'string' || !APP_VIEW_ID_SET.has(value)) return false;
@@ -64,7 +64,7 @@ export function resolveInitialAppView({
     const stored = storage.getItem(lastViewStorageKey(userId));
     if (isAppViewAllowed(stored, role)) return stored;
   } catch {
-    // El almacenamiento del navegador puede estar deshabilitado. Inicio sigue siendo seguro.
+    // El almacenamiento de la pestaña puede estar deshabilitado. Inicio sigue siendo seguro.
   }
   return 'home';
 }
@@ -77,6 +77,6 @@ export function storeLastAppView(
   try {
     storage.setItem(lastViewStorageKey(userId), view);
   } catch {
-    // La navegación no debe depender de que localStorage esté disponible.
+    // La navegación no debe depender de que sessionStorage esté disponible.
   }
 }

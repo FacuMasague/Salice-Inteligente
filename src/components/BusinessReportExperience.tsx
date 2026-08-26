@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { CalendarRange, ChevronDown, Database, Filter, RefreshCw } from 'lucide-react';
+import { ChevronDown, Database, Filter, RefreshCw } from 'lucide-react';
 import { MobileFilterSheet } from './MobileFilterSheet';
 
 export interface BusinessReportKpi {
@@ -66,21 +66,6 @@ export function BusinessReportFilters({
       {children}
     </MobileFilterSheet>
     {loading && <div className="business-report-filter-loading"><RefreshCw className="spin" size={13} /> Recalculando</div>}
-  </section>;
-}
-
-export function BusinessReportPeriodNote({
-  title,
-  detail,
-  partial,
-}: {
-  title: ReactNode;
-  detail: ReactNode;
-  partial: boolean;
-}) {
-  return <section className={`business-report-period-note ${partial ? 'partial' : ''}`}>
-    <CalendarRange size={17} />
-    <div><strong>{title}</strong><span>{detail}</span></div>
   </section>;
 }
 

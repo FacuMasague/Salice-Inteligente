@@ -127,7 +127,7 @@ export default function App() {
     userId: user.id,
     role: user.role,
     location: window.location,
-    storage: localStorage,
+    storage: sessionStorage,
     historyState: window.history.state,
   }));
   const [salesExplorerRequest, setSalesExplorerRequest] = useState<{ id: number; filters: Partial<SalesExplorerFilters> } | null>(null);
@@ -440,7 +440,7 @@ export default function App() {
   useEffect(() => {
     const section = viewSection[view];
     setSidebarSections((current) => current[section] ? current : { ...current, [section]: true });
-    storeLastAppView(user.id, view as AppViewId, localStorage);
+    storeLastAppView(user.id, view as AppViewId, sessionStorage);
     if (new URLSearchParams(window.location.search).get('view') !== view) replaceViewInLocation(view);
     const currentHistoryState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
     if (currentHistoryState[VIEW_HISTORY_USER_KEY] !== user.id) {
