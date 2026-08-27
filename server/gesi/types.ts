@@ -11,6 +11,7 @@ export interface GesiRawCapture {
     inventoryDuplicateRows?: number;
     inventoryInvalidRows?: number;
     inventoryScopeRepairedRows?: number;
+    inventoryBranchResolvedRows?: number;
     inventoryCommittedRows?: number;
     inventoryStockReconciliationWarnings?: number;
     historyFrom: string;
@@ -37,6 +38,7 @@ export interface GesiRawCapture {
   deliverySheets?: GesiRow[];
   unassignedDeliveryDocuments?: GesiRow[];
   masters: {
+    inventoryWarehouses?: GesiRow[];
     channels: GesiRow[];
     paymentMethods: GesiRow[];
     sellers: GesiRow[];

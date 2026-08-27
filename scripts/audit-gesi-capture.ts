@@ -5,6 +5,7 @@ import { parser } from 'stream-json';
 import { ignore } from 'stream-json/filters/ignore.js';
 import { streamObject } from 'stream-json/streamers/stream-object.js';
 import { deliverySheetEndsAt } from '../server/gesi/delivery-sheet-capture.js';
+import { auditInventoryBranchResolutions } from '../server/gesi/inventory-capture.js';
 import type { GesiRawCapture, GesiRow } from '../server/gesi/types.js';
 import { invoiceCreditTermDays } from '../shared/credit-terms.js';
 
@@ -182,6 +183,7 @@ const report = {
     uniqueInventoryProducts: stockProductIDs.size,
     duplicateInventoryRows: capture.captureMeta.inventoryDuplicateRows ?? stockRowIDs.length - distinct(stockRowIDs),
     invalidInventoryRows: capture.captureMeta.inventoryInvalidRows ?? capture.stocks.filter((row) => !text(row.productoID)).length,
+    inventoryBranchResolvedRows: capture.captureMeta.inventoryBranchResolvedRows ?? 0,
     positivePhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) > 0).length,
     zeroPhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) === 0).length,
     negativePhysicalUnit1Products: capture.stocks.filter((row) => number(row.unidad1) < 0).length,
@@ -296,6 +298,14 @@ require(capture.stocks.length === stockProductIDs.size, 'Las existencias normali
 require([...productIDs].every((id) => stockProductIDs.has(id)), 'Hay maestros sin fila de existencias en la captura completa.');
 require([...stockProductIDs].every((id) => productIDs.has(id)), 'Hay existencias cuyo productoID no existe en el maestro.');
 require(capture.stocks.every((row) => number(row.empresaID) === 3 && number(row.sucursalID) === 3 && number(row.almacenID) === 2), 'Hay filas de existencias fuera de empresa 3 / sucursal 3 / depósito 2.');
+try {
+  const resolved = auditInventoryBranchResolutions(capture.stocks,
+    { empresaID: 3, sucursalID: 3, almacenID: 2 }, capture.masters.inventoryWarehouses);
+  require(resolved === (capture.captureMeta.inventoryBranchResolvedRows ?? 0), 'La cantidad de sucursales resueltas no coincide con la evidencia de inventario.');
+  if (resolved) qualityWarnings.push(`${resolved} fila(s) de inventario conservan sucursal original 0 y relación comprobada contra el maestro del almacén 2 / sucursal 3.`);
+} catch (error) {
+  require(false, error instanceof Error ? error.message : 'Evidencia de sucursales de inventario inválida.');
+}
 const companyScopedCollections = [
   ['facturas', capture.invoices],
   ['notas de crédito', capture.creditNotes],
