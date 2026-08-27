@@ -286,6 +286,14 @@ const products = await tracked('Productos', previousCapture ? Promise.resolve(pr
 const stocks = await tracked('Existencias completas (incluye cero)', previousCapture?.captureMeta.inventoryIncludesZeroStock
   ? Promise.resolve(previousCapture.stocks)
   : client.getAll<GesiRow>(`/api/Maestros/Productos/GetExistencias?sucursales=${sucursalID}&almacenes=${almacenPrincipalID}&incluirProductosSinExistencias=S`, 'existencias', 1000));
+// Se conserva sólo la relación del almacén solicitado, nunca stock de otros depósitos.
+const inventoryWarehouses = (await tracked('Maestro de almacenes para verificar sucursal',
+  client.getStrictAll<GesiRow>('/api/Maestros/Almacenes/GetList', 'almacenes', 100)))
+  .filter((row) => Number(row.almacenID) === almacenPrincipalID)
+  .map((row) => ({ almacenID: row.almacenID, sucursalID: row.sucursalID, descripcion: row.descripcion,
+    ...(row.empresaID != null ? { empresaID: row.empresaID } : {}) }));
+// Fallar antes de descargar el histórico si las existencias no son verificables.
+const inventory = normalizeInventoryRows(stocks, { empresaID, sucursalID, almacenID: almacenPrincipalID }, inventoryWarehouses);
 const balances = await tracked('Saldos', client.getAll<GesiRow>('/api/Maestros/Clientes/GetSaldos?incluirComprobanteMasAntiguo=S', 'saldos'));
 // Las cabeceras de venta conservan la consulta anual original. Se comienza con
 // páginas de 500 y GesiClient reinicia la colección con 250 si GESI agota el
@@ -306,14 +314,10 @@ const productGroups = await tracked('Grupos de producto', client.getAll<GesiRow>
 const clientTypes = await tracked('Tipos de cliente', safeMaster('/api/Maestros/TiposDeCliente/GetList', 'tiposDeCliente', 'Tipos de cliente no disponibles'));
 const zones = await tracked('Zonas', safeMaster('/api/Maestros/Zonas/GetList', 'zonas', 'Zonas no disponibles'));
 
-const inventory = normalizeInventoryRows(stocks, {
-  empresaID,
-  sucursalID,
-  almacenID: almacenPrincipalID,
-});
 if (inventory.duplicateRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.duplicateRows} fila(s) duplicada(s) para el mismo producto y almacén; se conservó una por producto.`);
 if (inventory.invalidRows) optionalEndpointWarnings.push(`Existencias: GESI devolvió ${inventory.invalidRows} fila(s) sin productoID; se excluyeron del universo de productos y quedaron contabilizadas.`);
 if (inventory.repairedScopeRows) optionalEndpointWarnings.push(`Existencias: ${inventory.repairedScopeRows} fila(s) sin alcance específico o con el marcador global 65535 y stock cero se asociaron al alcance solicitado explícitamente al endpoint (empresa 3, sucursal 3, almacén 2).`);
+if (inventory.branchResolvedRows) optionalEndpointWarnings.push(`Existencias: ${inventory.branchResolvedRows} fila(s) con sucursal 0 se resolvieron contra el maestro del almacén 2, sucursal 3. Se conservaron las cantidades originales y la sucursal recibida.`);
 const normalizedStocks = inventory.rows;
 const inventoryNumber = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const committedStockRows = normalizedStocks.filter((row) => inventoryNumber(row.unidad1NPEPendientes) > 0 || inventoryNumber(row.unidad2NPEPendientes) > 0).length;
@@ -643,6 +647,7 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   inventoryDuplicateRows: inventory.duplicateRows,
   inventoryInvalidRows: inventory.invalidRows,
   inventoryScopeRepairedRows: inventory.repairedScopeRows,
+  inventoryBranchResolvedRows: inventory.branchResolvedRows,
   inventoryCommittedRows: committedStockRows,
   inventoryStockReconciliationWarnings: stockReconciliationWarnings,
   historyFrom,
@@ -656,6 +661,7 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   optionalEndpointWarnings,
 };
 const masters: GesiRawCapture['masters'] = {
+  inventoryWarehouses,
   channels, paymentMethods, sellers, rubros, subRubros,
   productBrands, productLines, productFamilies, productGroups,
   clientTypes, zones,

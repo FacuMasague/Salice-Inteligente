@@ -1,9 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeInventoryRows } from './inventory-capture.js';
+import { auditInventoryBranchResolutions, normalizeInventoryRows } from './inventory-capture.js';
 
 const scope = { empresaID: 3, sucursalID: 3, almacenID: 2 };
+const warehouses = [{ almacenID: 2, sucursalID: 3, descripcion: 'Depósito de prueba' }];
+const pendingWithoutBranch = {
+  productoID: 'P-PEDIDO', empresaID: 3, sucursalID: 0, almacenID: 2,
+  unidad1: 0, unidad2: 0, unidad1Disponible: -2, unidad2Disponible: -1.5,
+  unidad1NPEPendientes: 2, unidad2NPEPendientes: 1.5,
+};
 
 describe('normalización de existencias GESI', () => {
+  it('resuelve sucursal cero con el maestro del almacén sin modificar cantidades ni la entrada', () => {
+    const result = normalizeInventoryRows([pendingWithoutBranch], scope, warehouses);
+    expect(result.rows).toEqual([{ ...pendingWithoutBranch, sucursalID: 3, saliceSourceSucursalID: 0 }]);
+    expect(result.branchResolvedRows).toBe(1);
+    expect(result.repairedScopeRows).toBe(0);
+    expect(pendingWithoutBranch.sucursalID).toBe(0);
+    expect(normalizeInventoryRows(result.rows, scope, warehouses).rows).toEqual(result.rows);
+    expect(() => normalizeInventoryRows(result.rows, scope)).toThrow(/maestro/);
+  });
+
+  it.each([
+    [],
+    [{ almacenID: 12, sucursalID: 3 }],
+    [{ almacenID: 2, sucursalID: 7 }],
+    [{ almacenID: 2 }],
+    [{ almacenID: 2, sucursalID: 3, empresaID: 7 }],
+    [{ almacenID: 2, sucursalID: 3 }, { almacenID: 2, sucursalID: 7 }],
+  ].map((rows) => ({ rows })))('bloquea un maestro ausente, ajeno o ambiguo: $rows', ({ rows }) => {
+    expect(() => normalizeInventoryRows([pendingWithoutBranch], scope, rows)).toThrow();
+  });
+
+  it.each([
+    { empresaID: 7 }, { empresaID: 65_535 }, { empresaID: 0 },
+    { almacenID: 12 }, { almacenID: 0 }, { sucursalID: 7 },
+    { sucursalID: undefined }, { sucursalID: null }, { sucursalID: '' },
+    { sucursalID: 'inválida' }, { sucursalID: -1 }, { sucursalID: false },
+    { unidad1: null }, { unidad2NPEPendientes: undefined }, { unidad1Disponible: 'inválida' },
+  ])('no usa el maestro para aceptar otro alcance o cantidades incompletas: %j', (changes) => {
+    expect(() => normalizeInventoryRows([{ ...pendingWithoutBranch, ...changes }], scope, warehouses)).toThrow();
+  });
+
+  it('audita la sucursal original, las cantidades y el maestro persistidos sin exigirlos a capturas antiguas', () => {
+    const resolved = { ...pendingWithoutBranch, sucursalID: 3, saliceSourceSucursalID: 0 };
+    expect(auditInventoryBranchResolutions([resolved], scope, warehouses)).toBe(1);
+    expect(auditInventoryBranchResolutions([{ ...pendingWithoutBranch, sucursalID: 3 }], scope)).toBe(0);
+    expect(() => auditInventoryBranchResolutions([resolved], scope)).toThrow(/maestro/);
+    expect(() => auditInventoryBranchResolutions([resolved], scope, [{ almacenID: 2, sucursalID: 7 }])).toThrow(/maestro/);
+    for (const changes of [{ saliceSourceSucursalID: 7 }, { sucursalID: 0 }, { empresaID: 7 }, { unidad2: null }]) {
+      expect(() => auditInventoryBranchResolutions([{ ...resolved, ...changes }], scope, warehouses)).toThrow(/evidencia/);
+    }
+  });
+
+  it('mantiene el rechazo de duplicados conflictivos después de resolver la sucursal', () => {
+    expect(() => normalizeInventoryRows([
+      pendingWithoutBranch,
+      { ...pendingWithoutBranch, sucursalID: 3, unidad1Disponible: 5 },
+    ], scope, warehouses)).toThrow(/duplicadas y conflictivas/);
+    const result = normalizeInventoryRows([
+      pendingWithoutBranch, { ...pendingWithoutBranch, sucursalID: 3 },
+    ], scope, warehouses);
+    expect(result.rows).toEqual([{ ...pendingWithoutBranch, sucursalID: 3 }]);
+    expect(result.duplicateRows).toBe(1);
+    expect(result.branchResolvedRows).toBe(0);
+  });
+
   it('excluye filas sin producto, deduplica y completa el alcance omitido por el endpoint filtrado', () => {
     const result = normalizeInventoryRows([
       { productoID: '', unidad1Disponible: 0 },

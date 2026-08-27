@@ -51,6 +51,16 @@ Después de una activación aprobada, el sistema agrega a `operations.sqlite` un
 
 Los candidatos nunca son leídos por el servidor antes de aprobarse. Si una etapa falla, se elimina solamente esa generación y el manifiesto activo continúa apuntando al paquete anterior. No existe una ventana en la que el servidor combine una base comercial nueva con un snapshot viejo.
 
+### Sucursal del inventario
+
+La captura contrasta el almacén 2 con el maestro de almacenes de GESI. Si una
+fila declara empresa 3/almacén 2 y sucursal exactamente 0, sólo puede completarse
+con sucursal 3 cuando el maestro confirma esa relación de forma única y todas
+sus cantidades son numéricas. Se conserva la sucursal original y la evidencia
+para la auditoría; stock físico, pedidos y disponibilidad no cambian. Otros
+alcances, cantidades incompletas o un maestro dudoso siguen bloqueando el
+candidato. El detalle está en `docs/fix-inventory-branch-scope.md`.
+
 ### Cobertura de fojas
 
 La logística conserva el mismo año móvil que las facturas y consulta además 45 días de solapamiento para no perder una foja que haya comenzado antes del corte pero termine dentro de la cobertura. La primera actualización que detecta una captura antigua limitada a 45 días completa ese histórico.
