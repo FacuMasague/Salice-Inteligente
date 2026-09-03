@@ -26,6 +26,7 @@ import {
   deliverySheetStartsAt,
   normalizeNullDeliverySheetAssignments,
   scopeDeliverySheetAssignments,
+  recoverMissingDeliverySheet,
 } from '../server/gesi/delivery-sheet-capture.js';
 import { normalizeInventoryRows } from '../server/gesi/inventory-capture.js';
 import { priceProductIdBatches } from '../server/gesi/price-query.js';
@@ -395,37 +396,17 @@ const fetchedDeliverySheetHeaders = await tracked(
   client.getStrictAll<GesiRow>(`/api/Ventas/Repartos/GetList?fechaDesde=${encodeURIComponent(logisticsFetchFrom.slice(0, 10))}`, 'fojasReparto', 1000),
 );
 assertDeliverySheetHeaders(fetchedDeliverySheetHeaders, 'Cabeceras logísticas recibidas', empresaID);
-const unavailableClosedDeliverySheetIDs = new Set<number>();
+const unavailableDeliverySheetIDs = new Set<number>();
 const continuityGaps = deliverySheetContinuityGaps(
-  [...previousDeliverySheetById.values()],
-  fetchedDeliverySheetHeaders,
-  logisticsFrom,
-  logisticsFetchFrom,
+  [...previousDeliverySheetById.values()], fetchedDeliverySheetHeaders, logisticsFrom, logisticsFetchFrom,
 );
 for (const previous of continuityGaps) {
-  const id = deliverySheetId(previous);
-  const detailPath = `/api/Ventas/Repartos/GetItem?empresaID=${Number(previous.empresaID)}&fojaID=${id}`;
-  try {
-    const payload = await client.request<GesiRow>(detailPath);
-    const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
-    if (!detail) throw new Error('la respuesta individual no contiene el detalle de la foja');
-    const recovered = { ...previous, ...detail };
-    assertDeliverySheetHeaders([recovered], `Foja ${id} recuperada fuera del listado`, empresaID);
-    fetchedDeliverySheetHeaders.push(recovered);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const confirmedUnavailable = /\/api\/Ventas\/Repartos\/GetItem\?.*respondió HTTP (?:400|404)/.test(message);
-    if (!confirmedUnavailable || !deliverySheetIsClosed(previous)) {
-      throw new Error(`GESI omitió la foja ${id} del listado y no fue posible confirmar una baja cerrada: ${message}`);
-    }
-    assertDeliverySheetDetail(previous);
-    unavailableClosedDeliverySheetIDs.add(id);
-    fetchedDeliverySheetHeaders.push(previous);
-  }
+  const recovered = await recoverMissingDeliverySheet(client, previous, historyUntil, String(existingCaptureMeta?.capturedAt ?? ''));
+  if (recovered.saliceSourceUnavailable) unavailableDeliverySheetIDs.add(deliverySheetId(recovered));
+  fetchedDeliverySheetHeaders.push(recovered);
 }
-if (unavailableClosedDeliverySheetIDs.size) {
-  const sample = [...unavailableClosedDeliverySheetIDs].slice(0, 10).join(', ');
-  optionalEndpointWarnings.push(`Fojas: GESI retiró ${unavailableClosedDeliverySheetIDs.size} foja(s) cerrada(s) del listado y GetItem confirmó que ya no están disponibles; se conservó el último detalle aprobado (IDs ${sample}${unavailableClosedDeliverySheetIDs.size > 10 ? ', …' : ''}).`);
+if (unavailableDeliverySheetIDs.size) {
+  optionalEndpointWarnings.push(`Fojas no disponibles en GESI: ${[...unavailableDeliverySheetIDs].join(', ')}. Se conserva el último detalle aprobado sólo como histórico; sus asignaciones actuales no están confirmadas.`);
 }
 assertDeliverySheetContinuity(
   [...previousDeliverySheetById.values()],
@@ -442,7 +423,7 @@ const normalizedOpenEmptyDeliverySheetIDs: number[] = [];
 for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
   const row = deliverySheetHeaders[index];
   try {
-    if (unavailableClosedDeliverySheetIDs.has(deliverySheetId(row))) {
+    if (unavailableDeliverySheetIDs.has(deliverySheetId(row))) {
       assertDeliverySheetDetail(row);
       currentDeliverySheets.push(row);
       continue;
@@ -456,6 +437,8 @@ for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
       const payload = await client.request<GesiRow>(detailPath);
       detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
       if (!detail) throw new Error(`${detailAttempt === 1 ? 'la respuesta' : 'la reconsulta'} no contiene el detalle de la foja`);
+      if (deliverySheetId(detail) !== deliverySheetId(row)) throw new Error('la respuesta individual pertenece a otra foja');
+      assertDeliverySheetHeaders([detail], 'Identidad del detalle de foja', empresaID);
       if (detail.listaDeComprobantesAsignados !== null) break;
       consecutiveNullResponses += 1;
       if (detailAttempt < 3) {
@@ -464,6 +447,7 @@ for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
       }
     }
     const received = { ...row, ...detail };
+    delete received.saliceSourceUnavailable;
     if (received.listaDeComprobantesAsignados === null && consecutiveNullResponses !== 3) {
       throw new Error('la lista null no fue confirmada en tres lecturas consecutivas');
     }
@@ -595,6 +579,8 @@ try {
     ),
   );
 } catch (error) {
+  // Include historical associations in this exclusion set: without a current
+  // explicit source answer these documents are UNKNOWN, never inferred unassigned.
   const assignedKeys = new Set(deliverySheets.flatMap((sheet) => (
     Array.isArray(sheet.listaDeComprobantesAsignados) ? sheet.listaDeComprobantesAsignados as GesiRow[] : []
   )).map(documentIdentity));

@@ -267,6 +267,23 @@ describe('forma de pago documental', () => {
     });
   });
 
+  it('separa historia no disponible de asignaciones actuales y conserva incertidumbre', () => {
+    const raw = capture();
+    raw.captureMeta.logisticsFrom = '2026-06-01';
+    const sheet = { empresaID: 3, fojaID: 15051, estado: 1, desde: '2026-07-01', hasta: '2026-07-03', listaDeComprobantesAsignados: [raw.invoices[0]] };
+    raw.deliverySheets = [{ ...sheet, saliceSourceUnavailable: { checkedAt: '2026-09-03', lastVerifiedAt: '2026-09-02', confirmations: 3, httpStatus: 400, apiCode: 4041 } }];
+    raw.unassignedDeliveryDocuments = [];
+    let logistics = normalizeCapture(raw).logistics;
+    expect(logistics.sheets[0].invoiceIds).toHaveLength(1);
+    expect(logistics.sheets[0]).toMatchObject({ status: 'open', sourceUnavailable: { lastVerifiedAt: '2026-09-02' } });
+    expect(logistics.invoices[0]).toMatchObject({ assignmentStatus: 'unknown', sheet: null });
+    raw.unassignedDeliveryDocuments = [raw.invoices[0]];
+    expect(normalizeCapture(raw).logistics.invoices[0].assignmentStatus).toBe('unassigned');
+    raw.deliverySheets.push({ ...sheet, fojaID: 100 });
+    logistics = normalizeCapture(raw).logistics;
+    expect(logistics.invoices[0]).toMatchObject({ assignmentStatus: 'open_sheet', sheet: { id: 100 } });
+  });
+
   it('infiere kilos desde las unidades vendidas y el contenido neto por U1', () => {
     const raw = capture();
     raw.captureMeta.logisticsFrom = '2026-06-01';

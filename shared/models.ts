@@ -386,6 +386,7 @@ export interface DeliveryInvoice {
 }
 
 export interface DeliverySheet extends DeliverySheetReference {
+  sourceUnavailable?: { checkedAt: string; lastVerifiedAt: string; confirmations: number; httpStatus: number; apiCode: number };
   zone: string;
   subzone: string;
   comment: string;

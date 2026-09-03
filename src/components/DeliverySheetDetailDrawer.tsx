@@ -51,19 +51,20 @@ export function DeliverySheetDetailDrawer({
         <div>
           <span className="section-kicker"><Truck size={14} /> Foja de reparto</span>
           <h2>Foja {sheet.id}</h2>
-          <p>{sheet.status === 'closed' ? 'Cerrada administrativamente' : 'Abierta'} · sólo lectura</p>
+          <p>{sheet.sourceUnavailable ? 'Histórico no disponible en GESI' : sheet.status === 'closed' ? 'Cerrada administrativamente' : 'Abierta'} · sólo lectura</p>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={18} /></button>
       </header>
 
       <div className="delivery-sheet-detail-body">
+        {sheet.sourceUnavailable && <div className="delivery-sheet-caveat"><AlertTriangle size={17} /><span>Histórico: foja no disponible en GESI. Último detalle aprobado: {dateTime(sheet.sourceUnavailable.lastVerifiedAt)}. El estado y las asociaciones siguientes no están confirmados como actuales; no implican cierre ni entrega.</span></div>}
         <div className="delivery-sheet-caveat">
           <AlertTriangle size={17} />
           <span>Una foja cerrada confirma el cierre administrativo de la carga; no demuestra expedición ni entrega al cliente.</span>
         </div>
 
         <section className="delivery-sheet-summary-grid">
-          <article className={sheet.status}><CheckCircle2 size={18} /><span>Estado</span><strong>{sheet.status === 'closed' ? 'Cerrada' : 'Abierta'}</strong><small>Cierre {dateTime(sheet.closedAt)}</small></article>
+          <article className={sheet.status}><CheckCircle2 size={18} /><span>{sheet.sourceUnavailable ? 'Último estado conocido' : 'Estado'}</span><strong>{sheet.status === 'closed' ? 'Cerrada' : 'Abierta'}</strong><small>Cierre {dateTime(sheet.closedAt)}</small></article>
           <article><UserRound size={18} /><span>Repartidor</span><strong>{sheet.driver || 'No informado'}</strong><small>Asignación de la cabecera</small></article>
           <article><FileText size={18} /><span>Contenido</span><strong>{number(invoices.length)} comprobantes</strong><small>{number(clientIds.length)} clientes · {money(total, true)}</small></article>
         </section>
@@ -82,7 +83,7 @@ export function DeliverySheetDetailDrawer({
 
         <section className="delivery-sheet-assigned-invoices">
           <div className="section-title-row">
-            <div><span className="section-kicker"><FileText size={14} /> Comprobantes asignados</span><h3>Contenido de la foja</h3></div>
+            <div><span className="section-kicker"><FileText size={14} /> {sheet.sourceUnavailable ? 'Últimos comprobantes asociados' : 'Comprobantes asignados'}</span><h3>Contenido de la foja</h3></div>
             <span className="count-badge">{number(invoices.length)}</span>
           </div>
           {!invoices.length && <p className="section-description">Esta foja no contiene facturas identificables en los datos actuales.</p>}

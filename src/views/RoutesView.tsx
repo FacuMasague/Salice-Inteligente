@@ -1,3 +1,4 @@
+import { DeliverySheetHistory } from '../components/DeliverySheetHistory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp,
@@ -235,11 +236,13 @@ export function RoutesView({
         </section>
       </MobileFilterSheet>
 
+      {mode === 'sheets' && <DeliverySheetHistory logistics={logistics} onOpenInvoice={onOpenInvoice} />}
+
       {mode === 'sheets' ? <div className="delivery-sheet-workspace">
         <aside className="data-card delivery-sheet-directory">
           <header><div><span className="section-kicker"><FileText size={14} /> Fojas visibles</span><h2>Seleccionar carga</h2><p>La posición de cada cliente no representa el orden real del reparto.</p></div></header>
           <button className={selectedSheetId === 'all' ? 'active' : ''} onClick={() => setSelectedSheetId('all')}><span><strong>Todas las facturas filtradas</strong><small>{filteredInvoices.length} comprobantes</small></span><ChevronRight size={15} /></button>
-          {filteredInvoices.some((invoice) => !invoice.sheet) && <button className={selectedSheetId === 'unassigned' ? 'active' : ''} onClick={() => setSelectedSheetId('unassigned')}><span><strong>Sin foja asignada</strong><small>{filteredInvoices.filter((invoice) => !invoice.sheet).length} comprobantes</small></span><em className="unassigned">Sin asignar</em><ChevronRight size={15} /></button>}
+          {filteredInvoices.some((invoice) => !invoice.sheet) && <button className={selectedSheetId === 'unassigned' ? 'active' : ''} onClick={() => setSelectedSheetId('unassigned')}><span><strong>Sin foja confirmada</strong><small>{filteredInvoices.filter((invoice) => !invoice.sheet).length} comprobantes</small></span><em className="unassigned">Sin asignar</em><ChevronRight size={15} /></button>}
           {visibleSheets.map((sheet) => {
             const invoiceCount = filteredInvoices.filter((invoice) => invoice.sheet?.id === sheet.id).length;
             return <button key={sheet.id} className={selectedSheetId === String(sheet.id) ? 'active' : ''} onClick={() => setSelectedSheetId(String(sheet.id))}><span><strong>Foja {sheet.id}</strong><small>{sheet.driver || 'Sin chofer'} · {sheet.zone || 'Sin zona'} · {invoiceCount} comprobantes</small></span><em className={sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'}>{sheet.status === 'closed' ? 'Cerrada' : 'Abierta'}</em><ChevronRight size={15} /></button>;
@@ -248,7 +251,7 @@ export function RoutesView({
         </aside>
         <section className="delivery-sheet-main">
           <article className="data-card delivery-sheet-map-card">
-            <header><div><span className="section-kicker"><MapPin size={14} /> Mapa de fojas</span><h2>{selectedSheet ? `Foja ${selectedSheet.id}` : selectedSheetId === 'unassigned' ? 'Facturas sin asignar' : 'Distribución visible'}</h2><p>Abiertas en azul, cerradas en verde y sin asignar en naranja. Los puntos corregidos son aproximados.</p></div><div className="delivery-map-legend"><span className="open_sheet">Abierta</span><span className="closed_sheet">Cerrada</span><span className="unassigned">Sin asignar</span></div></header>
+            <header><div><span className="section-kicker"><MapPin size={14} /> Mapa de fojas</span><h2>{selectedSheet ? `Foja ${selectedSheet.id}` : selectedSheetId === 'unassigned' ? 'Facturas sin foja confirmada' : 'Distribución visible'}</h2><p>Abiertas en azul, cerradas en verde y sin asignar en naranja. Los puntos corregidos son aproximados.</p></div><div className="delivery-map-legend"><span className="open_sheet">Abierta</span><span className="closed_sheet">Cerrada</span><span className="unassigned">Sin asignar</span></div></header>
             <DeliverySheetMap points={mapPoints} onOpenClient={onOpenClient} />
           </article>
           <article className={`data-card delivery-sheet-detail ${selectedSheetId === 'all' || selectedSheetId === 'unassigned' ? 'bulk-selection' : ''}`}>

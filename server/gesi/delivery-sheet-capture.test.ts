@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { GesiHttpError } from './client.js';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assertDeliverySheetDetail,
   assertDeliverySheetContinuity,
@@ -8,6 +9,7 @@ import {
   deliverySheetOverlapsCoverage,
   normalizeNullDeliverySheetAssignments,
   scopeDeliverySheetAssignments,
+  recoverMissingDeliverySheet,
 } from './delivery-sheet-capture.js';
 
 describe('captura de fojas', () => {
@@ -163,5 +165,31 @@ describe('captura de fojas', () => {
       { empresaID: 3, sucursalID: 7, numero: 101, fechaDeEmision: '2025-08-25', anulado: true },
     ], '2025-08-25', identity, 3, 3, new Set(['101']));
     expect(foreignSheet.listaDeComprobantesAsignados).toEqual([]);
+  });
+});
+
+describe('fojas ausentes de un listado completo', () => {
+  const previous = { empresaID: 3, fojaID: 15051, estado: 1, fechaCerrada: null, listaDeComprobantesAsignados: [{ numero: 123 }] };
+  const unavailable = () => new GesiHttpError(400, 4041, 'no disponible');
+  it('conserva la foja abierta y sus comprobantes sólo como historia tras tres confirmaciones', async () => {
+    const client = { request: vi.fn().mockRejectedValue(unavailable()), login: vi.fn().mockResolvedValue(undefined) };
+    const result = await recoverMissingDeliverySheet(client, previous, '2026-09-03', '2026-09-02');
+    expect(result).toMatchObject({ ...previous, saliceSourceUnavailable: { confirmations: 3, lastVerifiedAt: '2026-09-02' } });
+    expect(client.request).toHaveBeenCalledTimes(3);
+    expect(client.login).toHaveBeenCalledTimes(2);
+    expect(previous).not.toHaveProperty('saliceSourceUnavailable');
+  });
+  it.each([new GesiHttpError(400, null, 'HTTP 400'), new GesiHttpError(401, 4041, 'HTTP 401'), new Error('timeout')])('no convierte errores ambiguos en historia', async (error) => {
+    const client = { request: vi.fn().mockRejectedValueOnce(unavailable()).mockRejectedValueOnce(error), login: vi.fn().mockResolvedValue(undefined) };
+    await expect(recoverMissingDeliverySheet(client, previous, '2026-09-03', '2026-09-02')).rejects.toThrow(error.message);
+  });
+  it('restaura una foja que reaparece sin arrastrar la marca histórica', async () => {
+    const client = { request: vi.fn().mockRejectedValueOnce(unavailable()).mockResolvedValueOnce({ fojaReparto: previous }), login: vi.fn().mockResolvedValue(undefined) };
+    const result = await recoverMissingDeliverySheet(client, { ...previous, saliceSourceUnavailable: {} }, '2026-09-03', '2026-09-02');
+    expect(result).toEqual(previous);
+  });
+  it.each([{ ...previous, fojaID: 15052 }, { ...previous, empresaID: 7 }, { ...previous, listaDeComprobantesAsignados: null }, {}])('rechaza detalles incorrectos sin rellenarlos con datos antiguos', async (detail) => {
+    const client = { request: vi.fn().mockResolvedValue({ fojaReparto: detail }), login: vi.fn() };
+    await expect(recoverMissingDeliverySheet(client, previous, '2026-09-03', '2026-09-02')).rejects.toThrow();
   });
 });

@@ -1,3 +1,4 @@
+import { GesiHttpError, type GesiClient } from './client.js';
 import type { GesiRow } from './types.js';
 
 const date = (value: unknown) => String(value ?? '').slice(0, 10);
@@ -154,4 +155,42 @@ export function scopeDeliverySheetAssignments(
     });
     return { ...sheet, listaDeComprobantesAsignados: scopedAssignments };
   });
+}
+
+/** Missing from a complete listing does not establish deletion or closure. */
+export async function recoverMissingDeliverySheet(
+  client: Pick<GesiClient, 'request' | 'login'>,
+  previous: GesiRow,
+  checkedAt: string,
+  lastApprovedAt: string,
+): Promise<GesiRow> {
+  assertDeliverySheetHeaders([previous], 'Histórico aprobado');
+  assertDeliverySheetDetail(previous);
+  const id = deliverySheetId(previous);
+  const path = `/api/Ventas/Repartos/GetItem?empresaID=3&fojaID=${id}`;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const payload = await client.request<GesiRow>(path);
+      const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
+      if (!detail || deliverySheetId(detail) !== id) throw new Error(`Detalle ausente o identidad incorrecta para foja ${id}`);
+      assertDeliverySheetHeaders([detail], 'Foja recuperada');
+      assertDeliverySheetDetail(detail);
+      const recovered = { ...previous, ...detail };
+      delete recovered.saliceSourceUnavailable;
+      return recovered;
+    } catch (error) {
+      // Observed GESI response for an unavailable Repartos item. Generic HTTP
+      // errors, timeouts and malformed successes must still fail the capture.
+      if (!(error instanceof GesiHttpError) || error.status !== 400 || error.apiCode !== 4041) throw error;
+      if (attempt < 3) await client.login();
+    }
+  }
+  const old = previous.saliceSourceUnavailable as { lastVerifiedAt?: string } | undefined;
+  const lastVerifiedAt = old?.lastVerifiedAt ?? lastApprovedAt;
+  if (![checkedAt, lastVerifiedAt].every((value) => Number.isFinite(Date.parse(value)))) {
+    throw new Error(`Foja ${id}: falta fecha de procedencia aprobada`);
+  }
+  return { ...previous, saliceSourceUnavailable: {
+    checkedAt, lastVerifiedAt, confirmations: 3, httpStatus: 400, apiCode: 4041,
+  } };
 }

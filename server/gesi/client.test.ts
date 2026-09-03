@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GesiClient } from './client.js';
+import { GesiClient, GesiHttpError } from './client.js';
 
 const credentials = {
   baseUrl: 'https://gesi.example.test',
@@ -223,4 +223,16 @@ describe('GesiClient.request', () => {
     expect(String(fetchMock.mock.calls[5][0])).toContain('pageNumber=1&pageSize=1000');
     expect(String(fetchMock.mock.calls[6][0])).toContain('pageNumber=1&pageSize=500');
   });
+});
+
+it('conserva status y código GESI sin exponer el cuerpo de error', async () => {
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, token: 'test' })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 4041, message: 'private-body' } }), { status: 400 })));
+  const client = new GesiClient(credentials);
+  await client.login();
+  const error = await client.request('/api/Ventas/Repartos/GetItem?empresaID=3&fojaID=15051').catch((value) => value);
+  expect(error).toBeInstanceOf(GesiHttpError);
+  expect(error).toMatchObject({ status: 400, apiCode: 4041 });
+  expect((error as Error).message).not.toContain('private-body');
 });
