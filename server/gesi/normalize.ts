@@ -664,7 +664,11 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       ? row.listaDeComprobantesAsignados as GesiRow[]
       : [];
     const assignedInvoiceIDs = [...new Set(assigned.map(documentIdentity).filter((id) => invoiceIDs.has(id)))];
-    for (const id of assignedInvoiceIDs) {
+    const sourceUnavailable = row.saliceSourceUnavailable as DeliverySheet['sourceUnavailable'];
+    if (sourceUnavailable && (sourceUnavailable.confirmations !== 3 || sourceUnavailable.httpStatus !== 400
+      || sourceUnavailable.apiCode !== 4041 || !Number.isFinite(Date.parse(sourceUnavailable.checkedAt))
+      || !Number.isFinite(Date.parse(sourceUnavailable.lastVerifiedAt)))) throw new Error('Evidencia de foja no disponible inválida');
+    for (const id of sourceUnavailable ? [] : assignedInvoiceIDs) {
       const current = assignmentByInvoice.get(id);
       if (!current || (current.status === 'open' && reference.status === 'closed') || reference.id > current.id) {
         assignmentByInvoice.set(id, reference);
@@ -678,6 +682,7 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
       dispatchComment: text(row.comentarioExpedicion),
       dispatchedAt: text(row.fechaExpedido) || null,
       invoiceIds: assignedInvoiceIDs,
+      ...(sourceUnavailable ? { sourceUnavailable } : {}),
     };
   }).filter((sheet) => sheet.id > 0);
   const explicitlyUnassigned = new Set((capture.unassignedDeliveryDocuments ?? [])
@@ -728,8 +733,8 @@ export function normalizeCapture(capture: GesiRawCapture): DashboardData {
     closedSheetInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'closed_sheet').length,
     unknownInvoices: logisticsInvoices.filter((invoice) => invoice.assignmentStatus === 'unknown').length,
     sheets: logisticsSheets.length,
-    openSheets: logisticsSheets.filter((sheet) => sheet.status === 'open').length,
-    closedSheets: logisticsSheets.filter((sheet) => sheet.status === 'closed').length,
+    openSheets: logisticsSheets.filter((sheet) => !sheet.sourceUnavailable && sheet.status === 'open').length,
+    closedSheets: logisticsSheets.filter((sheet) => !sheet.sourceUnavailable && sheet.status === 'closed').length,
     sheetsWithDriver: logisticsSheets.filter((sheet) => !sheet.driver.startsWith('Sin ')).length,
   };
 
@@ -897,6 +902,7 @@ export function validateNormalizedSnapshot(data: DashboardData) {
     check(data.meta.coverage?.logistics?.invoices === data.logistics.invoices.length, 'La cobertura de facturas logísticas no coincide');
     check(data.meta.coverage?.logistics?.sheets === data.logistics.sheets.length, 'La cobertura de fojas no coincide');
     const sheetIDs = new Set(data.logistics.sheets.map((sheet) => sheet.id));
+    const unavailableSheetIDs = new Set(data.logistics.sheets.filter((sheet) => sheet.sourceUnavailable).map((sheet) => sheet.id));
     check(sheetIDs.size === data.logistics.sheets.length, 'Hay fojas de reparto duplicadas');
     check(new Set(data.logistics.invoices.map((invoice) => invoice.id)).size === data.logistics.invoices.length, 'Hay facturas logísticas duplicadas');
     for (const invoice of data.logistics.invoices) {
@@ -905,6 +911,7 @@ export function validateNormalizedSnapshot(data: DashboardData) {
       check(invoice.sheet == null === ['unassigned', 'unknown'].includes(invoice.assignmentStatus), `${invoice.id}: asignación a foja incoherente`);
       if (invoice.sheet) {
         check(sheetIDs.has(invoice.sheet.id), `${invoice.id}: foja inexistente`);
+        check(!unavailableSheetIDs.has(invoice.sheet.id), `${invoice.id}: asignación a foja histórica no disponible`);
         check(invoice.assignmentStatus === (invoice.sheet.status === 'closed' ? 'closed_sheet' : 'open_sheet'), `${invoice.id}: estado de foja incoherente`);
       }
     }

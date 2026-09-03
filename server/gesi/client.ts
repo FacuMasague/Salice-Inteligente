@@ -1,3 +1,10 @@
+export class GesiHttpError extends Error {
+  constructor(public readonly status: number, public readonly apiCode: number | null, message: string) {
+    super(message);
+    this.name = 'GesiHttpError';
+  }
+}
+
 export interface GesiCredentials {
   baseUrl: string;
   username: string;
@@ -117,7 +124,9 @@ export class GesiClient {
           signal: AbortSignal.timeout(55_000),
         });
         if (!response.ok) {
-          const error = new Error(`${path} respondió HTTP ${response.status}`);
+          const body = await response.json().catch(() => null) as { error?: { code?: unknown } } | null;
+          const code = typeof body?.error?.code === 'number' ? body.error.code : null;
+          const error = new GesiHttpError(response.status, code, `${path} respondió HTTP ${response.status}`);
           // En GetItem, HTTP 500 suele indicar que una de las claves del lote
           // fue rechazada. El capturador divide ese lote para aislarla; repetir
           // la misma carga cinco veces sólo consume el límite de GESI.
@@ -140,7 +149,9 @@ export class GesiClient {
       }
     }
     const reason = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`${path} falló luego de ${attempts} intento${attempts === 1 ? '' : 's'}: ${reason}`);
+    const message = `${path} falló luego de ${attempts} intento${attempts === 1 ? '' : 's'}: ${reason}`;
+    if (lastError instanceof GesiHttpError) throw new GesiHttpError(lastError.status, lastError.apiCode, message);
+    throw new Error(message);
   }
 
   async getAll<T>(path: string, collectionKey: string, pageSize = 1000): Promise<T[]> {

@@ -4692,3 +4692,9 @@ html.tutorial-open body { overflow:hidden !important; overscroll-behavior:none; 
   .delivery-sheet-detail>.delivery-sheet-invoices{max-height:none;overflow:visible}
   .delivery-sheet-detail.bulk-selection>.delivery-sheet-invoices{max-height:360px;overflow:auto}
 }
+
+.delivery-sheet-history{display:block;padding:14px 16px;margin-bottom:12px;color:#775322;background:#fffaf0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.delivery-sheet-history summary{padding:8px 0;cursor:pointer;font-weight:700}
+.delivery-sheet-history p{margin:8px 0}
+.delivery-sheet-history>details{border-top:1px solid #eadbc4}
+.delivery-sheet-history .entity-link{display:block;min-height:44px;padding:8px 0;text-align:left;white-space:normal}
