@@ -3,6 +3,7 @@ import {
   assertDeliverySheetDetail,
   assertDeliverySheetContinuity,
   assertDeliverySheetHeaders,
+  deliverySheetContinuityGaps,
   deliverySheetIsClosed,
   deliverySheetOverlapsCoverage,
   normalizeNullDeliverySheetAssignments,
@@ -100,6 +101,8 @@ describe('captura de fojas', () => {
       '2025-08-25',
       '2026-07-11',
     )).not.toThrow();
+    expect(deliverySheetContinuityGaps(previous, [], '2025-08-25', '2026-07-11'))
+      .toEqual([previous[0]]);
   });
 
   it('valida el solapamiento completo y publica sólo asignaciones dentro de la cobertura', () => {

@@ -19,6 +19,7 @@ import {
   assertDeliverySheetDetail,
   assertDeliverySheetContinuity,
   assertDeliverySheetHeaders,
+  deliverySheetContinuityGaps,
   deliverySheetId,
   deliverySheetIsClosed,
   deliverySheetOverlapsCoverage,
@@ -394,6 +395,38 @@ const fetchedDeliverySheetHeaders = await tracked(
   client.getStrictAll<GesiRow>(`/api/Ventas/Repartos/GetList?fechaDesde=${encodeURIComponent(logisticsFetchFrom.slice(0, 10))}`, 'fojasReparto', 1000),
 );
 assertDeliverySheetHeaders(fetchedDeliverySheetHeaders, 'Cabeceras logísticas recibidas', empresaID);
+const unavailableClosedDeliverySheetIDs = new Set<number>();
+const continuityGaps = deliverySheetContinuityGaps(
+  [...previousDeliverySheetById.values()],
+  fetchedDeliverySheetHeaders,
+  logisticsFrom,
+  logisticsFetchFrom,
+);
+for (const previous of continuityGaps) {
+  const id = deliverySheetId(previous);
+  const detailPath = `/api/Ventas/Repartos/GetItem?empresaID=${Number(previous.empresaID)}&fojaID=${id}`;
+  try {
+    const payload = await client.request<GesiRow>(detailPath);
+    const detail = (payload.fojaReparto ?? payload.fojaDeReparto) as GesiRow | undefined;
+    if (!detail) throw new Error('la respuesta individual no contiene el detalle de la foja');
+    const recovered = { ...previous, ...detail };
+    assertDeliverySheetHeaders([recovered], `Foja ${id} recuperada fuera del listado`, empresaID);
+    fetchedDeliverySheetHeaders.push(recovered);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const confirmedUnavailable = /\/api\/Ventas\/Repartos\/GetItem\?.*respondió HTTP (?:400|404)/.test(message);
+    if (!confirmedUnavailable || !deliverySheetIsClosed(previous)) {
+      throw new Error(`GESI omitió la foja ${id} del listado y no fue posible confirmar una baja cerrada: ${message}`);
+    }
+    assertDeliverySheetDetail(previous);
+    unavailableClosedDeliverySheetIDs.add(id);
+    fetchedDeliverySheetHeaders.push(previous);
+  }
+}
+if (unavailableClosedDeliverySheetIDs.size) {
+  const sample = [...unavailableClosedDeliverySheetIDs].slice(0, 10).join(', ');
+  optionalEndpointWarnings.push(`Fojas: GESI retiró ${unavailableClosedDeliverySheetIDs.size} foja(s) cerrada(s) del listado y GetItem confirmó que ya no están disponibles; se conservó el último detalle aprobado (IDs ${sample}${unavailableClosedDeliverySheetIDs.size > 10 ? ', …' : ''}).`);
+}
 assertDeliverySheetContinuity(
   [...previousDeliverySheetById.values()],
   fetchedDeliverySheetHeaders,
@@ -409,6 +442,11 @@ const normalizedOpenEmptyDeliverySheetIDs: number[] = [];
 for (let index = 0; index < deliverySheetHeaders.length; index += 1) {
   const row = deliverySheetHeaders[index];
   try {
+    if (unavailableClosedDeliverySheetIDs.has(deliverySheetId(row))) {
+      assertDeliverySheetDetail(row);
+      currentDeliverySheets.push(row);
+      continue;
+    }
     // Toda cabecera de la ventana reciente se vuelve a consultar, incluso si
     // ya estaba cerrada: GESI puede corregir asignaciones después del cierre.
     const detailPath = `/api/Ventas/Repartos/GetItem?empresaID=${Number(row.empresaID)}&fojaID=${deliverySheetId(row)}`;

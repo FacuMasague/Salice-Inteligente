@@ -38,4 +38,22 @@ describe('recuperación de actualizaciones interrumpidas v0.11', () => {
     expect(catchUp.status).toBe('running');
     store.failRefreshRun(catchUp.id, 'test-complete', new Error('Cierre de prueba'));
   });
+
+  it('permite que el controlador cierre sólo la ejecución que inició', () => {
+    const interrupted = store.beginRefreshRun('manual');
+    expect(store.recoverInterruptedRefreshRuns('Cierre selectivo.', {
+      startedAfter: interrupted.startedAt,
+      trigger: 'scheduled',
+    })).toBe(0);
+    expect(store.listRefreshRuns(10).find((run) => run.id === interrupted.id)?.status).toBe('running');
+
+    expect(store.recoverInterruptedRefreshRuns('Cierre selectivo.', {
+      startedAfter: interrupted.startedAt,
+      trigger: 'manual',
+    })).toBe(1);
+    expect(store.listRefreshRuns(10).find((run) => run.id === interrupted.id)).toMatchObject({
+      status: 'failed',
+      error: 'Cierre selectivo.',
+    });
+  });
 });

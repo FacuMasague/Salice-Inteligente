@@ -88,17 +88,26 @@ export function assertDeliverySheetContinuity(
   coverageFrom: string,
   fetchFrom: string,
 ) {
-  const fetchDate = fetchFrom.slice(0, 10);
-  const expectedIds = previousRows
-    .filter((row) => deliverySheetOverlapsCoverage(row, coverageFrom))
-    .filter((row) => deliverySheetStartsAt(row) >= fetchDate)
-    .map(deliverySheetId);
-  const fetchedIds = new Set(fetchedRows.map(deliverySheetId));
-  const missingIds = expectedIds.filter((id) => !fetchedIds.has(id));
-  if (missingIds.length) {
+  const missingRows = deliverySheetContinuityGaps(previousRows, fetchedRows, coverageFrom, fetchFrom);
+  if (missingRows.length) {
+    const missingIds = missingRows.map(deliverySheetId);
     const sample = missingIds.slice(0, 10).join(', ');
     throw new Error(`GESI omitió ${missingIds.length} foja(s) que estaban en la captura aprobada y debían volver a consultarse: ${sample}${missingIds.length > 10 ? ', …' : ''}.`);
   }
+}
+
+export function deliverySheetContinuityGaps(
+  previousRows: GesiRow[],
+  fetchedRows: GesiRow[],
+  coverageFrom: string,
+  fetchFrom: string,
+) {
+  const fetchDate = fetchFrom.slice(0, 10);
+  const expectedRows = previousRows
+    .filter((row) => deliverySheetOverlapsCoverage(row, coverageFrom))
+    .filter((row) => deliverySheetStartsAt(row) >= fetchDate);
+  const fetchedIds = new Set(fetchedRows.map(deliverySheetId));
+  return expectedRows.filter((row) => !fetchedIds.has(deliverySheetId(row)));
 }
 
 /**
