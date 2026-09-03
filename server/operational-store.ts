@@ -2490,11 +2490,22 @@ export function beginRefreshRun(trigger = 'manual') {
 
 export function recoverInterruptedRefreshRuns(
   reason = 'Ejecución interrumpida por un reinicio del servidor; se habilitó la recuperación automática.',
+  scope: { startedAfter?: string; trigger?: string } = {},
 ) {
   const store = db();
+  const clauses = ["status = 'running'"];
+  const params: string[] = [];
+  if (scope.startedAfter) {
+    clauses.push('started_at >= ?');
+    params.push(scope.startedAfter);
+  }
+  if (scope.trigger) {
+    clauses.push('trigger_kind = ?');
+    params.push(scope.trigger);
+  }
   const rows = store.prepare(
-    "SELECT id, started_at FROM refresh_runs WHERE status = 'running' ORDER BY started_at DESC",
-  ).all() as Array<{ id: string; started_at: string }>;
+    `SELECT id, started_at FROM refresh_runs WHERE ${clauses.join(' AND ')} ORDER BY started_at DESC`,
+  ).all(...params) as Array<{ id: string; started_at: string }>;
   if (!rows.length) return 0;
   const completedAt = new Date().toISOString();
   const update = store.prepare(`UPDATE refresh_runs SET
