@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { resolveActiveDataPaths } from '../server/data-bundle.js';
-import { SPT_HISTORY_CONTINUITY_VERSION } from '../server/gesi/capture-window.js';
+import { documentCoverageStartsBy, SPT_HISTORY_CONTINUITY_VERSION } from '../server/gesi/capture-window.js';
 
 const databasePath = resolve(process.env.SALICE_SPT_DB_PATH ?? resolveActiveDataPaths().commercial);
 const outputPath = resolve(process.env.SALICE_SPT_AUDIT_OUTPUT_PATH ?? resolveActiveDataPaths().sptAudit);
@@ -38,8 +38,8 @@ const unavailableRate = sourceDocumentCount
 const months2025 = months.filter((row) => row.month.startsWith('2025-'));
 const checks = {
   historyUsesCompleteBoundaryDays: metadata.get('history_continuity_version') === String(SPT_HISTORY_CONTINUITY_VERSION),
-  coverageStartsIn2025: (metadata.get('coverage_from') ?? '') <= '2025-01-01',
-  firstMovementByJanuary2: String(grain.minDate) <= '2025-01-02',
+  coverageStartsIn2025: documentCoverageStartsBy(metadata.get('coverage_from'), '2025-01-01'),
+  firstMovementByJanuary2: documentCoverageStartsBy(grain.minDate, '2025-01-02'),
   all2025MonthsPresent: months2025.length === 12,
   uniqueMovementGrain: Number(grain.rows) === Number(grain.uniqueRows),
   noMissingProductIds: Number(grain.missingProductIds) === 0,
