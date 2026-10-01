@@ -90,6 +90,19 @@ export function gesiDocumentQueryFrom(value: string) {
   return parsed.toISOString();
 }
 
+/** Compara cobertura documental por día, sin confundir un ISO con una fecha
+ * corta. Una cobertura ausente o malformada nunca satisface la auditoría. */
+export function documentCoverageStartsBy(value: unknown, requiredDay: string) {
+  if (typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)
+    || !Number.isFinite(Date.parse(value))) return false;
+  try {
+    return gesiDocumentQueryFrom(value) <= gesiDocumentQueryFrom(requiredDay);
+  } catch {
+    return false;
+  }
+}
+
 export const SPT_HISTORY_CONTINUITY_VERSION = 1;
 
 /** Older captures may have silently dropped each annual boundary day. Rebuild
