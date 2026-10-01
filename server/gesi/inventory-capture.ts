@@ -121,3 +121,45 @@ export function normalizeInventoryRows(
     branchResolvedRows: auditInventoryBranchResolutions([...byProduct.values()], scope, warehouses),
   };
 }
+
+/** GESI puede repetir filas entre páginas y omitir otros códigos aun anunciando
+ * el total correcto. Se recuperan los faltantes contra la fuente, nunca con ceros
+ * inferidos ni existencias de una captura anterior. */
+export async function completeInventoryRows(
+  products: GesiRow[],
+  rows: GesiRow[],
+  scope: InventoryScope,
+  warehouses: GesiRow[],
+  fetchByCodes: (codes: string[]) => Promise<GesiRow[]>,
+) {
+  const inventory = normalizeInventoryRows(rows, scope, warehouses);
+  const masterIDs = new Set(products.map((row) => String(row.productoID ?? '').trim()).filter(Boolean));
+  const presentIDs = new Set(inventory.rows.map((row) => String(row.productoID).trim()));
+  const missing = [...masterIDs].filter((id) => !presentIDs.has(id));
+  const recoveredProductIDs: string[] = [];
+  for (let index = 0; index < missing.length; index += 40) {
+    const codes = missing.slice(index, index + 40);
+    const requested = new Set(codes);
+    const fetched = await fetchByCodes(codes);
+    if (fetched.some((row) => !requested.has(String(row.productoID ?? '').trim()))) {
+      throw new Error('La recuperación de existencias devolvió códigos no solicitados.');
+    }
+    const recovered = normalizeInventoryRows(fetched, scope, warehouses);
+    if (recovered.rows.some((row) => !inventoryFields.every((field) => Number.isFinite(finiteNumber(row[field]))))) {
+      throw new Error('La recuperación de existencias devolvió cantidades ausentes o no numéricas.');
+    }
+    const recoveredIDs = new Set(recovered.rows.map((row) => String(row.productoID).trim()));
+    const absent = codes.filter((id) => !recoveredIDs.has(id));
+    if (absent.length) throw new Error(`GESI no pudo recuperar existencias para: ${absent.join(', ')}. Se conserva el paquete activo.`);
+    inventory.rows.push(...recovered.rows);
+    inventory.duplicateRows += recovered.duplicateRows;
+    inventory.invalidRows += recovered.invalidRows;
+    inventory.repairedScopeRows += recovered.repairedScopeRows;
+    inventory.branchResolvedRows += recovered.branchResolvedRows;
+    recoveredProductIDs.push(...codes);
+  }
+  if (inventory.rows.some((row) => !masterIDs.has(String(row.productoID).trim()))) {
+    throw new Error('Las existencias contienen códigos ausentes del maestro de productos.');
+  }
+  return { ...inventory, recoveredProductIDs };
+}

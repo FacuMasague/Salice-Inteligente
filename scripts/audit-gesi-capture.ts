@@ -196,6 +196,7 @@ const report = {
       || Math.abs(number(row.unidad2) - number(row.unidad2Disponible) - number(row.unidad2NPEPendientes)) > .01
     )).length,
     missingInventoryProducts: [...productIDs].filter((id) => !stockProductIDs.has(id)).length,
+    inventoryRecoveredProductIDs: capture.captureMeta.inventoryRecoveredProductIDs ?? [],
     activeMasterProducts: activeMasterProductIDs.size,
     inactiveMasterProducts: capture.products.filter((row) => text(row.estado) === 'I').length,
     unknownMasterProducts: capture.products.filter((row) => !['A', 'I'].includes(text(row.estado))).length,
