@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   captureCacheMatchesActiveBundle,
+  canReuseSptHistory,
+  gesiDocumentQueryFrom,
   logisticsQueryFrom,
   resolveLogisticsInvoiceValidationFrom,
   resolveLogisticsFetchFrom,
@@ -109,5 +111,29 @@ describe('seguridad del histórico logístico', () => {
       salesFetchFrom: '2025-01-01',
       previousCoverageFrom: '2025-08-25T00:00:00.000Z',
     })).toBe('2025-01-01');
+  });
+});
+
+describe('continuidad del histórico comercial al avanzar el año móvil', () => {
+  it('consulta el día completo que deja de conservarse como histórico', () => {
+    const previous = ['2025-09-29T00:00:00', '2025-09-30T00:00:00'];
+    const cut = gesiDocumentQueryFrom('2025-09-30T06:00:46.500Z');
+    expect(cut).toBe('2025-09-30T00:00:00.000Z');
+    const retained = previous.filter((date) => date.slice(0, 10) < cut.slice(0, 10));
+    const fetched = previous.filter((date) => Date.parse(date + 'Z') >= Date.parse(cut));
+    expect([...retained, ...fetched]).toEqual(previous);
+    expect(new Set([...retained, ...fetched]).size).toBe(previous.length);
+  });
+  it('reconstruye una captura antigua o fallida antes de habilitar el modo incremental', () => {
+    expect(canReuseSptHistory(true, undefined)).toBe(false);
+    expect(canReuseSptHistory(false, 1)).toBe(false);
+    expect(canReuseSptHistory(true, 1)).toBe(true);
+    const from = resolveSptFetchFrom({ hasExistingCapture: canReuseSptHistory(true, undefined), historyFrom: '2025-10-01T06:00:00Z' });
+    expect(gesiDocumentQueryFrom(from)).toBe('2025-01-01T00:00:00.000Z');
+  });
+  it('mantiene fechas explícitas válidas y rechaza cortes malformados', () => {
+    expect(gesiDocumentQueryFrom('2024-02-29')).toBe('2024-02-29T00:00:00.000Z');
+    expect(() => gesiDocumentQueryFrom('2025-02-29')).toThrow(/inválido/);
+    expect(() => gesiDocumentQueryFrom('sin fecha')).toThrow(/inválido/);
   });
 });

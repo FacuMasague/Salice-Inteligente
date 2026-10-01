@@ -80,3 +80,20 @@ export function resolveLogisticsInvoiceValidationFrom({
     .filter((value): value is string => Boolean(value))
     .sort()[0] ?? sheetFetchFrom;
 }
+
+/** Document emission dates have day grain; query and retention must share a cut. */
+export function gesiDocumentQueryFrom(value: string) {
+  const day = value.slice(0, 10);
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== day) throw new Error(`Inicio de consulta documental inválido: ${value}`);
+  return parsed.toISOString();
+}
+
+export const SPT_HISTORY_CONTINUITY_VERSION = 1;
+
+/** Older captures may have silently dropped each annual boundary day. Rebuild
+ * the full history once; only an approved capture can enable incremental reuse. */
+export function canReuseSptHistory(approved: boolean, version?: number) {
+  return approved && version === SPT_HISTORY_CONTINUITY_VERSION;
+}
