@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { auditInventoryBranchResolutions, normalizeInventoryRows } from './inventory-capture.js';
+import { describe, expect, it, vi } from 'vitest';
+import { auditInventoryBranchResolutions, completeInventoryRows, normalizeInventoryRows } from './inventory-capture.js';
 
 const scope = { empresaID: 3, sucursalID: 3, almacenID: 2 };
 const warehouses = [{ almacenID: 2, sucursalID: 3, descripcion: 'Depósito de prueba' }];
@@ -8,6 +8,58 @@ const pendingWithoutBranch = {
   unidad1: 0, unidad2: 0, unidad1Disponible: -2, unidad2Disponible: -1.5,
   unidad1NPEPendientes: 2, unidad2NPEPendientes: 1.5,
 };
+
+describe('recuperación de existencias omitidas por paginación', () => {
+  const stock = (productoID: string) => ({ ...pendingWithoutBranch, productoID, sucursalID: 3 });
+  const products = [{ productoID: 'P1' }, { productoID: 'P2' }];
+
+  it('consulta sólo el código faltante y conserva cantidades físicas, disponibles y pendientes', async () => {
+    const fetch = vi.fn(async () => [stock('P2')]);
+    const initial = [stock('P1'), stock('P1')];
+    const result = await completeInventoryRows(products, initial, scope, warehouses, fetch);
+    expect(fetch).toHaveBeenCalledWith(['P2']);
+    expect(result.rows).toEqual([stock('P1'), stock('P2')]);
+    expect(result.recoveredProductIDs).toEqual(['P2']);
+    expect(result.duplicateRows).toBe(1);
+    expect(initial).toHaveLength(2);
+  });
+
+  it('no consulta la fuente cuando la captura ya está completa', async () => {
+    const fetch = vi.fn();
+    const result = await completeInventoryRows(products, products.map((p) => stock(p.productoID)), scope, warehouses, fetch);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.recoveredProductIDs).toEqual([]);
+  });
+
+  it('divide la recuperación en lotes pequeños sin perder códigos', async () => {
+    const masters = Array.from({ length: 81 }, (_, i) => ({ productoID: `P${i}` }));
+    const fetch = vi.fn(async (codes: string[]) => codes.map(stock));
+    const result = await completeInventoryRows(masters, [], scope, warehouses, fetch);
+    expect(fetch.mock.calls.map(([codes]) => codes.length)).toEqual([40, 40, 1]);
+    expect(result.rows.map((row) => row.productoID)).toEqual(masters.map((row) => row.productoID));
+  });
+
+  it('bloquea una respuesta vacía en vez de fabricar stock cero o reutilizar stock anterior', async () => {
+    await expect(completeInventoryRows(products, [stock('P1')], scope, warehouses, async () => [])).rejects.toThrow(/P2/);
+  });
+
+  it.each([
+    { productoID: 'AJENO' }, { empresaID: 7 }, { almacenID: 12 },
+    { unidad1: null }, { unidad2Disponible: '' },
+  ])('rechaza códigos, alcance o cantidades inválidos: %j', async (changes) => {
+    await expect(completeInventoryRows(products, [stock('P1')], scope, warehouses,
+      async () => [{ ...stock('P2'), ...changes }])).rejects.toThrow();
+  });
+
+  it('rechaza cantidades conflictivas y conserva evidencia de sucursal resuelta', async () => {
+    await expect(completeInventoryRows(products, [stock('P1')], scope, warehouses,
+      async () => [stock('P2'), { ...stock('P2'), unidad1Disponible: 4 }])).rejects.toThrow(/conflictivas/);
+    const result = await completeInventoryRows(products, [stock('P1')], scope, warehouses,
+      async () => [{ ...pendingWithoutBranch, productoID: 'P2' }]);
+    expect(result.branchResolvedRows).toBe(1);
+    expect(auditInventoryBranchResolutions(result.rows, scope, warehouses)).toBe(1);
+  });
+});
 
 describe('normalización de existencias GESI', () => {
   it('resuelve sucursal cero con el maestro del almacén sin modificar cantidades ni la entrada', () => {

@@ -12,6 +12,7 @@ export interface GesiRawCapture {
     inventoryInvalidRows?: number;
     inventoryScopeRepairedRows?: number;
     inventoryBranchResolvedRows?: number;
+    inventoryRecoveredProductIDs?: string[];
     inventoryCommittedRows?: number;
     inventoryStockReconciliationWarnings?: number;
     historyFrom: string;
