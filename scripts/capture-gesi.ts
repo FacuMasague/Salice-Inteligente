@@ -9,6 +9,9 @@ import { streamArray } from 'stream-json/streamers/stream-array.js';
 import { streamValues } from 'stream-json/streamers/stream-values.js';
 import {
   captureCacheMatchesActiveBundle,
+  canReuseSptHistory,
+  gesiDocumentQueryFrom,
+  SPT_HISTORY_CONTINUITY_VERSION,
   logisticsQueryFrom,
   resolveLogisticsInvoiceValidationFrom,
   resolveLogisticsFetchFrom,
@@ -96,12 +99,14 @@ const isoDaysAgo = (days: number) => {
   return value.toISOString();
 };
 const historyFrom = process.env.GESI_HISTORY_FROM ?? isoDaysAgo(365);
-const salesHistoryFrom = resolveSptFetchFrom({
-  hasExistingCapture,
+const reusableSptHistory = canReuseSptHistory(existingCaptureIsApproved, existingCaptureMeta?.sptHistoryContinuityVersion);
+const salesHistoryFrom = gesiDocumentQueryFrom(resolveSptFetchFrom({
+  hasExistingCapture: reusableSptHistory,
   historyFrom,
   explicitHistoryFrom: process.env.GESI_SPT_HISTORY_FROM,
-  bootstrapHistoryFrom: process.env.GESI_SPT_BOOTSTRAP_HISTORY_FROM,
-});
+  bootstrapHistoryFrom: [process.env.GESI_SPT_BOOTSTRAP_HISTORY_FROM || '2025-01-01', existingCaptureMeta?.salesHistoryFrom]
+    .filter((value): value is string => Boolean(value)).sort()[0],
+}));
 const salesDetailFrom = process.env.GESI_SALES_DETAIL_FROM ?? isoDaysAgo(180);
 const sptSalesDetailFrom = process.env.GESI_SPT_DETAIL_FROM ?? salesHistoryFrom;
 const rollingLogisticsFrom = isoDaysAgo(45);
@@ -110,7 +115,7 @@ const historyUntil = capturedAt.toISOString();
 
 const listBody = (from: string, until = historyUntil) => ({
   datosOperacion: {
-    fechaDesde: from,
+    fechaDesde: gesiDocumentQueryFrom(from),
     fechaHasta: until,
     sucursalID,
     estadoAnulado: 'N',
@@ -249,6 +254,9 @@ async function fetchPrices(productIDs: string[]) {
   return prices;
 }
 
+if (!reusableSptHistory && !process.env.GESI_SPT_HISTORY_FROM) {
+  console.log(`Histórico comercial: reconstrucción completa desde ${salesHistoryFrom.slice(0, 10)} para recuperar días perdidos en el corte anual.`);
+}
 console.log('GESI Salice: autenticando…');
 await client.login();
 
@@ -640,7 +648,7 @@ const invoices = allInvoiceHeaders
   .filter((row) => onOrAfter(row, historyFrom))
   .map((row) => onOrAfter(row, salesDetailFrom) ? invoiceDetailByKey.get(documentIdentity(row)) ?? row : row);
 const creditNoteDetailByKey = new Map(creditNoteDetails.map((row) => [documentIdentity(row), row]));
-const preserveHistoricalSpt = !process.env.GESI_SPT_HISTORY_FROM && Boolean(existingCaptureMeta);
+const preserveHistoricalSpt = !process.env.GESI_SPT_HISTORY_FROM && reusableSptHistory;
 const currentSptInvoices = allInvoiceHeaders.map((row) => invoiceDetailByKey.get(documentIdentity(row)) ?? row);
 const currentSptCreditNotes = allCreditNoteHeaders.map((row) => creditNoteDetailByKey.get(documentIdentity(row)) ?? row);
 const sptCoverageFrom = preserveHistoricalSpt
@@ -677,6 +685,8 @@ const captureMeta: GesiRawCapture['captureMeta'] = {
   historyFrom,
   salesHistoryFrom: sptCoverageFrom,
   sptFetchFrom: salesHistoryFrom,
+  ...(sptSalesDetailFrom.slice(0, 10) <= salesHistoryFrom.slice(0, 10)
+    ? { sptHistoryContinuityVersion: SPT_HISTORY_CONTINUITY_VERSION } : {}),
   salesDetailFrom,
   sptSalesDetailFrom: sptDetailCoverageFrom,
   logisticsFrom,
@@ -785,6 +795,8 @@ console.log(JSON.stringify({
   balances: balances.length,
   salesHistoryFrom: sptCoverageFrom,
   sptFetchFrom: salesHistoryFrom,
+  ...(sptSalesDetailFrom.slice(0, 10) <= salesHistoryFrom.slice(0, 10)
+    ? { sptHistoryContinuityVersion: SPT_HISTORY_CONTINUITY_VERSION } : {}),
   salesDetailFrom,
   sptSalesDetailFrom,
   invoices: invoices.length,

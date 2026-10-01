@@ -290,6 +290,7 @@ const metaValues: Record<string, string> = {
   source_system: 'GESI API · facturas, notas de crédito y maestros Salice',
   source_kind: 'gesi_api',
   captured_at: captureMeta.capturedAt,
+  history_continuity_version: String(captureMeta.sptHistoryContinuityVersion ?? 0),
   row_count: String(insertedRows),
   min_date: dates.minDate ?? '',
   max_date: dates.maxDate ?? '',

@@ -120,3 +120,9 @@ Una ejecución aprobada debe dejar:
 Los comandos individuales siguen disponibles para diagnóstico, pero la única operación aprobada para publicar una foto completa es `pnpm run refresh:gesi`. `pnpm run adopt:data-bundle` migra una instalación anterior ya validada al esquema de manifiesto sin consultar GESI.
 
 Las credenciales permanecen en variables de entorno. Ninguna salida, auditoría o respaldo debe copiar usuario, contraseña o clave de OpenAI.
+
+### Corte diario del histórico comercial
+
+El inicio de las consultas de comprobantes se normaliza a medianoche del día de corte. La conservación histórica usa el mismo día: antes del corte se reutiliza; desde el corte se vuelve a consultar. Así se incluyen las emisiones de las 00:00 y no se pierde un día al avanzar la ventana anual.
+
+Las capturas anteriores a la corrección del 1 de octubre de 2026 reconstruyen una vez el histórico completo desde enero de 2025 (o el inicio anterior configurado). Sólo después de aprobar esa captura con `sptHistoryContinuityVersion=1` se habilita la conservación incremental. La auditoría comercial exige esta evidencia; `refresh:gesi:resume` no permite aprobar una captura antigua. Ver `docs/fix-commercial-history-boundary.md`.

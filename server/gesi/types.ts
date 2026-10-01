@@ -17,6 +17,7 @@ export interface GesiRawCapture {
     historyFrom: string;
     salesHistoryFrom: string;
     sptFetchFrom: string;
+    sptHistoryContinuityVersion?: number;
     salesDetailFrom: string;
     sptSalesDetailFrom: string;
     logisticsFrom?: string;
